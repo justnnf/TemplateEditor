@@ -1,0 +1,100 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <PlatformTarget>x64</PlatformTarget>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <OutputType>Library</OutputType>
+    <AssemblyName>TemplateEditor</AssemblyName>
+    <RootNamespace>TemplateEditor</RootNamespace>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <NoWarn>CA1416</NoWarn>
+    <AddInName>TemplateEditor</AddInName>
+    <AddInDescription>Template editor tools</AddInDescription>
+    <AddInImage>Images\AddInDesktop32.png</AddInImage>
+    <AddInAuthor>J. Foltinek</AddInAuthor>
+    <AddInCompany>FortisAlberta</AddInCompany>
+    <AddInVersion>1.0.0</AddInVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="Config.daml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Config.daml" />
+    <Content Include="TemplateEditor.dll.config">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Images\AddInDesktop16.png" />
+    <Content Include="Images\ConfigSettings16.png" />
+    <Content Include="Images\ConfigSettings32.png" />
+    <Content Include="Images\ReloadConfig16.png" />
+    <Content Include="Images\ReloadConfig32.png" />
+    <Content Include="Images\TemplateEditor16.png" />
+    <Content Include="Images\TemplateEditor32.png" />
+    <Content Include="Images\cursor_line.cur">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Images\cursor_point.cur">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Images\cursor_polygon.cur">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Images\cursor_row.cur">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="Images\framing.png" />
+    <Content Include="DarkImages\AddInDesktop16.png" />
+    <Content Include="DarkImages\AddInDesktop32.png" />
+    <Content Include="DarkImages\ConfigSettings16.png" />
+    <Content Include="DarkImages\ConfigSettings32.png" />
+    <Content Include="DarkImages\ReloadConfig16.png" />
+    <Content Include="DarkImages\ReloadConfig32.png" />
+    <Content Include="DarkImages\TemplateEditor16.png" />
+    <Content Include="DarkImages\TemplateEditor32.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="ArcGIS.Desktop.Framework">
+      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Desktop.Framework.dll</HintPath>
+      <CopyLocal>False</CopyLocal>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Core">
+      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Core.dll</HintPath>
+      <CopyLocal>False</CopyLocal>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Desktop.Core">
+      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Desktop.Core.dll</HintPath>
+      <CopyLocal>False</CopyLocal>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Desktop.Extensions">
+      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Desktop.Extensions.dll</HintPath>
+      <CopyLocal>False</CopyLocal>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Desktop.Editing">
+      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Desktop.Editing.dll</HintPath>
+      <CopyLocal>False</CopyLocal>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ArcGIS.Desktop.Mapping">
+      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Desktop.Mapping.dll</HintPath>
+      <CopyLocal>False</CopyLocal>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Import Project="Esri.ArcGISPro.Extensions.targets" Condition="Exists('Esri.ArcGISPro.Extensions.targets')" />
+</Project>

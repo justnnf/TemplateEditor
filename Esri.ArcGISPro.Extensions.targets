@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <PackageType Condition="'$(PackageType)' == ''">Addin</PackageType>
+    <ZipIntermediatePath>$(IntermediateOutputPath)temp_archive\</ZipIntermediatePath>
+    <ArcGISAddInInstallFolder>$(UserProfile)\Documents\ArcGIS\AddIns\ArcGISPro\</ArcGISAddInInstallFolder>
+    <_ArcGISExtension Condition="'$(PackageType)' == 'Addin' Or '$(PackageType)' == 'addin'">.esriAddinX</_ArcGISExtension>
+    <_ArcGISExtension Condition="'$(PackageType)' == 'Configuration' Or '$(PackageType)' == 'configuration'">.proConfigX</_ArcGISExtension>
+    <_ArcGISExtension Condition="'$(PackageType)' == 'Plugin' Or '$(PackageType)' == 'plugin'">.esriPlugin</_ArcGISExtension>
+  </PropertyGroup>
+
+  <Choose>
+    <When Condition="Exists('$(LocalAppData)\ArcGIS\shared\bin\RegisterAddIn.exe')">
+      <PropertyGroup>
+        <ArcGISFolder>$(LocalAppData)\ArcGIS\shared\bin\</ArcGISFolder>
+      </PropertyGroup>
+    </When>
+    <When Condition="Exists('$(ProgramFiles)\Common Files\ArcGIS\shared\bin\RegisterAddIn.exe')">
+      <PropertyGroup>
+        <ArcGISFolder>$(ProgramFiles)\Common Files\ArcGIS\shared\bin\</ArcGISFolder>
+      </PropertyGroup>
+    </When>
+    <When Condition="Exists('$(ProgramData)\EsriProCommon\RegisterAddIn.exe')">
+      <PropertyGroup>
+        <ArcGISFolder>$(ProgramData)\EsriProCommon\</ArcGISFolder>
+      </PropertyGroup>
+    </When>
+    <Otherwise>
+      <PropertyGroup>
+        <ArcGISFolder>$([MSBuild]::GetRegistryValueFromView('HKEY_LOCAL_MACHINE\SOFTWARE\ESRI\ArcGISPro', 'InstallDir', null, RegistryView.Registry64))</ArcGISFolder>
+        <ArcGISFolder Condition="'$(ArcGISFolder)' == ''">$(registry:HKEY_CURRENT_USER\SOFTWARE\ESRI\ArcGISPro@InstallDir)</ArcGISFolder>
+        <ArcGISFolder Condition="'$(ArcGISFolder)' != ''">$(ArcGISFolder)bin\</ArcGISFolder>
+      </PropertyGroup>
+    </Otherwise>
+  </Choose>
+
+  <Target Name="PackageArcGISContents" AfterTargets="Build" Condition="'$(IsCrossTargetingBuild)' != 'true' And '$(_ArcGISExtension)' != ''">
+    <PropertyGroup>
+      <_ArcGISPackageFile>$(TargetDir)$(AssemblyName)$(_ArcGISExtension)</_ArcGISPackageFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <_ArcGISInstallFiles Include="$(TargetDir)**\*" Exclude="$(TargetDir)**\*.esriAddinX;$(TargetDir)**\*.proConfigX;$(TargetDir)**\*.esriPlugin" />
+      <_ArcGISContentFiles Include="@(Content)" Condition="Exists('%(Content.Identity)') And ('%(Content.CopyToOutputDirectory)' == 'Never' Or '%(Content.CopyToOutputDirectory)' == '')" />
+    </ItemGroup>
+
+    <RemoveDir Directories="$(ZipIntermediatePath)" Condition="Exists('$(ZipIntermediatePath)')" />
+    <MakeDir Directories="$(ZipIntermediatePath)Install" />
+    <Copy SourceFiles="@(_ArcGISInstallFiles)" DestinationFiles="@(_ArcGISInstallFiles->'$(ZipIntermediatePath)Install\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(_ArcGISContentFiles)" DestinationFiles="@(_ArcGISContentFiles->'$(ZipIntermediatePath)%(RelativeDir)%(Filename)%(Extension)')" />
+    <Delete Files="$(_ArcGISPackageFile)" />
+    <ZipDirectory SourceDirectory="$(ZipIntermediatePath)" DestinationFile="$(_ArcGISPackageFile)" Overwrite="true" />
+    <Message Text="Packaged $(_ArcGISPackageFile)" Importance="High" />
+    <Message Text="Registering $(_ArcGISPackageFile) with $(ArcGISFolder)RegisterAddIn.exe" Importance="High" Condition="Exists('$(ArcGISFolder)RegisterAddIn.exe')" />
+    <Message Text="Unable to register add-in because RegisterAddIn.exe was not found. ArcGISFolder='$(ArcGISFolder)'" Importance="High" Condition="!Exists('$(ArcGISFolder)RegisterAddIn.exe')" />
+    <Exec IgnoreExitCode="true" WorkingDirectory="$(ArcGISFolder)" Command="RegisterAddIn.exe &quot;$(_ArcGISPackageFile)&quot; /s" Condition="Exists('$(ArcGISFolder)RegisterAddIn.exe')">
+      <Output TaskParameter="ExitCode" PropertyName="_ArcGISRegisterAddInExitCode" />
+    </Exec>
+    <Message Text="RegisterAddIn.exe exit code: $(_ArcGISRegisterAddInExitCode)" Importance="High" Condition="'$(_ArcGISRegisterAddInExitCode)' != ''" />
+    <MakeDir Directories="$(ArcGISAddInInstallFolder)" />
+    <Copy SourceFiles="$(_ArcGISPackageFile)" DestinationFolder="$(ArcGISAddInInstallFolder)" />
+    <Message Text="Installed $(_ArcGISPackageFile) to $(ArcGISAddInInstallFolder)" Importance="High" />
+    <RemoveDir Directories="$(ZipIntermediatePath)" Condition="Exists('$(ZipIntermediatePath)')" />
+  </Target>
+
+  <Target Name="CleanArcGISContents" AfterTargets="Clean" Condition="'$(_ArcGISExtension)' != ''">
+    <PropertyGroup>
+      <_ArcGISPackageFile>$(TargetDir)$(AssemblyName)$(_ArcGISExtension)</_ArcGISPackageFile>
+    </PropertyGroup>
+
+    <Delete Files="$(_ArcGISPackageFile)" />
+    <Delete Files="$(ArcGISAddInInstallFolder)$(AssemblyName)$(_ArcGISExtension)" />
+  </Target>
+</Project>
