@@ -531,7 +531,11 @@ internal static class CommonFunctions
 		{
 			return true;
 		}
-		if (templateRef.Line != null || templateRef.Polygon != null)
+		if (templateRef.Line != null && AddinConfiguration.Settings?.EnableConfiguredLinePartSplits != true)
+		{
+			return false;
+		}
+		if (templateRef.Polygon != null)
 		{
 			return false;
 		}

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -17,12 +18,14 @@ internal sealed class ParallelCopyPromptDialog : Window
 	private readonly TextBox _offsetTextBox;
 	private readonly RadioButton _leftRadioButton;
 	private readonly RadioButton _rightRadioButton;
+	private IDisposable _previewOverlay;
+	private int _previewVersion;
 
 	public double OffsetDistance { get; private set; }
 
 	public bool LeftSide => _leftRadioButton.IsChecked == true;
 
-	private ParallelCopyPromptDialog()
+	private ParallelCopyPromptDialog(double defaultOffsetDistance, bool defaultLeftSide)
 	{
 		Title = "Create Parallel Copy";
 		Width = 360.0;
@@ -66,7 +69,7 @@ internal sealed class ParallelCopyPromptDialog : Window
 		inputGrid.Children.Add(label);
 		_offsetTextBox = new TextBox
 		{
-			Text = "1",
+			Text = defaultOffsetDistance.ToString("0.###", CultureInfo.CurrentCulture),
 			MinWidth = 90.0,
 			Background = SurfaceBrush,
 			Foreground = PrimaryTextBrush,
@@ -79,6 +82,7 @@ internal sealed class ParallelCopyPromptDialog : Window
 		};
 		Grid.SetColumn(_offsetTextBox, 1);
 		inputGrid.Children.Add(_offsetTextBox);
+		_offsetTextBox.TextChanged += delegate { QueuePreviewRefresh(); };
 		Grid.SetRow(inputGrid, 1);
 		panel.Children.Add(inputGrid);
 
@@ -90,16 +94,19 @@ internal sealed class ParallelCopyPromptDialog : Window
 		_leftRadioButton = new RadioButton
 		{
 			Content = "Left",
-			IsChecked = true,
+			IsChecked = defaultLeftSide,
 			Foreground = PrimaryTextBrush,
 			Margin = new Thickness(0.0, 0.0, 18.0, 0.0)
 		};
+		_leftRadioButton.Checked += delegate { QueuePreviewRefresh(); };
 		sidePanel.Children.Add(_leftRadioButton);
 		_rightRadioButton = new RadioButton
 		{
 			Content = "Right",
+			IsChecked = !defaultLeftSide,
 			Foreground = PrimaryTextBrush
 		};
+		_rightRadioButton.Checked += delegate { QueuePreviewRefresh(); };
 		sidePanel.Children.Add(_rightRadioButton);
 		Grid.SetRow(sidePanel, 2);
 		panel.Children.Add(sidePanel);
@@ -132,11 +139,13 @@ internal sealed class ParallelCopyPromptDialog : Window
 		Grid.SetRow(buttons, 3);
 		panel.Children.Add(buttons);
 		Content = panel;
+		Loaded += delegate { QueuePreviewRefresh(); };
+		Closed += delegate { ClearPreviewOverlay(); };
 	}
 
-	public static ParallelCopyPromptDialog ShowPrompt()
+	public static ParallelCopyPromptDialog ShowPrompt(double defaultOffsetDistance, bool defaultLeftSide)
 	{
-		ParallelCopyPromptDialog dialog = new ParallelCopyPromptDialog();
+		ParallelCopyPromptDialog dialog = new ParallelCopyPromptDialog(defaultOffsetDistance, defaultLeftSide);
 		Window mainWindow = Application.Current?.MainWindow;
 		if (mainWindow != null)
 		{
@@ -183,7 +192,47 @@ internal sealed class ParallelCopyPromptDialog : Window
 			return;
 		}
 		OffsetDistance = offsetDistance;
+		ClearPreviewOverlay();
 		DialogResult = true;
+	}
+
+	private void QueuePreviewRefresh()
+	{
+		int previewVersion = ++_previewVersion;
+		_ = RefreshPreviewAsync(previewVersion);
+	}
+
+	private async Task RefreshPreviewAsync(int previewVersion)
+	{
+		if (!TryParsePositiveDistance(_offsetTextBox?.Text, out double offsetDistance))
+		{
+			ClearPreviewOverlay();
+			return;
+		}
+		try
+		{
+			IDisposable previewOverlay = await ParallelCopyService.CreatePreviewOverlayAsync(offsetDistance, LeftSide);
+			if (previewVersion != _previewVersion)
+			{
+				previewOverlay?.Dispose();
+				return;
+			}
+			ClearPreviewOverlay();
+			_previewOverlay = previewOverlay;
+		}
+		catch
+		{
+			if (previewVersion == _previewVersion)
+			{
+				ClearPreviewOverlay();
+			}
+		}
+	}
+
+	private void ClearPreviewOverlay()
+	{
+		_previewOverlay?.Dispose();
+		_previewOverlay = null;
 	}
 
 	private static bool TryParsePositiveDistance(string text, out double distance)

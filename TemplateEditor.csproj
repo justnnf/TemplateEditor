@@ -17,7 +17,7 @@
     <AddInImage>Images\AddInDesktop32.png</AddInImage>
     <AddInAuthor>J. Foltinek</AddInAuthor>
     <AddInCompany>FortisAlberta</AddInCompany>
-    <AddInVersion>1.0.0</AddInVersion>
+    <AddInVersion>1.0.1</AddInVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -94,6 +94,10 @@
       <CopyLocal>False</CopyLocal>
       <Private>False</Private>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Addins\" />
   </ItemGroup>
 
   <Import Project="Esri.ArcGISPro.Extensions.targets" Condition="Exists('Esri.ArcGISPro.Extensions.targets')" />
