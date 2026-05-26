@@ -30,11 +30,21 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private bool _showAllTemplates;
 
+	private bool _showFavouriteTemplates;
+
+	private bool _showRecentTemplates;
+
 	private string _sortField = "Name";
 
 	private bool _sortAscending = true;
 
 	private int _activationVersion;
+
+	private List<DisplayTemplate> _favouriteTemplates;
+
+	private List<DisplayTemplate> _recentTemplates;
+
+	private Dictionary<string, DisplayTemplate> _allTemplatesByKey;
 
 	public List<DisplayTemplate> Templates { get; set; }
 
@@ -53,6 +63,8 @@ internal class EditorDockpaneViewModel : DockPane
 	public ICommand DeactivateTemplateCommand { get; }
 
 	public ICommand ReloadConfigCommand { get; }
+
+	public ICommand ToggleFavouriteCommand { get; }
 
 	public DisplayTemplate SelectedTemplate
 	{
@@ -114,6 +126,8 @@ internal class EditorDockpaneViewModel : DockPane
 			{
 				return;
 			}
+			AddinConfiguration.RecordRecentTemplate(selectedTemplate.UniqueKey);
+			RefreshFavouriteAndRecentLists(refreshVisibleTemplates: false);
 			ToolReactivationService.ActivateTool(toolId);
 		}
 		catch (Exception ex)
@@ -144,8 +158,8 @@ internal class EditorDockpaneViewModel : DockPane
 		}
 		if (GeometryTypeHelper.IsPolygon(templateGeometryType))
 		{
-			SimpleTemplate simpleTemplate = AddinConfiguration.Templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => n.Name == AddinConfiguration.SelectedTemplate.Name);
-			return simpleTemplate == null || simpleTemplate.Geometry == null ? "TemplateEditor_SketchPolygonTool" : "TemplateEditor_SketchPointTool";
+			SimpleTemplate simpleTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault((SimpleTemplate n) => n.Name == AddinConfiguration.SelectedTemplate?.Name);
+			return simpleTemplate?.Geometry == null ? "TemplateEditor_SketchPolygonTool" : "TemplateEditor_SketchPointTool";
 		}
 		return "esri_mapping_exploreTool";
 	}
@@ -206,6 +220,32 @@ internal class EditorDockpaneViewModel : DockPane
 		}
 	}
 
+	public bool ShowFavouriteTemplates
+	{
+		get
+		{
+			return _showFavouriteTemplates;
+		}
+		set
+		{
+			_showFavouriteTemplates = value;
+			FilterTemplates();
+		}
+	}
+
+	public bool ShowRecentTemplates
+	{
+		get
+		{
+			return _showRecentTemplates;
+		}
+		set
+		{
+			_showRecentTemplates = value;
+			FilterTemplates();
+		}
+	}
+
 	protected EditorDockpaneViewModel()
 	{
 		SortCommand = new RelayCommand(SortTemplates);
@@ -223,6 +263,7 @@ internal class EditorDockpaneViewModel : DockPane
 		ToggleGroupExpansionCommand = new RelayCommand(ToggleGroupExpansion);
 		DeactivateTemplateCommand = new RelayCommand(_ => DeactivateTemplate());
 		ReloadConfigCommand = new RelayCommand(_ => ReloadTemplateConfig());
+		ToggleFavouriteCommand = new RelayCommand(ToggleFavourite);
 		LoadTemplatesFromConfig();
 	}
 
@@ -314,7 +355,7 @@ internal class EditorDockpaneViewModel : DockPane
 		_simpleTemplates = new List<DisplayTemplate>();
 		foreach (SimpleTemplate simpleTemplate in AddinConfiguration.Templates.SimpleTemplates)
 		{
-			if (!AddinConfiguration.Templates.GroupTemplates.Any((GroupTemplate n) => n.SimpleTemplates.Select((SimpleTemplateReference simpleTemplateReference) => simpleTemplateReference.Name).Contains(simpleTemplate.Name)))
+			if (!AddinConfiguration.Templates.GroupTemplates.Any((GroupTemplate n) => (n.SimpleTemplates ?? Enumerable.Empty<SimpleTemplateReference>()).Select((SimpleTemplateReference r) => r.Name).Contains(simpleTemplate.Name)))
 			{
 				_simpleTemplates.Add(CreateDisplayTemplate(simpleTemplate));
 			}
@@ -327,21 +368,17 @@ internal class EditorDockpaneViewModel : DockPane
 			select CreateDisplayTemplate(n) into n
 			orderby n.Name
 			select n).ToList();
-		List<DisplayTemplate> allGroupTemplates = (from n in AddinConfiguration.Templates.GroupTemplates
-			select new DisplayTemplate
-			{
-				Name = n.Name,
-				TemplateType = n.TemplateType,
-				Description = n.Description
-			} into n
+		List<DisplayTemplate> allGroupTemplates = (from n in _groupTemplates
 			orderby n.Name
 			select n).ToList();
 		_allTemplates = (from n in _allSimpleTemplates.Concat(allGroupTemplates)
 			orderby n.Name
 			select n).ToList();
+		_allTemplatesByKey = BuildAllTemplatesByKey(_simpleTemplates, _groupTemplates);
+		BuildFavouriteAndRecentLists();
 		Templates = ApplySort(_groupTemplates).ToList();
 		TemplateCount = $"{Templates.Count} template(s)";
-		if (!_showGroupTemplates && !_showSimpleTemplates && !_showAllTemplates)
+		if (!_showGroupTemplates && !_showSimpleTemplates && !_showAllTemplates && !_showFavouriteTemplates && !_showRecentTemplates)
 		{
 			_showGroupTemplates = true;
 		}
@@ -392,25 +429,7 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private void FilterTemplates()
 	{
-		IEnumerable<DisplayTemplate> source = Enumerable.Empty<DisplayTemplate>();
-		if (_showGroupTemplates)
-		{
-			source = _groupTemplates;
-		}
-		else if (_showSimpleTemplates)
-		{
-			source = _simpleTemplates;
-		}
-		else if (_showAllTemplates)
-		{
-			source = _allTemplates;
-		}
-		if (!_showGroupTemplates && _selectedTemplate?.IsGroupChild == true)
-		{
-			_selectedTemplate = null;
-			AddinConfiguration.SelectedTemplate = null;
-			NotifyPropertyChanged(() => SelectedTemplate);
-		}
+		IEnumerable<DisplayTemplate> source = GetCurrentViewTemplates();
 
 		string[] searchTerms = GetSearchTerms(_searchText);
 		if (searchTerms.Length > 0)
@@ -418,15 +437,145 @@ internal class EditorDockpaneViewModel : DockPane
 			source = source.Where((DisplayTemplate template) => MatchesSearchTerms(template, searchTerms));
 		}
 
-		List<DisplayTemplate> visibleTemplates = ApplySort(source).ToList();
-		Templates = _showGroupTemplates ? ExpandGroupRows(visibleTemplates).ToList() : visibleTemplates;
+		// Keep recency order for the Recent view; sort everything else.
+		List<DisplayTemplate> visibleTemplates = _showRecentTemplates
+			? source.ToList()
+			: ApplySort(source).ToList();
+		Templates = ShouldShowExpandedGroupRows()
+			? ExpandGroupRows(visibleTemplates).ToList()
+			: visibleTemplates;
+		if (_selectedTemplate?.IsGroupChild == true && !Templates.Any((DisplayTemplate template) => string.Equals(template.UniqueKey, _selectedTemplate.UniqueKey, StringComparison.OrdinalIgnoreCase)))
+		{
+			_selectedTemplate = null;
+			AddinConfiguration.SelectedTemplate = null;
+			NotifyPropertyChanged(() => SelectedTemplate);
+			ToolReactivationService.ActivateSelectTool();
+		}
 		TemplateCount = $"{Templates.Count} template(s)";
 		NotifyPropertyChanged(() => Templates);
 		NotifyPropertyChanged(() => TemplateCount);
 	}
 
+	private IEnumerable<DisplayTemplate> GetCurrentViewTemplates()
+	{
+		if (_showGroupTemplates)
+		{
+			return _groupTemplates;
+		}
+		if (_showSimpleTemplates)
+		{
+			return _simpleTemplates;
+		}
+		if (_showAllTemplates)
+		{
+			return _allTemplates;
+		}
+		if (_showFavouriteTemplates)
+		{
+			return _favouriteTemplates ?? Enumerable.Empty<DisplayTemplate>();
+		}
+		if (_showRecentTemplates)
+		{
+			return _recentTemplates ?? Enumerable.Empty<DisplayTemplate>();
+		}
+		return Enumerable.Empty<DisplayTemplate>();
+	}
+
+	private bool ShouldShowExpandedGroupRows()
+	{
+		return _showGroupTemplates || _showAllTemplates || _showFavouriteTemplates || _showRecentTemplates;
+	}
+
 	internal void RefreshTemplateRows()
 	{
+		FilterTemplates();
+	}
+
+	internal static void RefreshFavouriteAndRecentLists(bool refreshVisibleTemplates = true)
+	{
+		if (FrameworkApplication.DockPaneManager.Find(_dockPaneID) is EditorDockpaneViewModel viewModel)
+		{
+			viewModel.BuildFavouriteAndRecentLists();
+			if (refreshVisibleTemplates && (viewModel._showFavouriteTemplates || viewModel._showRecentTemplates))
+			{
+				viewModel.FilterTemplates();
+			}
+		}
+	}
+
+	private static Dictionary<string, DisplayTemplate> BuildAllTemplatesByKey(
+		IEnumerable<DisplayTemplate> simpleTemplates,
+		IEnumerable<DisplayTemplate> groupTemplates)
+	{
+		Dictionary<string, DisplayTemplate> result = new Dictionary<string, DisplayTemplate>(StringComparer.OrdinalIgnoreCase);
+		foreach (DisplayTemplate t in simpleTemplates ?? Enumerable.Empty<DisplayTemplate>())
+		{
+			result[t.UniqueKey] = t;
+		}
+		foreach (DisplayTemplate group in groupTemplates ?? Enumerable.Empty<DisplayTemplate>())
+		{
+			result[group.UniqueKey] = group;
+			foreach (DisplayTemplateChild child in group.ChildTemplates ?? Enumerable.Empty<DisplayTemplateChild>())
+			{
+				DisplayTemplate childDisplay = new DisplayTemplate
+				{
+					Name = child.Name,
+					TemplateType = child.TemplateType,
+					Description = child.Description,
+					IsGroupChild = true,
+					ParentTemplateName = child.ParentTemplateName,
+					FeatureId = child.FeatureId,
+					SketchType = child.SketchType
+				};
+				result[childDisplay.UniqueKey] = childDisplay;
+			}
+		}
+		return result;
+	}
+
+	private void BuildFavouriteAndRecentLists()
+	{
+		HashSet<string> favouriteKeys = new HashSet<string>(
+			AddinConfiguration.Settings?.FavouriteTemplateKeys ?? Enumerable.Empty<string>(),
+			StringComparer.OrdinalIgnoreCase);
+		_favouriteTemplates = (_allTemplatesByKey?.Values ?? Enumerable.Empty<DisplayTemplate>())
+			.Where(t => favouriteKeys.Contains(t.UniqueKey))
+			.Select(CloneForFlatList)
+			.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		_recentTemplates = (AddinConfiguration.Settings?.RecentTemplateKeys ?? Enumerable.Empty<string>())
+			.Select(key => _allTemplatesByKey != null && _allTemplatesByKey.TryGetValue(key, out DisplayTemplate t) ? t : null)
+			.Where(t => t != null)
+			.Select(CloneForFlatList)
+			.ToList();
+	}
+
+	private static DisplayTemplate CloneForFlatList(DisplayTemplate template)
+	{
+		return new DisplayTemplate
+		{
+			Name = template.Name,
+			TemplateType = template.TemplateType,
+			Description = template.Description,
+			IsGroupChild = template.IsGroupChild,
+			IsFlatListItem = template.IsGroupChild,
+			ParentTemplateName = template.ParentTemplateName,
+			FeatureId = template.FeatureId,
+			SketchType = template.SketchType,
+			ChildTemplates = template.ChildTemplates == null
+				? new List<DisplayTemplateChild>()
+				: new List<DisplayTemplateChild>(template.ChildTemplates)
+		};
+	}
+
+	private void ToggleFavourite(object parameter)
+	{
+		if (parameter is not DisplayTemplate template)
+		{
+			return;
+		}
+		AddinConfiguration.ToggleFavourite(template.UniqueKey);
+		BuildFavouriteAndRecentLists();
 		FilterTemplates();
 	}
 

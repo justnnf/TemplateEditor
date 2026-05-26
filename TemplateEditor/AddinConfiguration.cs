@@ -116,6 +116,45 @@ internal static class AddinConfiguration
 		}
 		Settings.Normalize();
 		SaveUserSettings();
+		AssociationRuleCatalog.Reload();
+	}
+
+	public static void SaveSettings()
+	{
+		SaveUserSettings();
+	}
+
+	public static bool ToggleFavourite(string key)
+	{
+		if (string.IsNullOrWhiteSpace(key) || Settings == null)
+		{
+			return false;
+		}
+		Settings.FavouriteTemplateKeys ??= new List<string>();
+		bool removed = Settings.FavouriteTemplateKeys.RemoveAll(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)) > 0;
+		if (!removed)
+		{
+			Settings.FavouriteTemplateKeys.Add(key);
+		}
+		SaveUserSettings();
+		return !removed;
+	}
+
+	public static void RecordRecentTemplate(string key)
+	{
+		if (string.IsNullOrWhiteSpace(key) || Settings == null)
+		{
+			return;
+		}
+		Settings.RecentTemplateKeys ??= new List<string>();
+		Settings.RecentTemplateKeys.RemoveAll(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
+		Settings.RecentTemplateKeys.Insert(0, key);
+		int max = Math.Max(1, Settings.MaxRecentTemplates);
+		if (Settings.RecentTemplateKeys.Count > max)
+		{
+			Settings.RecentTemplateKeys.RemoveRange(max, Settings.RecentTemplateKeys.Count - max);
+		}
+		SaveUserSettings();
 	}
 
 	private static void LoadPackagedDefaults()

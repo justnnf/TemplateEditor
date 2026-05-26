@@ -217,6 +217,12 @@ internal static class CommonFunctions
 		}
 		try
 		{
+			string defaultVersionMessage = await GetDefaultVersionPlacementBlockMessageAsync(selectedTemplate);
+			if (defaultVersionMessage != null)
+			{
+				DialogService.Show(defaultVersionMessage, "Template Editor");
+				return;
+			}
 			if (selectedTemplate?.IsGroupChild == true)
 			{
 				await CreateGroupChildFeature(selectedTemplate, sketchGeometry, rotationDegrees);
@@ -252,6 +258,184 @@ internal static class CommonFunctions
 		{
 			DialogService.Show(ex.Message + "\n\n" + ex.StackTrace, "Template Editor");
 		}
+	}
+
+	private static async Task<string> GetDefaultVersionPlacementBlockMessageAsync(DisplayTemplate selectedTemplate)
+	{
+		if (AddinConfiguration.Settings?.PreventDefaultVersionPlacement != true || selectedTemplate == null)
+		{
+			return null;
+		}
+		List<string> defaultVersionTargets = await QueuedTask.Run(() => GetDefaultVersionPlacementTargets(selectedTemplate));
+		if (defaultVersionTargets.Count == 0)
+		{
+			return null;
+		}
+		string targets = string.Join("\n", defaultVersionTargets.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy((string target) => target, StringComparer.OrdinalIgnoreCase).Select((string target) => "- " + target));
+		return "Template placement was blocked because one or more target feature service layers or tables are connected to DEFAULT.\n\nSwitch the map to a named version before placing templates.\n\nTarget(s):\n" + targets;
+	}
+
+	private static List<string> GetDefaultVersionPlacementTargets(DisplayTemplate selectedTemplate)
+	{
+		return GetPlacementTargetMapMembers(selectedTemplate)
+			.Where((MapMember mapMember) => IsDefaultVersionConnection(mapMember))
+			.Select((MapMember mapMember) => mapMember.Name)
+			.Where((string name) => !string.IsNullOrWhiteSpace(name))
+			.ToList();
+	}
+
+	private static IEnumerable<MapMember> GetPlacementTargetMapMembers(DisplayTemplate selectedTemplate)
+	{
+		foreach (SimpleTemplate template in GetPlacementTargetTemplates(selectedTemplate))
+		{
+			MapMember mapMember = GetMapMemberForTemplate(template);
+			if (mapMember != null)
+			{
+				yield return mapMember;
+			}
+		}
+	}
+
+	private static IEnumerable<SimpleTemplate> GetPlacementTargetTemplates(DisplayTemplate selectedTemplate)
+	{
+		if (selectedTemplate?.IsGroupChild == true)
+		{
+			SimpleTemplateReference childTemplateRef = GetGroupChildReference(selectedTemplate);
+			SimpleTemplate childTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault((SimpleTemplate template) =>
+				string.Equals(template.Name, childTemplateRef?.Name, StringComparison.OrdinalIgnoreCase));
+			if (childTemplate != null)
+			{
+				yield return childTemplate;
+			}
+			yield break;
+		}
+		SimpleTemplate simpleTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault((SimpleTemplate template) =>
+			string.Equals(template.Name, selectedTemplate?.Name, StringComparison.OrdinalIgnoreCase));
+		if (simpleTemplate != null)
+		{
+			yield return simpleTemplate;
+			yield break;
+		}
+		GroupTemplate groupTemplate = AddinConfiguration.Templates?.GroupTemplates?.FirstOrDefault((GroupTemplate template) =>
+			string.Equals(template.Name, selectedTemplate?.Name, StringComparison.OrdinalIgnoreCase));
+		foreach (SimpleTemplateReference templateRef in groupTemplate?.SimpleTemplates ?? Enumerable.Empty<SimpleTemplateReference>())
+		{
+			SimpleTemplate template = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault((SimpleTemplate simple) =>
+				string.Equals(simple.Name, templateRef.Name, StringComparison.OrdinalIgnoreCase));
+			if (template != null)
+			{
+				yield return template;
+			}
+		}
+	}
+
+	private static bool IsDefaultVersionConnection(MapMember mapMember)
+	{
+		if (mapMember == null)
+		{
+			return false;
+		}
+		try
+		{
+			return GetConnectionVersionNames(mapMember.GetDataConnection()).Any(IsDefaultVersionName);
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
+	private static IEnumerable<string> GetConnectionVersionNames(object value)
+	{
+		return GetConnectionVersionNames(value, new HashSet<object>(ReferenceEqualityComparer.Instance));
+	}
+
+	private static IEnumerable<string> GetConnectionVersionNames(object value, HashSet<object> visited)
+	{
+		if (value == null || value is string || !visited.Add(value))
+		{
+			yield break;
+		}
+		Type type = value.GetType();
+		foreach (System.Reflection.PropertyInfo property in type.GetProperties())
+		{
+			if (!property.CanRead || property.GetIndexParameters().Length > 0)
+			{
+				continue;
+			}
+			object propertyValue;
+			try
+			{
+				propertyValue = property.GetValue(value);
+			}
+			catch
+			{
+				continue;
+			}
+			if (propertyValue is string text)
+			{
+				if (string.Equals(property.Name, "GdbVersion", StringComparison.OrdinalIgnoreCase))
+				{
+					yield return text;
+				}
+				if (string.Equals(property.Name, "WorkspaceConnectionString", StringComparison.OrdinalIgnoreCase))
+				{
+					string version = GetVersionFromConnectionString(text);
+					if (!string.IsNullOrWhiteSpace(version))
+					{
+						yield return version;
+					}
+				}
+				continue;
+			}
+			if (propertyValue is System.Collections.IEnumerable enumerable && propertyValue is not string)
+			{
+				foreach (object item in enumerable)
+				{
+					foreach (string version in GetConnectionVersionNames(item, visited))
+					{
+						yield return version;
+					}
+				}
+				continue;
+			}
+			if (propertyValue != null && propertyValue.GetType().Namespace?.StartsWith("ArcGIS.Core.CIM", StringComparison.Ordinal) == true)
+			{
+				foreach (string version in GetConnectionVersionNames(propertyValue, visited))
+				{
+					yield return version;
+				}
+			}
+		}
+	}
+
+	private static string GetVersionFromConnectionString(string connectionString)
+	{
+		if (string.IsNullOrWhiteSpace(connectionString))
+		{
+			return null;
+		}
+		foreach (string part in connectionString.Split(';'))
+		{
+			string[] pieces = part.Split(new[] { '=' }, 2);
+			if (pieces.Length == 2 && string.Equals(pieces[0].Trim(), "VERSION", StringComparison.OrdinalIgnoreCase))
+			{
+				return pieces[1].Trim();
+			}
+		}
+		return null;
+	}
+
+	private static bool IsDefaultVersionName(string versionName)
+	{
+		if (string.IsNullOrWhiteSpace(versionName))
+		{
+			return false;
+		}
+		string normalized = versionName.Trim();
+		return string.Equals(normalized, "DEFAULT", StringComparison.OrdinalIgnoreCase) ||
+			string.Equals(normalized, "SDE.DEFAULT", StringComparison.OrdinalIgnoreCase) ||
+			normalized.EndsWith(".DEFAULT", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static async Task CreateGroupChildFeature(DisplayTemplate childTemplate, Geometry sketchGeometry, double rotationDegrees)
@@ -590,8 +774,7 @@ internal static class CommonFunctions
 
 	private static async Task CreateTableRowWithAutoAssociationAsync(SimpleTemplate template, Geometry sketchGeometry, EditOperation operation, PlacementOptions options)
 	{
-		TemplateEditorSettings settings = AddinConfiguration.Settings;
-		if (settings == null || !settings.EnableAssociationPrompts || !options.IncludeConfiguredAssociations)
+		if (!options.IncludeConfiguredAssociations)
 		{
 			if (!ConfirmCreateNonSpatialWithoutAssociations(template))
 			{
@@ -627,17 +810,16 @@ internal static class CommonFunctions
 			return;
 		}
 
-		string featureDescription = candidatesWithRules.Count == 1
-			? candidatesWithRules[0].Candidate.Label
-			: $"{candidatesWithRules.Count} selected feature(s)";
-		string associationSummary = BuildTableAssociationSummary(candidatesWithRules[0].Rules);
+		string associationSummary = candidatesWithRules.Count == 1
+			? $"{candidatesWithRules[0].Candidate.Label}:\n{BuildTableAssociationSummary(candidatesWithRules[0].Rules)}"
+			: string.Join("\n", candidatesWithRules.Select(pair => $"{pair.Candidate.Label}:\n{BuildTableAssociationSummary(pair.Rules)}"));
 
 		MessageBoxResult result = DialogService.Show(
-			$"Create the following associations with {featureDescription}?\n\n{associationSummary}",
+			$"Create the following associations?\n\n{associationSummary}",
 			"Template Editor",
 			MessageBoxButton.YesNo);
 
-		if (result == MessageBoxResult.No && !ConfirmCreateNonSpatialWithoutAssociations(template))
+		if (result != MessageBoxResult.Yes && !ConfirmCreateNonSpatialWithoutAssociations(template))
 		{
 			throw new OperationCanceledException();
 		}
@@ -1403,7 +1585,7 @@ internal static class CommonFunctions
 					select n).ToList();
 				if (invalidTemplateNames.Count > 0)
 				{
-					string error4 = $"Group template {groupTemplate.Name} contains rerefences invalid simple template(s): {string.Join(", ", invalidTemplateNames)}.";
+					string error4 = $"Group template {groupTemplate.Name} contains references to invalid simple template(s): {string.Join(", ", invalidTemplateNames)}.";
 					errors.Add(error4);
 				}
 			}

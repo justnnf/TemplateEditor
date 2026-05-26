@@ -10,6 +10,8 @@ internal sealed class TemplateEditorSettings
 
 	public bool ValidateConfig { get; set; }
 
+	public bool PreventDefaultVersionPlacement { get; set; }
+
 	public bool EnableLineSplitPrompts { get; set; } = true;
 
 	public bool EnablePointPlacementSplitPrompt { get; set; } = true;
@@ -74,6 +76,8 @@ internal sealed class TemplateEditorSettings
 
 	public bool EnableContainmentBoundaryPrompts { get; set; } = true;
 
+	public bool EnableJunctionJunctionConnectivityPrompts { get; set; } = true;
+
 	public bool EnableLineAssociationPrompts { get; set; }
 
 	public bool EnableLineStructuralAttachmentPrompts { get; set; }
@@ -92,9 +96,19 @@ internal sealed class TemplateEditorSettings
 
 	public bool ShowAutomaticStepDiagnostics { get; set; } = true;
 
+	public string AssociationRulesJsonPath { get; set; }
+
+	public List<string> FavouriteTemplateKeys { get; set; } = new List<string>();
+
+	public int MaxRecentTemplates { get; set; } = 15;
+
+	public List<string> RecentTemplateKeys { get; set; } = new List<string>();
+
 	public double AssociationSearchDistance { get; set; } = 1.0;
 
 	public double StructuralAttachmentSearchDistance { get; set; } = 1.0;
+
+	public double JunctionJunctionConnectivitySearchDistance { get; set; } = 1.0;
 
 	public double ContainmentPointSearchDistance { get; set; } = 1.0;
 
@@ -112,7 +126,18 @@ internal sealed class TemplateEditorSettings
 		"STRUCTUREJUNCTION"
 	};
 
-	public List<string> StructuralAttachmentTargetLayerNames { get; set; } = new List<string>();
+	public List<string> StructuralAttachmentTargetLayerNames { get; set; } = new List<string>
+	{
+		"POLE"
+	};
+
+	public List<string> JunctionJunctionConnectivityTargetGroups { get; set; } = new List<string>
+	{
+		"ELECTRICDEVICE",
+		"ELECTRICJUNCTION"
+	};
+
+	public List<string> JunctionJunctionConnectivityTargetLayerNames { get; set; } = new List<string>();
 
 	public List<string> ContainmentPointTargetGroups { get; set; } = new List<string>
 	{
@@ -126,7 +151,12 @@ internal sealed class TemplateEditorSettings
 		"STRUCTUREBOUNDARY"
 	};
 
-	public List<string> ContainmentBoundaryTargetLayerNames { get; set; } = new List<string>();
+	public List<string> ContainmentBoundaryTargetLayerNames { get; set; } = new List<string>
+	{
+		"CUBICLE",
+		"FACILITY BOUNDARY",
+		"FOUNDATION BOUNDARY"
+	};
 
 	public TemplateEditorSettings Clone()
 	{
@@ -134,6 +164,7 @@ internal sealed class TemplateEditorSettings
 		{
 			TemplateConfigFilePath = TemplateConfigFilePath,
 			ValidateConfig = ValidateConfig,
+			PreventDefaultVersionPlacement = PreventDefaultVersionPlacement,
 			EnableLineSplitPrompts = EnableLineSplitPrompts,
 			EnablePointPlacementSplitPrompt = EnablePointPlacementSplitPrompt,
 			EnableLineEndpointSplitPrompt = EnableLineEndpointSplitPrompt,
@@ -161,6 +192,7 @@ internal sealed class TemplateEditorSettings
 			EnableStructuralAttachmentPrompts = EnableStructuralAttachmentPrompts,
 			EnableContainmentPointPrompts = EnableContainmentPointPrompts,
 			EnableContainmentBoundaryPrompts = EnableContainmentBoundaryPrompts,
+			EnableJunctionJunctionConnectivityPrompts = EnableJunctionJunctionConnectivityPrompts,
 			EnableLineAssociationPrompts = EnableLineAssociationPrompts,
 			EnableLineStructuralAttachmentPrompts = EnableLineStructuralAttachmentPrompts,
 			EnableLineContainmentPointPrompts = EnableLineContainmentPointPrompts,
@@ -170,13 +202,20 @@ internal sealed class TemplateEditorSettings
 			HighlightAssociationCandidates = HighlightAssociationCandidates,
 			HighlightSplitCandidates = HighlightSplitCandidates,
 			ShowAutomaticStepDiagnostics = ShowAutomaticStepDiagnostics,
+			AssociationRulesJsonPath = AssociationRulesJsonPath,
+			FavouriteTemplateKeys = new List<string>(FavouriteTemplateKeys ?? new List<string>()),
+			MaxRecentTemplates = MaxRecentTemplates,
+			RecentTemplateKeys = new List<string>(RecentTemplateKeys ?? new List<string>()),
 			AssociationSearchDistance = AssociationSearchDistance,
 			StructuralAttachmentSearchDistance = StructuralAttachmentSearchDistance,
+			JunctionJunctionConnectivitySearchDistance = JunctionJunctionConnectivitySearchDistance,
 			ContainmentPointSearchDistance = ContainmentPointSearchDistance,
 			ContainmentBoundarySearchDistance = ContainmentBoundarySearchDistance,
 			AssociationPlacementGroups = new List<string>(AssociationPlacementGroups ?? new List<string>()),
 			StructuralAttachmentTargetGroups = new List<string>(StructuralAttachmentTargetGroups ?? new List<string>()),
 			StructuralAttachmentTargetLayerNames = new List<string>(StructuralAttachmentTargetLayerNames ?? new List<string>()),
+			JunctionJunctionConnectivityTargetGroups = new List<string>(JunctionJunctionConnectivityTargetGroups ?? new List<string>()),
+			JunctionJunctionConnectivityTargetLayerNames = new List<string>(JunctionJunctionConnectivityTargetLayerNames ?? new List<string>()),
 			ContainmentPointTargetGroups = new List<string>(ContainmentPointTargetGroups ?? new List<string>()),
 			ContainmentPointTargetLayerNames = new List<string>(ContainmentPointTargetLayerNames ?? new List<string>()),
 			ContainmentBoundaryTargetGroups = new List<string>(ContainmentBoundaryTargetGroups ?? new List<string>()),
@@ -189,11 +228,13 @@ internal sealed class TemplateEditorSettings
 		SplitSearchDistance = Math.Max(0.0, SplitSearchDistance);
 		AssociationSearchDistance = Math.Max(0.0, AssociationSearchDistance);
 		StructuralAttachmentSearchDistance = Math.Max(0.0, StructuralAttachmentSearchDistance);
+		JunctionJunctionConnectivitySearchDistance = Math.Max(0.0, JunctionJunctionConnectivitySearchDistance);
 		ContainmentPointSearchDistance = Math.Max(0.0, ContainmentPointSearchDistance);
 		ContainmentBoundarySearchDistance = Math.Max(0.0, ContainmentBoundarySearchDistance);
 		ParallelCopyEndpointMatchTolerance = Math.Max(0.0, ParallelCopyEndpointMatchTolerance);
 		DefaultParallelCopyOffsetDistance = Math.Max(0.001, DefaultParallelCopyOffsetDistance);
 		MaxSplitCandidatesToReview = Math.Max(1, MaxSplitCandidatesToReview);
+		AssociationRulesJsonPath = string.IsNullOrWhiteSpace(AssociationRulesJsonPath) ? null : AssociationRulesJsonPath.Trim();
 		SplitPromptMode = NormalizeChoice(SplitPromptMode, "AlwaysAsk", "AutoWhenOne", "Never");
 		AssociationPromptMode = NormalizeChoice(AssociationPromptMode, "AlwaysAsk", "AutoWhenOne", "ReviewMultipleOnly", "Never");
 		SplitPointPlacementGroups = NormalizeGroupNames(SplitPointPlacementGroups);
@@ -203,10 +244,15 @@ internal sealed class TemplateEditorSettings
 		AssociationPlacementGroups = NormalizeGroupNames(AssociationPlacementGroups);
 		StructuralAttachmentTargetGroups = NormalizeGroupNames(StructuralAttachmentTargetGroups);
 		StructuralAttachmentTargetLayerNames = NormalizeGroupNames(StructuralAttachmentTargetLayerNames);
+		JunctionJunctionConnectivityTargetGroups = NormalizeGroupNames(JunctionJunctionConnectivityTargetGroups);
+		JunctionJunctionConnectivityTargetLayerNames = NormalizeGroupNames(JunctionJunctionConnectivityTargetLayerNames);
 		ContainmentPointTargetGroups = NormalizeGroupNames(ContainmentPointTargetGroups);
 		ContainmentPointTargetLayerNames = NormalizeGroupNames(ContainmentPointTargetLayerNames);
 		ContainmentBoundaryTargetGroups = NormalizeGroupNames(ContainmentBoundaryTargetGroups);
 		ContainmentBoundaryTargetLayerNames = NormalizeGroupNames(ContainmentBoundaryTargetLayerNames);
+		MaxRecentTemplates = Math.Max(1, Math.Min(50, MaxRecentTemplates));
+		FavouriteTemplateKeys ??= new List<string>();
+		RecentTemplateKeys ??= new List<string>();
 	}
 
 	public static List<string> ParseGroupNames(string text)

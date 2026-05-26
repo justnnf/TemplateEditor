@@ -1,32 +1,23 @@
-using System.Collections.Generic;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
 namespace TemplateEditor;
 
-internal sealed class LineSplitChoiceDialog : Window
+internal sealed class EnhancementConfirmationDialog : Window
 {
 	private static readonly Brush WindowBackgroundBrush = new SolidColorBrush(Color.FromRgb(243, 243, 243));
-	private static readonly Brush SurfaceBrush = Brushes.White;
 	private static readonly Brush PrimaryTextBrush = new SolidColorBrush(Color.FromRgb(32, 32, 32));
 	private static readonly Brush ControlBorderBrush = new SolidColorBrush(Color.FromRgb(150, 150, 150));
 	private static readonly Brush ButtonHoverBrush = new SolidColorBrush(Color.FromRgb(225, 235, 245));
 
-	private readonly CheckBox _startCheckBox;
+	private readonly string _message;
 
-	private readonly CheckBox _endCheckBox;
-
-	public bool SplitAtStart => _startCheckBox != null && _startCheckBox.IsChecked == true;
-
-	public bool SplitAtEnd => _endCheckBox != null && _endCheckBox.IsChecked == true;
-
-	public LineSplitChoiceDialog(IEnumerable<string> options)
+	public EnhancementConfirmationDialog(string title, string message)
 	{
-		List<string> optionList = options?.ToList() ?? new List<string>();
-		Title = "Split Underlying Line";
-		Width = 380.0;
+		_message = message;
+		Title = title;
+		Width = 360.0;
 		SizeToContent = SizeToContent.Height;
 		WindowStartupLocation = WindowStartupLocation.CenterOwner;
 		ResizeMode = ResizeMode.NoResize;
@@ -34,20 +25,6 @@ internal sealed class LineSplitChoiceDialog : Window
 		Foreground = PrimaryTextBrush;
 		FontFamily = new FontFamily("Segoe UI");
 		FontSize = 12.0;
-		_startCheckBox = optionList.Contains("Start") ? new CheckBox
-		{
-			Content = "Insert/start point",
-			IsChecked = true,
-			Margin = new Thickness(0.0, 8.0, 0.0, 0.0),
-			Foreground = PrimaryTextBrush
-		} : null;
-		_endCheckBox = optionList.Contains("End") ? new CheckBox
-		{
-			Content = "End point",
-			IsChecked = true,
-			Margin = new Thickness(0.0, 8.0, 0.0, 0.0),
-			Foreground = PrimaryTextBrush
-		} : null;
 		Content = BuildContent();
 	}
 
@@ -55,64 +32,51 @@ internal sealed class LineSplitChoiceDialog : Window
 	{
 		StackPanel root = new StackPanel
 		{
-			Margin = new Thickness(16.0),
+			Margin = new Thickness(14.0),
 			Background = WindowBackgroundBrush
 		};
 		root.Children.Add(new TextBlock
 		{
-			Text = "Choose which point on the placed line should split the existing underlying line.",
+			Text = _message,
 			TextWrapping = TextWrapping.Wrap,
 			Foreground = PrimaryTextBrush,
-			MaxWidth = 340.0
+			MaxWidth = 320.0
 		});
-		if (_startCheckBox != null)
-		{
-			root.Children.Add(_startCheckBox);
-		}
-		if (_endCheckBox != null)
-		{
-			root.Children.Add(_endCheckBox);
-		}
 		StackPanel buttons = new StackPanel
 		{
 			Orientation = Orientation.Horizontal,
 			HorizontalAlignment = HorizontalAlignment.Right,
-			Margin = new Thickness(0.0, 16.0, 0.0, 0.0)
+			Margin = new Thickness(0.0, 12.0, 0.0, 0.0)
 		};
-		Button cancelButton = new Button
+		Button noButton = new Button
 		{
-			Content = "Skip",
-			MinWidth = 88.0,
+			Content = "No",
+			MinWidth = 72.0,
 			Margin = new Thickness(0.0, 0.0, 8.0, 0.0),
-			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
+			Padding = new Thickness(10.0, 3.0, 10.0, 3.0),
+			IsCancel = true,
 			Style = CreateButtonStyle()
 		};
-		cancelButton.Click += delegate
+		noButton.Click += delegate
 		{
 			DialogResult = false;
 			Close();
 		};
-		Button applyButton = new Button
+		Button yesButton = new Button
 		{
-			Content = "Apply",
-			MinWidth = 88.0,
-			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
+			Content = "Yes",
+			MinWidth = 72.0,
+			Padding = new Thickness(10.0, 3.0, 10.0, 3.0),
+			IsDefault = true,
 			Style = CreateButtonStyle()
 		};
-		applyButton.Click += delegate
+		yesButton.Click += delegate
 		{
-			if (!SplitAtStart && !SplitAtEnd)
-			{
-				DialogResult = false;
-			}
-			else
-			{
-				DialogResult = true;
-			}
+			DialogResult = true;
 			Close();
 		};
-		buttons.Children.Add(cancelButton);
-		buttons.Children.Add(applyButton);
+		buttons.Children.Add(noButton);
+		buttons.Children.Add(yesButton);
 		root.Children.Add(buttons);
 		return root;
 	}

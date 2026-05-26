@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
+using ArcGIS.Desktop.Framework;
 
 namespace TemplateEditor;
 
@@ -22,6 +23,12 @@ public class EditorDockpaneView : UserControl
 	private GridViewColumn _typeColumn;
 
 	private GridViewColumn _descriptionColumn;
+
+	private DisplayTemplate _contextMenuTarget;
+
+	private MenuItem _favouriteMenuItem;
+
+	private ContextMenu _itemContextMenu;
 
 	public EditorDockpaneView()
 	{
@@ -98,10 +105,16 @@ public class EditorDockpaneView : UserControl
 		Grid.SetColumnSpan(searchContainer, 2);
 		panel.Children.Add(searchContainer);
 
-		StackPanel templateTypePanel = CreateHorizontalPanel();
+		WrapPanel templateTypePanel = new WrapPanel
+		{
+			Orientation = Orientation.Horizontal,
+			Margin = new Thickness(0.0)
+		};
 		templateTypePanel.Children.Add(CreateRadioButton("Groups", "ShowGroupTemplates"));
 		templateTypePanel.Children.Add(CreateRadioButton("Simple", "ShowSimpleTemplates"));
 		templateTypePanel.Children.Add(CreateRadioButton("All", "ShowAllTemplates"));
+		templateTypePanel.Children.Add(CreateRadioButton("Favourites", "ShowFavouriteTemplates"));
+		templateTypePanel.Children.Add(CreateRadioButton("Recent", "ShowRecentTemplates"));
 		Grid.SetRow(templateTypePanel, 1);
 		panel.Children.Add(templateTypePanel);
 
@@ -141,8 +154,15 @@ public class EditorDockpaneView : UserControl
 			Mode = BindingMode.TwoWay
 		});
 		listViewUnits.PreviewMouseLeftButtonDown += OnTemplateListPreviewMouseLeftButtonDown;
+		listViewUnits.PreviewMouseRightButtonDown += OnTemplateListPreviewMouseRightButtonDown;
+		_favouriteMenuItem = new MenuItem();
+		_favouriteMenuItem.Click += OnFavouriteMenuItemClick;
+		_itemContextMenu = new ContextMenu();
+		_itemContextMenu.Items.Add(_favouriteMenuItem);
+		listViewUnits.ContextMenu = _itemContextMenu;
+		listViewUnits.ContextMenuOpening += OnContextMenuOpening;
 		_nameColumn = new GridViewColumn { Header = CreateSortableHeader("Name", "Name"), CellTemplate = CreateNameCellTemplate(), Width = 220.0 };
-		_typeColumn = new GridViewColumn { Header = CreateSortableHeader("Type", "TemplateType"), CellTemplate = CreateTextCellTemplate("TemplateType"), Width = 160.0 };
+		_typeColumn = new GridViewColumn { Header = CreateSortableHeader("Template Type", "TemplateType"), CellTemplate = CreateTextCellTemplate("TemplateType"), Width = 160.0 };
 		_descriptionColumn = new GridViewColumn { Header = CreateSortableHeader("Description", "Description"), CellTemplate = CreateTextCellTemplate("Description"), Width = 360.0 };
 		listViewUnits.View = new GridView
 		{
@@ -177,6 +197,60 @@ public class EditorDockpaneView : UserControl
 		if (DataContext is EditorDockpaneViewModel viewModel && viewModel.ActivateSelectedTemplateCommand.CanExecute(null))
 		{
 			viewModel.ActivateSelectedTemplateCommand.Execute(null);
+		}
+	}
+
+	private void OnTemplateListPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+	{
+		ListViewItem item = ItemsControl.ContainerFromElement(listViewUnits, e.OriginalSource as DependencyObject) as ListViewItem;
+		if (item?.DataContext is not DisplayTemplate template)
+		{
+			_contextMenuTarget = null;
+			return;
+		}
+		_contextMenuTarget = template;
+		UpdateFavouriteMenuItem(template);
+		_itemContextMenu.PlacementTarget = item;
+		_itemContextMenu.IsOpen = true;
+		e.Handled = true;
+	}
+
+	private void OnContextMenuOpening(object sender, ContextMenuEventArgs e)
+	{
+		if (DataContext is not EditorDockpaneViewModel)
+		{
+			e.Handled = true;
+			return;
+		}
+		DependencyObject source = e.OriginalSource as DependencyObject;
+		while (source != null && source is not ListViewItem)
+		{
+			source = GetParentObject(source);
+		}
+		if (source is ListViewItem { DataContext: DisplayTemplate template })
+		{
+			_contextMenuTarget = template;
+		}
+		if (_contextMenuTarget == null)
+		{
+			e.Handled = true;
+			return;
+		}
+		UpdateFavouriteMenuItem(_contextMenuTarget);
+	}
+
+	private void UpdateFavouriteMenuItem(DisplayTemplate template)
+	{
+		bool isFavourite = AddinConfiguration.Settings?.FavouriteTemplateKeys?
+			.Exists(k => string.Equals(k, template.UniqueKey, StringComparison.OrdinalIgnoreCase)) ?? false;
+		_favouriteMenuItem.Header = isFavourite ? "Remove from Favourites" : "Add to Favourites";
+	}
+
+	private void OnFavouriteMenuItemClick(object sender, RoutedEventArgs e)
+	{
+		if (DataContext is EditorDockpaneViewModel viewModel && _contextMenuTarget != null)
+		{
+			viewModel.ToggleFavouriteCommand.Execute(_contextMenuTarget);
 		}
 	}
 
@@ -289,7 +363,7 @@ public class EditorDockpaneView : UserControl
 		FrameworkElementFactory simpleName = CreateHighlightedTextFactory("DisplayName");
 		simpleName.SetValue(TextBlock.TextWrappingProperty, TextWrapping.NoWrap);
 		simpleName.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.None);
-		simpleName.SetBinding(FrameworkElement.MarginProperty, new Binding("IsGroupChild")
+		simpleName.SetBinding(FrameworkElement.MarginProperty, new Binding("IsIndentedChild")
 		{
 			Converter = new ChildRowIndentConverter()
 		});
@@ -352,19 +426,9 @@ public class EditorDockpaneView : UserControl
 			return;
 		}
 		DisplayTemplate[] templates = listViewUnits.Items.OfType<DisplayTemplate>().ToArray();
-		double nameWidth = MeasureColumnWidth("Name", templates.SelectMany(GetNameColumnText), 120.0) + 36.0;
-		double typeWidth = MeasureColumnWidth("Type", templates.Select((DisplayTemplate template) => template.TemplateType), 90.0);
-		double descriptionWidth = MeasureColumnWidth("Description", templates.Select((DisplayTemplate template) => template.Description), 140.0);
-		double availableWidth = Math.Max(0.0, listViewUnits.ActualWidth - SystemParameters.VerticalScrollBarWidth - 8.0);
-		if (availableWidth > 0.0)
-		{
-			nameWidth = Math.Min(nameWidth, Math.Max(140.0, availableWidth - typeWidth - 140.0));
-		}
-		double measuredTotal = nameWidth + typeWidth + descriptionWidth;
-		if (availableWidth > measuredTotal)
-		{
-			descriptionWidth += availableWidth - measuredTotal;
-		}
+		double nameWidth = MeasureColumnWidth("Name", templates.SelectMany(GetNameColumnText), 0.0) + 36.0;
+		double typeWidth = MeasureColumnWidth("Template Type", templates.Select((DisplayTemplate template) => template.TemplateType), 0.0);
+		double descriptionWidth = MeasureColumnWidth("Description", templates.Select((DisplayTemplate template) => template.Description), 0.0);
 		_nameColumn.Width = nameWidth;
 		_typeColumn.Width = typeWidth;
 		_descriptionColumn.Width = descriptionWidth;
@@ -415,16 +479,19 @@ public class EditorDockpaneView : UserControl
 			Background = Brushes.Transparent,
 			BorderBrush = Brushes.Transparent,
 			BorderThickness = new Thickness(0.0),
+			Foreground = GetTableHeaderForeground(),
 			Focusable = false,
 			Style = CreateHeaderButtonStyle()
 		};
 		button.SetBinding(Button.CommandProperty, new Binding("SortCommand"));
-		button.SetBinding(Control.ForegroundProperty, new Binding("Foreground")
-		{
-			RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(GridViewColumnHeader), 1),
-			FallbackValue = SystemColors.ControlTextBrush
-		});
 		return button;
+	}
+
+	private static Brush GetTableHeaderForeground()
+	{
+		return FrameworkApplication.ApplicationTheme == ApplicationTheme.Dark
+			? Brushes.White
+			: SystemColors.ControlTextBrush;
 	}
 
 	private static Style CreateHeaderButtonStyle()

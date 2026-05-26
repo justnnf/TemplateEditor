@@ -1,7 +1,9 @@
 using System;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using Microsoft.Win32;
 
 namespace TemplateEditor;
 
@@ -28,6 +30,8 @@ internal sealed class TemplateSettingsWindow : Window
 	private readonly TextBox _templateConfigPathTextBox;
 
 	private readonly CheckBox _validateConfigCheckBox;
+
+	private readonly CheckBox _preventDefaultVersionPlacementCheckBox;
 
 	private readonly CheckBox _enableLineSplitPromptsCheckBox;
 
@@ -83,6 +87,8 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly CheckBox _enableContainmentBoundaryPromptsCheckBox;
 
+	private readonly CheckBox _enableJunctionJunctionConnectivityPromptsCheckBox;
+
 	private readonly CheckBox _enableLineAssociationPromptsCheckBox;
 
 	private readonly CheckBox _enableLineStructuralAttachmentPromptsCheckBox;
@@ -105,6 +111,8 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly TextBox _structuralAttachmentSearchDistanceTextBox;
 
+	private readonly TextBox _junctionJunctionConnectivitySearchDistanceTextBox;
+
 	private readonly TextBox _containmentPointSearchDistanceTextBox;
 
 	private readonly TextBox _containmentBoundarySearchDistanceTextBox;
@@ -115,6 +123,10 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly TextBox _structuralAttachmentTargetLayerNamesTextBox;
 
+	private readonly TextBox _junctionJunctionConnectivityTargetGroupsTextBox;
+
+	private readonly TextBox _junctionJunctionConnectivityTargetLayerNamesTextBox;
+
 	private readonly TextBox _containmentPointTargetGroupsTextBox;
 
 	private readonly TextBox _containmentPointTargetLayerNamesTextBox;
@@ -122,6 +134,10 @@ internal sealed class TemplateSettingsWindow : Window
 	private readonly TextBox _containmentBoundaryTargetGroupsTextBox;
 
 	private readonly TextBox _containmentBoundaryTargetLayerNamesTextBox;
+
+	private readonly TextBox _associationRulesJsonPathTextBox;
+
+	private readonly Button _regenerateAssociationRulesButton;
 
 	public TemplateEditorSettings Settings { get; }
 
@@ -148,6 +164,7 @@ internal sealed class TemplateSettingsWindow : Window
 		Resources[SystemColors.HighlightTextBrushKey] = PrimaryTextBrush;
 		_templateConfigPathTextBox = CreateTextBox(Settings.TemplateConfigFilePath ?? string.Empty);
 		_validateConfigCheckBox = CreateCheckBox("Validate template configuration before opening the editor", Settings.ValidateConfig);
+		_preventDefaultVersionPlacementCheckBox = CreateCheckBox("Prevent template placement into DEFAULT versions", Settings.PreventDefaultVersionPlacement);
 		_enableLineSplitPromptsCheckBox = CreateCheckBox("Enable line split prompts", Settings.EnableLineSplitPrompts);
 		_enablePointPlacementSplitPromptCheckBox = CreateCheckBox("Prompt when eligible point features are placed on lines", Settings.EnablePointPlacementSplitPrompt);
 		_enableLineEndpointSplitPromptCheckBox = CreateCheckBox("Prompt when eligible line feature endpoints land on lines", Settings.EnableLineEndpointSplitPrompt);
@@ -175,6 +192,7 @@ internal sealed class TemplateSettingsWindow : Window
 		_enableStructuralAttachmentPromptsCheckBox = CreateCheckBox("Allow structural attachment prompts", Settings.EnableStructuralAttachmentPrompts);
 		_enableContainmentPointPromptsCheckBox = CreateCheckBox("Allow containment prompts for structure points", Settings.EnableContainmentPointPrompts);
 		_enableContainmentBoundaryPromptsCheckBox = CreateCheckBox("Allow containment prompts for structure boundaries", Settings.EnableContainmentBoundaryPrompts);
+		_enableJunctionJunctionConnectivityPromptsCheckBox = CreateCheckBox("Allow junction-junction connectivity prompts", Settings.EnableJunctionJunctionConnectivityPrompts);
 		_enableLineAssociationPromptsCheckBox = CreateCheckBox("Allow association prompts for line features", Settings.EnableLineAssociationPrompts);
 		_enableLineStructuralAttachmentPromptsCheckBox = CreateCheckBox("Allow line structural attachment prompts", Settings.EnableLineStructuralAttachmentPrompts);
 		_enableLineContainmentPointPromptsCheckBox = CreateCheckBox("Allow line containment prompts for structure points", Settings.EnableLineContainmentPointPrompts);
@@ -186,15 +204,29 @@ internal sealed class TemplateSettingsWindow : Window
 		_showAutomaticStepDiagnosticsCheckBox = CreateCheckBox("Show diagnostics when automatic placement steps fail", Settings.ShowAutomaticStepDiagnostics);
 		_associationSearchDistanceTextBox = CreateTextBox(Settings.AssociationSearchDistance.ToString("0.###"));
 		_structuralAttachmentSearchDistanceTextBox = CreateTextBox(Settings.StructuralAttachmentSearchDistance.ToString("0.###"));
+		_junctionJunctionConnectivitySearchDistanceTextBox = CreateTextBox(Settings.JunctionJunctionConnectivitySearchDistance.ToString("0.###"));
 		_containmentPointSearchDistanceTextBox = CreateTextBox(Settings.ContainmentPointSearchDistance.ToString("0.###"));
 		_containmentBoundarySearchDistanceTextBox = CreateTextBox(Settings.ContainmentBoundarySearchDistance.ToString("0.###"));
 		_associationPlacementGroupsTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.AssociationPlacementGroups));
 		_structuralAttachmentTargetGroupsTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.StructuralAttachmentTargetGroups));
 		_structuralAttachmentTargetLayerNamesTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.StructuralAttachmentTargetLayerNames));
+		_junctionJunctionConnectivityTargetGroupsTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.JunctionJunctionConnectivityTargetGroups));
+		_junctionJunctionConnectivityTargetLayerNamesTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.JunctionJunctionConnectivityTargetLayerNames));
 		_containmentPointTargetGroupsTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.ContainmentPointTargetGroups));
 		_containmentPointTargetLayerNamesTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.ContainmentPointTargetLayerNames));
 		_containmentBoundaryTargetGroupsTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.ContainmentBoundaryTargetGroups));
 		_containmentBoundaryTargetLayerNamesTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.ContainmentBoundaryTargetLayerNames));
+		_associationRulesJsonPathTextBox = CreateTextBox(Settings.AssociationRulesJsonPath ?? AssociationRuleCatalog.RuleFilePath);
+		_regenerateAssociationRulesButton = new Button
+		{
+			Content = "Regenerate association rules JSON",
+			HorizontalAlignment = HorizontalAlignment.Left,
+			MinWidth = 220.0,
+			Margin = new Thickness(0.0, 4.0, 0.0, 0.0),
+			Padding = new Thickness(12.0, 5.0, 12.0, 5.0),
+			Style = CreateButtonStyle()
+		};
+		_regenerateAssociationRulesButton.Click += RegenerateAssociationRulesButton_Click;
 		ApplyControlToolTips();
 		Content = BuildContent();
 	}
@@ -269,6 +301,7 @@ internal sealed class TemplateSettingsWindow : Window
 	{
 		StackPanel panel = CreateTabPanel();
 		panel.Children.Add(CreateGroupBox("Template Configuration", BuildTemplateConfigSection()));
+		panel.Children.Add(CreateGroupBox("Placement Safety", CreateCheckBoxPanel(_preventDefaultVersionPlacementCheckBox)));
 		return WrapTab(panel);
 	}
 
@@ -292,11 +325,57 @@ internal sealed class TemplateSettingsWindow : Window
 	private UIElement BuildAssociationTab()
 	{
 		StackPanel panel = CreateTabPanel();
-		panel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableAssociationPromptsCheckBox, _enableStructuralAttachmentPromptsCheckBox, _enableContainmentPointPromptsCheckBox, _enableContainmentBoundaryPromptsCheckBox, _enableLineAssociationPromptsCheckBox, _enableLineStructuralAttachmentPromptsCheckBox, _enableLineContainmentPointPromptsCheckBox, _enableLineContainmentBoundaryPromptsCheckBox, _stopAfterFirstSuccessfulAssociationCheckBox)));
+		panel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableAssociationPromptsCheckBox, _enableStructuralAttachmentPromptsCheckBox, _enableJunctionJunctionConnectivityPromptsCheckBox, _enableContainmentPointPromptsCheckBox, _enableContainmentBoundaryPromptsCheckBox, _enableLineAssociationPromptsCheckBox, _enableLineStructuralAttachmentPromptsCheckBox, _enableLineContainmentPointPromptsCheckBox, _enableLineContainmentBoundaryPromptsCheckBox, _stopAfterFirstSuccessfulAssociationCheckBox)));
 		panel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("Association prompt mode", _associationPromptModeComboBox))));
-		panel.Children.Add(CreateGroupBox("Search Distances", CreateFormGrid(("Fallback association search distance", _associationSearchDistanceTextBox), ("Structural attachment search distance", _structuralAttachmentSearchDistanceTextBox), ("Containment point search distance", _containmentPointSearchDistanceTextBox), ("Containment boundary search distance", _containmentBoundarySearchDistanceTextBox))));
-		panel.Children.Add(CreateGroupBox("Eligible Groups", CreateFormGrid(("Eligible placement groups", _associationPlacementGroupsTextBox), ("Structural attachment target groups", _structuralAttachmentTargetGroupsTextBox), ("Structural attachment subtype/layer names", _structuralAttachmentTargetLayerNamesTextBox), ("Containment target point groups", _containmentPointTargetGroupsTextBox), ("Containment target point subtype/layer names", _containmentPointTargetLayerNamesTextBox), ("Containment target boundary groups", _containmentBoundaryTargetGroupsTextBox), ("Containment target boundary subtype/layer names", _containmentBoundaryTargetLayerNamesTextBox))));
+		panel.Children.Add(CreateGroupBox("Search Distances", CreateFormGrid(("Fallback association search distance", _associationSearchDistanceTextBox), ("Structural attachment search distance", _structuralAttachmentSearchDistanceTextBox), ("Junction-junction connectivity search distance", _junctionJunctionConnectivitySearchDistanceTextBox), ("Containment point search distance", _containmentPointSearchDistanceTextBox), ("Containment boundary search distance", _containmentBoundarySearchDistanceTextBox))));
+		panel.Children.Add(CreateGroupBox("Eligible Groups", CreateFormGrid(("Eligible placement groups", _associationPlacementGroupsTextBox), ("Structural attachment target groups", _structuralAttachmentTargetGroupsTextBox), ("Structural attachment subtype/layer names", _structuralAttachmentTargetLayerNamesTextBox), ("Junction-junction connectivity target groups", _junctionJunctionConnectivityTargetGroupsTextBox), ("Junction-junction connectivity subtype/layer names", _junctionJunctionConnectivityTargetLayerNamesTextBox), ("Containment target point groups", _containmentPointTargetGroupsTextBox), ("Containment target point subtype/layer names", _containmentPointTargetLayerNamesTextBox), ("Containment target boundary groups", _containmentBoundaryTargetGroupsTextBox), ("Containment target boundary subtype/layer names", _containmentBoundaryTargetLayerNamesTextBox))));
+		panel.Children.Add(CreateGroupBox("Rule Catalog", BuildAssociationRuleCatalogSection()));
 		return WrapTab(panel);
+	}
+
+	private UIElement BuildAssociationRuleCatalogSection()
+	{
+		StackPanel panel = new StackPanel();
+		Grid pathGrid = new Grid
+		{
+			Margin = new Thickness(0.0, 4.0, 0.0, 8.0)
+		};
+		pathGrid.ColumnDefinitions.Add(new ColumnDefinition
+		{
+			Width = new GridLength(1.0, GridUnitType.Star)
+		});
+		pathGrid.ColumnDefinitions.Add(new ColumnDefinition
+		{
+			Width = GridLength.Auto
+		});
+		pathGrid.RowDefinitions.Add(new RowDefinition
+		{
+			Height = GridLength.Auto
+		});
+		pathGrid.RowDefinitions.Add(new RowDefinition
+		{
+			Height = GridLength.Auto
+		});
+		TextBlock label = CreateLabel("Association rules JSON path");
+		Grid.SetColumnSpan(label, 2);
+		pathGrid.Children.Add(label);
+		Grid.SetRow(_associationRulesJsonPathTextBox, 1);
+		pathGrid.Children.Add(_associationRulesJsonPathTextBox);
+		Button browseButton = new Button
+		{
+			Content = "Browse...",
+			MinWidth = 90.0,
+			Margin = new Thickness(8.0, 22.0, 0.0, 0.0),
+			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
+			Style = CreateButtonStyle()
+		};
+		browseButton.Click += BrowseAssociationRulesJsonPath_Click;
+		Grid.SetRow(browseButton, 1);
+		Grid.SetColumn(browseButton, 1);
+		pathGrid.Children.Add(browseButton);
+		panel.Children.Add(pathGrid);
+		panel.Children.Add(_regenerateAssociationRulesButton);
+		return panel;
 	}
 
 	private UIElement BuildInterfaceTab()
@@ -490,6 +569,7 @@ internal sealed class TemplateSettingsWindow : Window
 				throw new InvalidOperationException("The selected template configuration file could not be found.");
 			}
 			Settings.ValidateConfig = _validateConfigCheckBox.IsChecked == true;
+			Settings.PreventDefaultVersionPlacement = _preventDefaultVersionPlacementCheckBox.IsChecked == true;
 			Settings.EnableLineSplitPrompts = _enableLineSplitPromptsCheckBox.IsChecked == true;
 			Settings.EnablePointPlacementSplitPrompt = _enablePointPlacementSplitPromptCheckBox.IsChecked == true;
 			Settings.EnableLineEndpointSplitPrompt = _enableLineEndpointSplitPromptCheckBox.IsChecked == true;
@@ -517,6 +597,7 @@ internal sealed class TemplateSettingsWindow : Window
 			Settings.EnableStructuralAttachmentPrompts = _enableStructuralAttachmentPromptsCheckBox.IsChecked == true;
 			Settings.EnableContainmentPointPrompts = _enableContainmentPointPromptsCheckBox.IsChecked == true;
 			Settings.EnableContainmentBoundaryPrompts = _enableContainmentBoundaryPromptsCheckBox.IsChecked == true;
+			Settings.EnableJunctionJunctionConnectivityPrompts = _enableJunctionJunctionConnectivityPromptsCheckBox.IsChecked == true;
 			Settings.EnableLineAssociationPrompts = _enableLineAssociationPromptsCheckBox.IsChecked == true;
 			Settings.EnableLineStructuralAttachmentPrompts = _enableLineStructuralAttachmentPromptsCheckBox.IsChecked == true;
 			Settings.EnableLineContainmentPointPrompts = _enableLineContainmentPointPromptsCheckBox.IsChecked == true;
@@ -528,15 +609,19 @@ internal sealed class TemplateSettingsWindow : Window
 			Settings.ShowAutomaticStepDiagnostics = _showAutomaticStepDiagnosticsCheckBox.IsChecked == true;
 			Settings.AssociationSearchDistance = ParseDistance(_associationSearchDistanceTextBox.Text, "association search distance");
 			Settings.StructuralAttachmentSearchDistance = ParseDistance(_structuralAttachmentSearchDistanceTextBox.Text, "structural attachment search distance");
+			Settings.JunctionJunctionConnectivitySearchDistance = ParseDistance(_junctionJunctionConnectivitySearchDistanceTextBox.Text, "junction-junction connectivity search distance");
 			Settings.ContainmentPointSearchDistance = ParseDistance(_containmentPointSearchDistanceTextBox.Text, "containment point search distance");
 			Settings.ContainmentBoundarySearchDistance = ParseDistance(_containmentBoundarySearchDistanceTextBox.Text, "containment boundary search distance");
 			Settings.AssociationPlacementGroups = TemplateEditorSettings.ParseGroupNames(_associationPlacementGroupsTextBox.Text);
 			Settings.StructuralAttachmentTargetGroups = TemplateEditorSettings.ParseGroupNames(_structuralAttachmentTargetGroupsTextBox.Text);
 			Settings.StructuralAttachmentTargetLayerNames = TemplateEditorSettings.ParseGroupNames(_structuralAttachmentTargetLayerNamesTextBox.Text);
+			Settings.JunctionJunctionConnectivityTargetGroups = TemplateEditorSettings.ParseGroupNames(_junctionJunctionConnectivityTargetGroupsTextBox.Text);
+			Settings.JunctionJunctionConnectivityTargetLayerNames = TemplateEditorSettings.ParseGroupNames(_junctionJunctionConnectivityTargetLayerNamesTextBox.Text);
 			Settings.ContainmentPointTargetGroups = TemplateEditorSettings.ParseGroupNames(_containmentPointTargetGroupsTextBox.Text);
 			Settings.ContainmentPointTargetLayerNames = TemplateEditorSettings.ParseGroupNames(_containmentPointTargetLayerNamesTextBox.Text);
 			Settings.ContainmentBoundaryTargetGroups = TemplateEditorSettings.ParseGroupNames(_containmentBoundaryTargetGroupsTextBox.Text);
 			Settings.ContainmentBoundaryTargetLayerNames = TemplateEditorSettings.ParseGroupNames(_containmentBoundaryTargetLayerNamesTextBox.Text);
+			Settings.AssociationRulesJsonPath = string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? null : _associationRulesJsonPathTextBox.Text.Trim();
 			Settings.Normalize();
 			DialogResult = true;
 			Close();
@@ -544,6 +629,63 @@ internal sealed class TemplateSettingsWindow : Window
 		catch (Exception ex)
 		{
 			DialogService.Show(ex.Message, "Template Settings");
+		}
+	}
+
+	private void BrowseAssociationRulesJsonPath_Click(object sender, RoutedEventArgs e)
+	{
+		SaveFileDialog saveFileDialog = new SaveFileDialog
+		{
+			Title = "Association Rules JSON",
+			Filter = "JSON Files (*.json)|*.json|All Files (*.*)|*.*",
+			OverwritePrompt = false,
+			FileName = "AllowedAssociationRules.json"
+		};
+		string currentPath = string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? AssociationRuleCatalog.RuleFilePath : _associationRulesJsonPathTextBox.Text.Trim();
+		if (!string.IsNullOrWhiteSpace(currentPath))
+		{
+			string directoryName = Path.GetDirectoryName(currentPath);
+			if (!string.IsNullOrWhiteSpace(directoryName) && Directory.Exists(directoryName))
+			{
+				saveFileDialog.InitialDirectory = directoryName;
+			}
+			string fileName = Path.GetFileName(currentPath);
+			if (!string.IsNullOrWhiteSpace(fileName))
+			{
+				saveFileDialog.FileName = fileName;
+			}
+		}
+		if (saveFileDialog.ShowDialog() == true)
+		{
+			_associationRulesJsonPathTextBox.Text = saveFileDialog.FileName;
+		}
+	}
+
+	private async void RegenerateAssociationRulesButton_Click(object sender, RoutedEventArgs e)
+	{
+		if (DialogService.Show("Regenerate the association rule JSON from the utility network in the active map?", "Template Editor", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+		{
+			return;
+		}
+		string jsonPath = string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? null : _associationRulesJsonPathTextBox.Text.Trim();
+		_regenerateAssociationRulesButton.IsEnabled = false;
+		object originalContent = _regenerateAssociationRulesButton.Content;
+		_regenerateAssociationRulesButton.Content = "Regenerating...";
+		try
+		{
+			AssociationRuleGenerationResult result = await AssociationRuleJsonRegenerator.RegenerateFromActiveMapAsync(jsonPath);
+			Settings.AssociationRulesJsonPath = result.OutputPath;
+			_associationRulesJsonPathTextBox.Text = result.OutputPath;
+			DialogService.Show($"Regenerated association rules JSON.\n\nRules written: {result.RuleCount}\nFile: {result.OutputPath}", "Template Editor");
+		}
+		catch (Exception ex)
+		{
+			DialogService.Show("The association rules JSON could not be regenerated.\n\n" + ex.Message, "Template Editor");
+		}
+		finally
+		{
+			_regenerateAssociationRulesButton.Content = originalContent;
+			_regenerateAssociationRulesButton.IsEnabled = true;
 		}
 	}
 
@@ -639,6 +781,7 @@ internal sealed class TemplateSettingsWindow : Window
 	private void ApplyControlToolTips()
 	{
 		SetToolTip(_validateConfigCheckBox, "Checks the template JSON and referenced layers before opening the editor.");
+		SetToolTip(_preventDefaultVersionPlacementCheckBox, "Blocks template placement when a target feature service layer or table is connected to DEFAULT/sde.DEFAULT.");
 		SetToolTip(_enableLineSplitPromptsCheckBox, "Controls whether placed point and line templates can prompt to split an underlying line.");
 		SetToolTip(_enablePointPlacementSplitPromptCheckBox, "Allows point placements, such as switches or devices, to split nearby target lines.");
 		SetToolTip(_enableLineEndpointSplitPromptCheckBox, "Allows line start and end points to split nearby target lines.");
@@ -664,6 +807,7 @@ internal sealed class TemplateSettingsWindow : Window
 		SetToolTip(_autoCreateParallelCopyWhenSelectedLineExistsCheckBox, "Creates the offset immediately using defaults when selected lines exist.");
 		SetToolTip(_enableAssociationPromptsCheckBox, "Controls all automatic utility-network association prompts after placement.");
 		SetToolTip(_enableStructuralAttachmentPromptsCheckBox, "Allows prompts to attach placed features to structural junction targets.");
+		SetToolTip(_enableJunctionJunctionConnectivityPromptsCheckBox, "Allows prompts to connect a placed junction to nearby device or junction targets when a rule exists.");
 		SetToolTip(_enableContainmentPointPromptsCheckBox, "Allows prompts to contain placed features in structure point targets.");
 		SetToolTip(_enableContainmentBoundaryPromptsCheckBox, "Allows prompts to contain placed features in structure boundary targets.");
 		SetToolTip(_enableLineAssociationPromptsCheckBox, "Broad override for line association prompts. Keep off unless line targets are known valid.");
@@ -674,15 +818,19 @@ internal sealed class TemplateSettingsWindow : Window
 		SetToolTip(_stopAfterFirstSuccessfulAssociationCheckBox, "Stops looking for more automatic associations after one association succeeds.");
 		SetToolTip(_associationSearchDistanceTextBox, "Fallback association search distance retained for older saved settings.");
 		SetToolTip(_structuralAttachmentSearchDistanceTextBox, "Search distance for structural attachment candidates.");
+		SetToolTip(_junctionJunctionConnectivitySearchDistanceTextBox, "Search distance for nearby junction-junction connectivity candidates.");
 		SetToolTip(_containmentPointSearchDistanceTextBox, "Search distance for structure point containment candidates.");
 		SetToolTip(_containmentBoundarySearchDistanceTextBox, "Search distance for structure boundary containment candidates.");
 		SetToolTip(_associationPlacementGroupsTextBox, "Comma-separated group layer names for placed features that can run association prompts.");
 		SetToolTip(_structuralAttachmentTargetGroupsTextBox, "Comma-separated group layer names for structural attachment targets.");
 		SetToolTip(_structuralAttachmentTargetLayerNamesTextBox, "Optional comma-separated subtype or layer names for structural attachment targets.");
+		SetToolTip(_junctionJunctionConnectivityTargetGroupsTextBox, "Comma-separated device or junction group layer names for JJC targets.");
+		SetToolTip(_junctionJunctionConnectivityTargetLayerNamesTextBox, "Optional comma-separated subtype or layer names for JJC targets.");
 		SetToolTip(_containmentPointTargetGroupsTextBox, "Comma-separated group layer names for structure point containment targets.");
 		SetToolTip(_containmentPointTargetLayerNamesTextBox, "Optional comma-separated subtype or layer names for structure point containment targets.");
 		SetToolTip(_containmentBoundaryTargetGroupsTextBox, "Comma-separated group layer names for structure boundary containment targets.");
 		SetToolTip(_containmentBoundaryTargetLayerNamesTextBox, "Optional comma-separated subtype or layer names for structure boundary containment targets.");
+		SetToolTip(_regenerateAssociationRulesButton, "Reads the active map's utility network rules directly through the Pro SDK and rebuilds the local JSON rule catalog.");
 		SetToolTip(_highlightSplitCandidatesCheckBox, "Draws a temporary overlay on split candidates while the prompt is visible.");
 		SetToolTip(_highlightAssociationCandidatesCheckBox, "Draws a temporary overlay on association candidates while the prompt is visible.");
 		SetToolTip(_showAutomaticStepDiagnosticsCheckBox, "Shows popup details when an automatic split or association step fails.");

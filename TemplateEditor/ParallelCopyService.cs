@@ -292,7 +292,7 @@ internal static class ParallelCopyService
 	private static CIMSymbolReference CreatePreviewSymbol()
 	{
 		CIMColor color = ColorFactory.Instance.CreateRGBColor(0.0, 122.0, 255.0, 90.0);
-		return SymbolFactory.Instance.ConstructLineSymbol(color, 4.0, SimpleLineStyle.Dash).MakeSymbolReference();
+		return SymbolFactory.Instance.ConstructLineSymbol(color, 4.0, SimpleLineStyle.Solid).MakeSymbolReference();
 	}
 
 }

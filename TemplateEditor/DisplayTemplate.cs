@@ -18,13 +18,21 @@ public class DisplayTemplate
 
 	public bool IsGroupChild { get; set; }
 
+	public bool IsFlatListItem { get; set; }
+
+	public bool IsIndentedChild => IsGroupChild && !IsFlatListItem;
+
 	public string ParentTemplateName { get; set; }
 
 	public int FeatureId { get; set; }
 
 	public string SketchType { get; set; }
 
-	public string DisplayName => IsGroupChild && FeatureId > 0 ? $"{FeatureId}. {Name}" : Name;
+	public string DisplayName => IsIndentedChild && FeatureId > 0 ? $"{FeatureId}. {Name}" : Name;
+
+	public string UniqueKey => IsGroupChild && !string.IsNullOrEmpty(ParentTemplateName)
+		? $"{ParentTemplateName}|{FeatureId}|{Name}"
+		: Name ?? string.Empty;
 }
 
 public class DisplayTemplateChild
