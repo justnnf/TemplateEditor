@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Mapping;
+using System.Windows.Input;
 
 namespace TemplateEditor;
 
@@ -22,8 +23,22 @@ internal class AddRowTool : MapTool
 
 	protected override async Task<bool> OnSketchCompleteAsync(Geometry geometry)
 	{
-		await CommonFunctions.CreateFeatures(geometry);
-		ToolReactivationService.ActivateSelectTool();
+		Cursor previousCursor = Cursor;
+		Cursor = Cursors.Wait;
+		bool placementSucceeded = false;
+		await Task.Yield();
+		try
+		{
+			placementSucceeded = await CommonFunctions.CreateFeatures(geometry);
+		}
+		finally
+		{
+			Cursor = previousCursor;
+		}
+		if (EditorDockpaneViewModel.ShouldReturnToSelectAfterPlacement(placementSucceeded))
+		{
+			ToolReactivationService.ActivateSelectTool();
+		}
 		return await base.OnSketchCompleteAsync(geometry);
 	}
 }

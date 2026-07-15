@@ -1,31 +1,42 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Media;
+using ArcGIS.Desktop.Framework;
 using Microsoft.Win32;
 
 namespace TemplateEditor;
 
 internal sealed class TemplateSettingsWindow : Window
 {
-	private static readonly Brush WindowBackgroundBrush = new SolidColorBrush(Color.FromRgb(243, 243, 243));
+	private static readonly bool IsDarkTheme = FrameworkApplication.ApplicationTheme == ApplicationTheme.Dark;
 
-	private static readonly Brush SurfaceBackgroundBrush = Brushes.White;
+	private static readonly Brush WindowBackgroundBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243));
 
-	private static readonly Brush SectionBorderBrush = new SolidColorBrush(Color.FromRgb(208, 208, 208));
+	private static readonly Brush SurfaceBackgroundBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White;
 
-	private static readonly Brush ControlBorderBrush = new SolidColorBrush(Color.FromRgb(150, 150, 150));
+	private static readonly Brush SectionBorderBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 72)) : new SolidColorBrush(Color.FromRgb(208, 208, 208));
 
-	private static readonly Brush TabBackgroundBrush = new SolidColorBrush(Color.FromRgb(232, 232, 232));
+	private static readonly Brush ControlBorderBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(104, 104, 104)) : new SolidColorBrush(Color.FromRgb(150, 150, 150));
 
-	private static readonly Brush TabHoverBackgroundBrush = new SolidColorBrush(Color.FromRgb(222, 234, 246));
+	private static readonly Brush TabBackgroundBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(52, 52, 56)) : new SolidColorBrush(Color.FromRgb(232, 232, 232));
 
-	private static readonly Brush TabSelectedBackgroundBrush = Brushes.White;
+	private static readonly Brush TabHoverBackgroundBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(238, 244, 250));
 
-	private static readonly Brush PrimaryTextBrush = new SolidColorBrush(Color.FromRgb(32, 32, 32));
+	private static readonly Brush TabSelectedBackgroundBrush = SurfaceBackgroundBrush;
 
-	private static readonly Brush AccentBorderBrush = new SolidColorBrush(Color.FromRgb(120, 160, 200));
+	private static readonly Brush PrimaryTextBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(238, 238, 238)) : new SolidColorBrush(Color.FromRgb(32, 32, 32));
+
+	private static readonly Brush SecondaryTextBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(178, 178, 178)) : new SolidColorBrush(Color.FromRgb(96, 96, 96));
+
+	private static readonly Brush AccentBorderBrush = new SolidColorBrush(Color.FromRgb(51, 153, 255));
+
+	private static readonly Brush AccentButtonHoverBrush = new SolidColorBrush(Color.FromRgb(32, 128, 224));
 
 	private readonly TextBox _templateConfigPathTextBox;
 
@@ -99,6 +110,8 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly ComboBox _associationPromptModeComboBox;
 
+	private readonly ComboBox _configuredAssociationPlacementModeComboBox;
+
 	private readonly CheckBox _stopAfterFirstSuccessfulAssociationCheckBox;
 
 	private readonly CheckBox _highlightAssociationCandidatesCheckBox;
@@ -107,7 +120,15 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly CheckBox _showAutomaticStepDiagnosticsCheckBox;
 
-	private readonly TextBox _associationSearchDistanceTextBox;
+	private readonly CheckBox _useCompactDockpaneLayoutCheckBox;
+
+	private readonly TextBox _maxRecentTemplatesTextBox;
+
+	private readonly TextBox _hintSourceColorHexTextBox;
+
+	private readonly TextBox _hintAssociationTargetColorHexTextBox;
+
+	private readonly TextBox _hintSplitCandidateColorHexTextBox;
 
 	private readonly TextBox _structuralAttachmentSearchDistanceTextBox;
 
@@ -139,15 +160,17 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly Button _regenerateAssociationRulesButton;
 
+	private readonly List<PlacementOverrideEditorRow> _sessionOverrideRows = new List<PlacementOverrideEditorRow>();
+
 	public TemplateEditorSettings Settings { get; }
 
 	public TemplateSettingsWindow(TemplateEditorSettings settings)
 	{
 		Settings = settings.Clone();
 		Title = "Template Settings";
-		Width = 760.0;
-		Height = 640.0;
-		MinWidth = 700.0;
+		Width = 900.0;
+		Height = 680.0;
+		MinWidth = 760.0;
 		MinHeight = 560.0;
 		WindowStartupLocation = WindowStartupLocation.CenterOwner;
 		ResizeMode = ResizeMode.CanResize;
@@ -157,11 +180,13 @@ internal sealed class TemplateSettingsWindow : Window
 		FontSize = 12.0;
 		Resources[SystemColors.ControlTextBrushKey] = PrimaryTextBrush;
 		Resources[SystemColors.WindowTextBrushKey] = PrimaryTextBrush;
-		Resources[SystemColors.GrayTextBrushKey] = new SolidColorBrush(Color.FromRgb(96, 96, 96));
+		Resources[SystemColors.GrayTextBrushKey] = SecondaryTextBrush;
 		Resources[SystemColors.ControlBrushKey] = WindowBackgroundBrush;
 		Resources[SystemColors.WindowBrushKey] = SurfaceBackgroundBrush;
 		Resources[SystemColors.HighlightBrushKey] = TabHoverBackgroundBrush;
 		Resources[SystemColors.HighlightTextBrushKey] = PrimaryTextBrush;
+		Resources[SystemColors.ControlLightBrushKey] = SurfaceBackgroundBrush;
+		Resources[SystemColors.ControlDarkBrushKey] = SectionBorderBrush;
 		_templateConfigPathTextBox = CreateTextBox(Settings.TemplateConfigFilePath ?? string.Empty);
 		_validateConfigCheckBox = CreateCheckBox("Validate template configuration before opening the editor", Settings.ValidateConfig);
 		_preventDefaultVersionPlacementCheckBox = CreateCheckBox("Prevent template placement into DEFAULT versions", Settings.PreventDefaultVersionPlacement);
@@ -191,18 +216,23 @@ internal sealed class TemplateSettingsWindow : Window
 		_enableAssociationPromptsCheckBox = CreateCheckBox("Enable automatic association prompts", Settings.EnableAssociationPrompts);
 		_enableStructuralAttachmentPromptsCheckBox = CreateCheckBox("Allow structural attachment prompts", Settings.EnableStructuralAttachmentPrompts);
 		_enableContainmentPointPromptsCheckBox = CreateCheckBox("Allow containment prompts for structure points", Settings.EnableContainmentPointPrompts);
-		_enableContainmentBoundaryPromptsCheckBox = CreateCheckBox("Allow containment prompts for structure boundaries", Settings.EnableContainmentBoundaryPrompts);
+		_enableContainmentBoundaryPromptsCheckBox = CreateCheckBox("Allow containment prompts for structure containers", Settings.EnableContainmentBoundaryPrompts);
 		_enableJunctionJunctionConnectivityPromptsCheckBox = CreateCheckBox("Allow junction-junction connectivity prompts", Settings.EnableJunctionJunctionConnectivityPrompts);
 		_enableLineAssociationPromptsCheckBox = CreateCheckBox("Allow association prompts for line features", Settings.EnableLineAssociationPrompts);
 		_enableLineStructuralAttachmentPromptsCheckBox = CreateCheckBox("Allow line structural attachment prompts", Settings.EnableLineStructuralAttachmentPrompts);
 		_enableLineContainmentPointPromptsCheckBox = CreateCheckBox("Allow line containment prompts for structure points", Settings.EnableLineContainmentPointPrompts);
-		_enableLineContainmentBoundaryPromptsCheckBox = CreateCheckBox("Allow line containment prompts for structure boundaries", Settings.EnableLineContainmentBoundaryPrompts);
+		_enableLineContainmentBoundaryPromptsCheckBox = CreateCheckBox("Allow line features to be contained by structure containers", Settings.EnableLineContainmentBoundaryPrompts);
 		_associationPromptModeComboBox = CreateComboBox(Settings.AssociationPromptMode, ("Always ask", "AlwaysAsk"), ("Auto-create when one candidate", "AutoWhenOne"), ("Review multiple only", "ReviewMultipleOnly"), ("Never create", "Never"));
+		_configuredAssociationPlacementModeComboBox = CreateComboBox(Settings.ConfiguredAssociationPlacementMode, ("Fast - batch configured associations", "Fast"), ("Debug - isolate configured association failures", "Debug"));
 		_stopAfterFirstSuccessfulAssociationCheckBox = CreateCheckBox("Stop association prompts after first successful association", Settings.StopAfterFirstSuccessfulAssociation);
 		_highlightAssociationCandidatesCheckBox = CreateCheckBox("Highlight association candidates on the map", Settings.HighlightAssociationCandidates);
 		_highlightSplitCandidatesCheckBox = CreateCheckBox("Highlight split candidates on the map", Settings.HighlightSplitCandidates);
 		_showAutomaticStepDiagnosticsCheckBox = CreateCheckBox("Show diagnostics when automatic placement steps fail", Settings.ShowAutomaticStepDiagnostics);
-		_associationSearchDistanceTextBox = CreateTextBox(Settings.AssociationSearchDistance.ToString("0.###"));
+		_useCompactDockpaneLayoutCheckBox = CreateCheckBox("Use compact dockpane layout", Settings.UseCompactDockpaneLayout);
+		_maxRecentTemplatesTextBox = CreateTextBox(Settings.MaxRecentTemplates.ToString());
+		_hintSourceColorHexTextBox = CreateTextBox(Settings.HintSourceColorHex);
+		_hintAssociationTargetColorHexTextBox = CreateTextBox(Settings.HintAssociationTargetColorHex);
+		_hintSplitCandidateColorHexTextBox = CreateTextBox(Settings.HintSplitCandidateColorHex);
 		_structuralAttachmentSearchDistanceTextBox = CreateTextBox(Settings.StructuralAttachmentSearchDistance.ToString("0.###"));
 		_junctionJunctionConnectivitySearchDistanceTextBox = CreateTextBox(Settings.JunctionJunctionConnectivitySearchDistance.ToString("0.###"));
 		_containmentPointSearchDistanceTextBox = CreateTextBox(Settings.ContainmentPointSearchDistance.ToString("0.###"));
@@ -261,40 +291,101 @@ internal sealed class TemplateSettingsWindow : Window
 		};
 		DockPanel.SetDock(footer, Dock.Bottom);
 		root.Children.Add(footer);
-		TabControl tabControl = new TabControl
-		{
-			Margin = new Thickness(12.0),
-			Background = WindowBackgroundBrush,
-			BorderBrush = SectionBorderBrush
-		};
-		tabControl.Resources[typeof(TabItem)] = CreateTabItemStyle();
-		tabControl.Items.Add(new TabItem
-		{
-			Header = "General",
-			Content = BuildGeneralTab()
-		});
-		tabControl.Items.Add(new TabItem
-		{
-			Header = "Line Split",
-			Content = BuildLineSplitTab()
-		});
-		tabControl.Items.Add(new TabItem
-		{
-			Header = "Parallel Copy",
-			Content = BuildParallelCopyTab()
-		});
-		tabControl.Items.Add(new TabItem
-		{
-			Header = "Associations",
-			Content = BuildAssociationTab()
-		});
-		tabControl.Items.Add(new TabItem
-		{
-			Header = "Interface",
-			Content = BuildInterfaceTab()
-		});
-		root.Children.Add(tabControl);
+		root.Children.Add(BuildSettingsTabs());
 		return root;
+	}
+
+	private UIElement BuildSettingsTabs()
+	{
+		DockPanel container = new DockPanel
+		{
+			LastChildFill = true,
+			Margin = new Thickness(12.0)
+		};
+		Border contentFrame = new Border
+		{
+			Background = SurfaceBackgroundBrush,
+			BorderBrush = SectionBorderBrush,
+			BorderThickness = new Thickness(1.0),
+			CornerRadius = new CornerRadius(0.0, 0.0, 4.0, 4.0),
+			MinHeight = 360.0
+		};
+		StackPanel tabRow = new StackPanel
+		{
+			Orientation = Orientation.Horizontal,
+			Margin = new Thickness(0.0, 0.0, 0.0, -1.0)
+		};
+		DockPanel.SetDock(tabRow, Dock.Top);
+		container.Children.Add(tabRow);
+		container.Children.Add(contentFrame);
+
+		List<Button> buttons = new List<Button>();
+		Button selectedTabButton = null;
+		UIElement generalContent = BuildGeneralTab();
+		UIElement lineSplitContent = BuildLineSplitTab();
+		UIElement parallelCopyContent = BuildParallelCopyTab();
+		UIElement associationsContent = BuildAssociationTab();
+		UIElement attributeOverridesContent = BuildAttributeOverridesTab();
+		UIElement interfaceContent = BuildInterfaceTab();
+		void SelectTab(Button selectedButton, UIElement content)
+		{
+			if (ReferenceEquals(selectedTabButton, selectedButton))
+			{
+				return;
+			}
+			contentFrame.Child = null;
+			foreach (Button button in buttons)
+			{
+				button.Background = TabBackgroundBrush;
+				button.BorderBrush = SectionBorderBrush;
+				button.FontWeight = FontWeights.Normal;
+			}
+			selectedButton.Background = SurfaceBackgroundBrush;
+			selectedButton.BorderBrush = SectionBorderBrush;
+			selectedButton.FontWeight = FontWeights.SemiBold;
+			selectedTabButton = selectedButton;
+			contentFrame.Child = content;
+		}
+		Button generalButton = CreateSettingsTabButton("General");
+		Button lineSplitButton = CreateSettingsTabButton("Line Split");
+		Button parallelCopyButton = CreateSettingsTabButton("Parallel Copy");
+		Button associationsButton = CreateSettingsTabButton("Associations");
+		Button attributeOverridesButton = CreateSettingsTabButton("Attribute Overrides");
+		Button interfaceButton = CreateSettingsTabButton("Interface");
+		buttons.Add(generalButton);
+		buttons.Add(lineSplitButton);
+		buttons.Add(parallelCopyButton);
+		buttons.Add(associationsButton);
+		buttons.Add(attributeOverridesButton);
+		buttons.Add(interfaceButton);
+		generalButton.Click += delegate { SelectTab(generalButton, generalContent); };
+		lineSplitButton.Click += delegate { SelectTab(lineSplitButton, lineSplitContent); };
+		parallelCopyButton.Click += delegate { SelectTab(parallelCopyButton, parallelCopyContent); };
+		associationsButton.Click += delegate { SelectTab(associationsButton, associationsContent); };
+		attributeOverridesButton.Click += delegate { SelectTab(attributeOverridesButton, attributeOverridesContent); };
+		interfaceButton.Click += delegate { SelectTab(interfaceButton, interfaceContent); };
+		foreach (Button button in buttons)
+		{
+			tabRow.Children.Add(button);
+		}
+		SelectTab(generalButton, generalContent);
+		return container;
+	}
+
+	private static Button CreateSettingsTabButton(string text)
+	{
+		return new Button
+		{
+			Content = text,
+			MinWidth = 124.0,
+			Padding = new Thickness(22.0, 10.0, 22.0, 10.0),
+			Margin = new Thickness(0.0, 0.0, -1.0, 0.0),
+			Background = TabBackgroundBrush,
+			Foreground = PrimaryTextBrush,
+			BorderBrush = SectionBorderBrush,
+			BorderThickness = new Thickness(1.0),
+			Style = CreateSettingsTabButtonStyle()
+		};
 	}
 
 	private UIElement BuildGeneralTab()
@@ -326,9 +417,9 @@ internal sealed class TemplateSettingsWindow : Window
 	{
 		StackPanel panel = CreateTabPanel();
 		panel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableAssociationPromptsCheckBox, _enableStructuralAttachmentPromptsCheckBox, _enableJunctionJunctionConnectivityPromptsCheckBox, _enableContainmentPointPromptsCheckBox, _enableContainmentBoundaryPromptsCheckBox, _enableLineAssociationPromptsCheckBox, _enableLineStructuralAttachmentPromptsCheckBox, _enableLineContainmentPointPromptsCheckBox, _enableLineContainmentBoundaryPromptsCheckBox, _stopAfterFirstSuccessfulAssociationCheckBox)));
-		panel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("Association prompt mode", _associationPromptModeComboBox))));
-		panel.Children.Add(CreateGroupBox("Search Distances", CreateFormGrid(("Fallback association search distance", _associationSearchDistanceTextBox), ("Structural attachment search distance", _structuralAttachmentSearchDistanceTextBox), ("Junction-junction connectivity search distance", _junctionJunctionConnectivitySearchDistanceTextBox), ("Containment point search distance", _containmentPointSearchDistanceTextBox), ("Containment boundary search distance", _containmentBoundarySearchDistanceTextBox))));
-		panel.Children.Add(CreateGroupBox("Eligible Groups", CreateFormGrid(("Eligible placement groups", _associationPlacementGroupsTextBox), ("Structural attachment target groups", _structuralAttachmentTargetGroupsTextBox), ("Structural attachment subtype/layer names", _structuralAttachmentTargetLayerNamesTextBox), ("Junction-junction connectivity target groups", _junctionJunctionConnectivityTargetGroupsTextBox), ("Junction-junction connectivity subtype/layer names", _junctionJunctionConnectivityTargetLayerNamesTextBox), ("Containment target point groups", _containmentPointTargetGroupsTextBox), ("Containment target point subtype/layer names", _containmentPointTargetLayerNamesTextBox), ("Containment target boundary groups", _containmentBoundaryTargetGroupsTextBox), ("Containment target boundary subtype/layer names", _containmentBoundaryTargetLayerNamesTextBox))));
+		panel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("Association prompt mode", _associationPromptModeComboBox), ("Configured association mode", _configuredAssociationPlacementModeComboBox))));
+		panel.Children.Add(CreateGroupBox("Search Distances", CreateFormGrid(("Structural attachment search distance", _structuralAttachmentSearchDistanceTextBox), ("Junction-junction connectivity search distance", _junctionJunctionConnectivitySearchDistanceTextBox), ("Containment point search distance", _containmentPointSearchDistanceTextBox), ("Structure container search distance", _containmentBoundarySearchDistanceTextBox))));
+		panel.Children.Add(CreateGroupBox("Fallback Eligible Groups", CreateFormGrid(("Eligible placement groups", _associationPlacementGroupsTextBox), ("Structural attachment target groups", _structuralAttachmentTargetGroupsTextBox), ("Structural attachment subtype/layer names", _structuralAttachmentTargetLayerNamesTextBox), ("Junction-junction connectivity target groups", _junctionJunctionConnectivityTargetGroupsTextBox), ("Junction-junction connectivity subtype/layer names", _junctionJunctionConnectivityTargetLayerNamesTextBox), ("Containment target point groups", _containmentPointTargetGroupsTextBox), ("Containment target point subtype/layer names", _containmentPointTargetLayerNamesTextBox), ("Structure container target groups", _containmentBoundaryTargetGroupsTextBox), ("Structure container subtype/layer names", _containmentBoundaryTargetLayerNamesTextBox))));
 		panel.Children.Add(CreateGroupBox("Rule Catalog", BuildAssociationRuleCatalogSection()));
 		return WrapTab(panel);
 	}
@@ -381,9 +472,50 @@ internal sealed class TemplateSettingsWindow : Window
 	private UIElement BuildInterfaceTab()
 	{
 		StackPanel panel = CreateTabPanel();
+		panel.Children.Add(CreateGroupBox("Dockpane Layout", CreateFormGrid(("Use compact dockpane layout", _useCompactDockpaneLayoutCheckBox), ("Maximum recent templates", _maxRecentTemplatesTextBox))));
 		panel.Children.Add(CreateGroupBox("Map Feedback", CreateCheckBoxPanel(_highlightSplitCandidatesCheckBox, _highlightAssociationCandidatesCheckBox, _showAutomaticStepDiagnosticsCheckBox)));
+		panel.Children.Add(CreateGroupBox("Hint Colors", CreateFormGrid(("Placed/source feature color (HEX)", _hintSourceColorHexTextBox), ("Association target color (HEX)", _hintAssociationTargetColorHexTextBox), ("Split candidate color (HEX)", _hintSplitCandidateColorHexTextBox))));
 		return WrapTab(panel);
 	}
+
+	private UIElement BuildAttributeOverridesTab()
+	{
+		StackPanel panel = CreateTabPanel();
+		panel.Children.Add(CreateGroupBox("Session Overrides", BuildAttributeOverrideSection()));
+		return WrapTab(panel);
+	}
+
+	private UIElement BuildAttributeOverrideSection()
+	{
+		StackPanel panel = new StackPanel();
+		panel.Children.Add(new TextBlock
+		{
+			Text = "Choose workflow-wide attribute overrides. These apply only to configured fields and can be superseded by the next-placement override dialog from the template right-click menu.",
+			Foreground = SecondaryTextBrush,
+			TextWrapping = TextWrapping.Wrap,
+			Margin = new Thickness(0.0, 0.0, 0.0, 12.0)
+		});
+		_sessionOverrideRows.Clear();
+		IReadOnlyList<PlacementAttributeOverrideEditorState> states = PlacementAttributeOverrideService.BuildSessionEditorStates(Settings.SessionAttributeOverrides);
+		if (states.Count == 0)
+		{
+			panel.Children.Add(new TextBlock
+			{
+				Text = "No packaged placement override fields are currently available.",
+				Foreground = SecondaryTextBrush,
+				TextWrapping = TextWrapping.Wrap
+			});
+			return panel;
+		}
+		foreach (PlacementAttributeOverrideEditorState state in states)
+		{
+			PlacementOverrideEditorRow row = CreatePlacementOverrideEditorRow(state);
+			_sessionOverrideRows.Add(row);
+			panel.Children.Add(row.Container);
+		}
+		return panel;
+	}
+
 
 	private UIElement BuildTemplateConfigSection()
 	{
@@ -458,7 +590,7 @@ internal sealed class TemplateSettingsWindow : Window
 		};
 		grid.ColumnDefinitions.Add(new ColumnDefinition
 		{
-			Width = new GridLength(240.0)
+			Width = new GridLength(320.0)
 		});
 		grid.ColumnDefinitions.Add(new ColumnDefinition
 		{
@@ -473,10 +605,13 @@ internal sealed class TemplateSettingsWindow : Window
 			TextBlock label = CreateLabel(rows[i].Label);
 			label.VerticalAlignment = VerticalAlignment.Center;
 			label.Margin = new Thickness(0.0, 0.0, 12.0, 8.0);
+			label.TextWrapping = TextWrapping.Wrap;
+			label.TextTrimming = TextTrimming.None;
 			Grid.SetRow(label, i);
 			grid.Children.Add(label);
 			Control control = rows[i].Control;
 			control.Margin = new Thickness(0.0, 0.0, 0.0, 8.0);
+			ApplyControlSizing(rows[i].Label, control);
 			Grid.SetRow(control, i);
 			Grid.SetColumn(control, 1);
 			grid.Children.Add(control);
@@ -484,24 +619,61 @@ internal sealed class TemplateSettingsWindow : Window
 		return grid;
 	}
 
-	private static GroupBox CreateGroupBox(string header, UIElement content)
+	private static void ApplyControlSizing(string label, Control control)
 	{
-		DataTemplate headerTemplate = new DataTemplate();
-		FrameworkElementFactory headerText = new FrameworkElementFactory(typeof(TextBlock));
-		headerText.SetValue(TextBlock.ForegroundProperty, PrimaryTextBrush);
-		headerText.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
-		headerText.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding());
-		headerTemplate.VisualTree = headerText;
-		return new GroupBox
+		string normalizedLabel = label?.ToUpperInvariant() ?? string.Empty;
+		if (control is TextBox textBox &&
+			(normalizedLabel.Contains("GROUP") || normalizedLabel.Contains("LAYER") || normalizedLabel.Contains("SUBTYPE")))
 		{
-			Header = header,
-			HeaderTemplate = headerTemplate,
+			textBox.AcceptsReturn = true;
+			textBox.TextWrapping = TextWrapping.Wrap;
+			textBox.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+			textBox.MinHeight = 56.0;
+			return;
+		}
+		if (normalizedLabel.Contains("DISTANCE") ||
+			normalizedLabel.Contains("TOLERANCE") ||
+			normalizedLabel.Contains("MAXIMUM") ||
+			normalizedLabel.Contains("OFFSET") ||
+			normalizedLabel.Contains("HEX"))
+		{
+			control.Width = 180.0;
+			control.HorizontalAlignment = HorizontalAlignment.Left;
+			return;
+		}
+		if (control is ComboBox)
+		{
+			control.Width = 280.0;
+			control.HorizontalAlignment = HorizontalAlignment.Left;
+		}
+	}
+
+	private static Border CreateGroupBox(string header, UIElement content)
+	{
+		StackPanel panel = new StackPanel();
+		panel.Children.Add(new TextBlock
+		{
+			Text = header,
+			Foreground = PrimaryTextBrush,
+			FontWeight = FontWeights.SemiBold,
+			Margin = new Thickness(0.0, 0.0, 0.0, 8.0)
+		});
+		panel.Children.Add(new Border
+		{
+			Height = 1.0,
+			Background = SectionBorderBrush,
+			Margin = new Thickness(0.0, 0.0, 0.0, 10.0)
+		});
+		panel.Children.Add(content);
+		return new Border
+		{
 			Margin = new Thickness(0.0, 0.0, 0.0, 12.0),
-			Padding = new Thickness(12.0, 8.0, 12.0, 12.0),
+			Padding = new Thickness(14.0),
 			Background = SurfaceBackgroundBrush,
 			BorderBrush = SectionBorderBrush,
-			Foreground = PrimaryTextBrush,
-			Content = content
+			BorderThickness = new Thickness(1.0),
+			CornerRadius = new CornerRadius(4.0),
+			Child = panel
 		};
 	}
 
@@ -551,7 +723,7 @@ internal sealed class TemplateSettingsWindow : Window
 			MinWidth = 88.0,
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
 			IsDefault = true,
-			Style = CreateButtonStyle()
+			Style = CreatePrimaryButtonStyle()
 		};
 		saveButton.Click += SaveButton_Click;
 		buttons.Children.Add(cancelButton);
@@ -603,15 +775,20 @@ internal sealed class TemplateSettingsWindow : Window
 			Settings.EnableLineContainmentPointPrompts = _enableLineContainmentPointPromptsCheckBox.IsChecked == true;
 			Settings.EnableLineContainmentBoundaryPrompts = _enableLineContainmentBoundaryPromptsCheckBox.IsChecked == true;
 			Settings.AssociationPromptMode = GetSelectedComboValue(_associationPromptModeComboBox);
+			Settings.ConfiguredAssociationPlacementMode = GetSelectedComboValue(_configuredAssociationPlacementModeComboBox);
 			Settings.StopAfterFirstSuccessfulAssociation = _stopAfterFirstSuccessfulAssociationCheckBox.IsChecked == true;
 			Settings.HighlightAssociationCandidates = _highlightAssociationCandidatesCheckBox.IsChecked == true;
 			Settings.HighlightSplitCandidates = _highlightSplitCandidatesCheckBox.IsChecked == true;
 			Settings.ShowAutomaticStepDiagnostics = _showAutomaticStepDiagnosticsCheckBox.IsChecked == true;
-			Settings.AssociationSearchDistance = ParseDistance(_associationSearchDistanceTextBox.Text, "association search distance");
+			Settings.UseCompactDockpaneLayout = _useCompactDockpaneLayoutCheckBox.IsChecked == true;
+			Settings.MaxRecentTemplates = ParsePositiveInteger(_maxRecentTemplatesTextBox.Text, "maximum recent templates");
+			Settings.HintSourceColorHex = _hintSourceColorHexTextBox.Text;
+			Settings.HintAssociationTargetColorHex = _hintAssociationTargetColorHexTextBox.Text;
+			Settings.HintSplitCandidateColorHex = _hintSplitCandidateColorHexTextBox.Text;
 			Settings.StructuralAttachmentSearchDistance = ParseDistance(_structuralAttachmentSearchDistanceTextBox.Text, "structural attachment search distance");
 			Settings.JunctionJunctionConnectivitySearchDistance = ParseDistance(_junctionJunctionConnectivitySearchDistanceTextBox.Text, "junction-junction connectivity search distance");
 			Settings.ContainmentPointSearchDistance = ParseDistance(_containmentPointSearchDistanceTextBox.Text, "containment point search distance");
-			Settings.ContainmentBoundarySearchDistance = ParseDistance(_containmentBoundarySearchDistanceTextBox.Text, "containment boundary search distance");
+			Settings.ContainmentBoundarySearchDistance = ParseDistance(_containmentBoundarySearchDistanceTextBox.Text, "structure container search distance");
 			Settings.AssociationPlacementGroups = TemplateEditorSettings.ParseGroupNames(_associationPlacementGroupsTextBox.Text);
 			Settings.StructuralAttachmentTargetGroups = TemplateEditorSettings.ParseGroupNames(_structuralAttachmentTargetGroupsTextBox.Text);
 			Settings.StructuralAttachmentTargetLayerNames = TemplateEditorSettings.ParseGroupNames(_structuralAttachmentTargetLayerNamesTextBox.Text);
@@ -622,6 +799,12 @@ internal sealed class TemplateSettingsWindow : Window
 			Settings.ContainmentBoundaryTargetGroups = TemplateEditorSettings.ParseGroupNames(_containmentBoundaryTargetGroupsTextBox.Text);
 			Settings.ContainmentBoundaryTargetLayerNames = TemplateEditorSettings.ParseGroupNames(_containmentBoundaryTargetLayerNamesTextBox.Text);
 			Settings.AssociationRulesJsonPath = string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? null : _associationRulesJsonPathTextBox.Text.Trim();
+			Settings.SessionAttributeOverrides = _sessionOverrideRows.Select(row => new PlacementAttributeOverrideValue
+			{
+				FieldName = row.State.Definition.FieldName,
+				Enabled = row.EnabledCheckBox.IsChecked == true,
+				Value = row.UseDropDown ? row.ValueComboBox.SelectedItem as string : row.ValueTextBox.Text
+			}).ToList();
 			Settings.Normalize();
 			DialogResult = true;
 			Close();
@@ -663,7 +846,11 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private async void RegenerateAssociationRulesButton_Click(object sender, RoutedEventArgs e)
 	{
-		if (DialogService.Show("Regenerate the association rule JSON from the utility network in the active map?", "Template Editor", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+		if (DialogService.Show(
+			"Regenerate the association rule JSON from the utility network in the active map?",
+			"Template Editor",
+			new DialogButtonChoice("Regenerate", MessageBoxResult.Yes, isPrimary: true),
+			new DialogButtonChoice("Cancel", MessageBoxResult.No, isCancel: true)) != MessageBoxResult.Yes)
 		{
 			return;
 		}
@@ -716,13 +903,74 @@ internal sealed class TemplateSettingsWindow : Window
 		return result;
 	}
 
-	private static int ParseNonNegativeInteger(string text, string label)
+	private PlacementOverrideEditorRow CreatePlacementOverrideEditorRow(PlacementAttributeOverrideEditorState state)
 	{
-		if (!int.TryParse(text, out int result) || result < 0)
+		CheckBox enabledCheckBox = new CheckBox
 		{
-			throw new InvalidOperationException("Enter a valid non-negative whole number for " + label + ".");
+			IsChecked = state.IsEnabled,
+			VerticalAlignment = VerticalAlignment.Top,
+			Margin = new Thickness(0.0, 2.0, 10.0, 0.0)
+		};
+		TextBlock label = new TextBlock
+		{
+			Text = state.Definition.Label,
+			FontWeight = FontWeights.SemiBold,
+			Foreground = PrimaryTextBrush
+		};
+		TextBlock description = new TextBlock
+		{
+			Text = string.IsNullOrWhiteSpace(state.Definition.Description) ? state.ConfiguredValueSummary : state.Definition.Description + "\n" + state.ConfiguredValueSummary,
+			Foreground = SecondaryTextBrush,
+			TextWrapping = TextWrapping.Wrap,
+			Margin = new Thickness(0.0, 2.0, 0.0, 0.0)
+		};
+		Control valueEditor;
+		ComboBox valueComboBox = null;
+		TextBox valueTextBox = null;
+		if (state.UseDropDown)
+		{
+			valueComboBox = new ComboBox
+			{
+				ItemsSource = state.AvailableValues,
+				SelectedItem = state.AvailableValues.FirstOrDefault(value => string.Equals(value, state.Value, StringComparison.OrdinalIgnoreCase)) ?? state.AvailableValues.FirstOrDefault(),
+				MinWidth = 220.0,
+				Margin = new Thickness(0.0, 6.0, 0.0, 0.0),
+				Style = CreateComboBoxStyle(),
+				ItemContainerStyle = CreateComboBoxItemStyle()
+			};
+			valueEditor = valueComboBox;
 		}
-		return result;
+		else
+		{
+			valueTextBox = CreateTextBox(state.Value ?? string.Empty);
+			valueTextBox.MinWidth = 220.0;
+			valueTextBox.Margin = new Thickness(0.0, 6.0, 0.0, 0.0);
+			valueEditor = valueTextBox;
+		}
+		valueEditor.IsEnabled = state.IsEnabled;
+		enabledCheckBox.Checked += delegate { valueEditor.IsEnabled = true; };
+		enabledCheckBox.Unchecked += delegate { valueEditor.IsEnabled = false; };
+		StackPanel details = new StackPanel();
+		details.Children.Add(label);
+		details.Children.Add(description);
+		details.Children.Add(valueEditor);
+		DockPanel content = new DockPanel
+		{
+			LastChildFill = true
+		};
+		DockPanel.SetDock(enabledCheckBox, Dock.Left);
+		content.Children.Add(enabledCheckBox);
+		content.Children.Add(details);
+		Border container = new Border
+		{
+			Background = SurfaceBackgroundBrush,
+			BorderBrush = SectionBorderBrush,
+			BorderThickness = new Thickness(1.0),
+			Padding = new Thickness(10.0),
+			Margin = new Thickness(0.0, 0.0, 0.0, 8.0),
+			Child = content
+		};
+		return new PlacementOverrideEditorRow(state, container, enabledCheckBox, valueComboBox, valueTextBox);
 	}
 
 	private static TextBox CreateTextBox(string text)
@@ -809,31 +1057,36 @@ internal sealed class TemplateSettingsWindow : Window
 		SetToolTip(_enableStructuralAttachmentPromptsCheckBox, "Allows prompts to attach placed features to structural junction targets.");
 		SetToolTip(_enableJunctionJunctionConnectivityPromptsCheckBox, "Allows prompts to connect a placed junction to nearby device or junction targets when a rule exists.");
 		SetToolTip(_enableContainmentPointPromptsCheckBox, "Allows prompts to contain placed features in structure point targets.");
-		SetToolTip(_enableContainmentBoundaryPromptsCheckBox, "Allows prompts to contain placed features in structure boundary targets.");
+		SetToolTip(_enableContainmentBoundaryPromptsCheckBox, "Allows prompts to contain placed features in structure containers such as boundaries, trenches, or conduits.");
 		SetToolTip(_enableLineAssociationPromptsCheckBox, "Broad override for line association prompts. Keep off unless line targets are known valid.");
 		SetToolTip(_enableLineStructuralAttachmentPromptsCheckBox, "Allows line features to try structural attachment prompts.");
 		SetToolTip(_enableLineContainmentPointPromptsCheckBox, "Allows line features to try containment in structure point targets.");
-		SetToolTip(_enableLineContainmentBoundaryPromptsCheckBox, "Allows line features to be contained by structure boundary targets.");
+		SetToolTip(_enableLineContainmentBoundaryPromptsCheckBox, "Allows electric line features to be contained by structure line containers such as Underground/Trench or Underground/Conduit.");
 		SetToolTip(_associationPromptModeComboBox, "Choose whether to ask, auto-create single candidates, review only multiples, or disable associations.");
+		SetToolTip(_configuredAssociationPlacementModeComboBox, "Fast batches configured template associations into one edit operation. Debug creates them one-by-one and reports the exact failures.");
 		SetToolTip(_stopAfterFirstSuccessfulAssociationCheckBox, "Stops looking for more automatic associations after one association succeeds.");
-		SetToolTip(_associationSearchDistanceTextBox, "Fallback association search distance retained for older saved settings.");
 		SetToolTip(_structuralAttachmentSearchDistanceTextBox, "Search distance for structural attachment candidates.");
 		SetToolTip(_junctionJunctionConnectivitySearchDistanceTextBox, "Search distance for nearby junction-junction connectivity candidates.");
 		SetToolTip(_containmentPointSearchDistanceTextBox, "Search distance for structure point containment candidates.");
-		SetToolTip(_containmentBoundarySearchDistanceTextBox, "Search distance for structure boundary containment candidates.");
-		SetToolTip(_associationPlacementGroupsTextBox, "Comma-separated group layer names for placed features that can run association prompts.");
-		SetToolTip(_structuralAttachmentTargetGroupsTextBox, "Comma-separated group layer names for structural attachment targets.");
-		SetToolTip(_structuralAttachmentTargetLayerNamesTextBox, "Optional comma-separated subtype or layer names for structural attachment targets.");
-		SetToolTip(_junctionJunctionConnectivityTargetGroupsTextBox, "Comma-separated device or junction group layer names for JJC targets.");
-		SetToolTip(_junctionJunctionConnectivityTargetLayerNamesTextBox, "Optional comma-separated subtype or layer names for JJC targets.");
-		SetToolTip(_containmentPointTargetGroupsTextBox, "Comma-separated group layer names for structure point containment targets.");
-		SetToolTip(_containmentPointTargetLayerNamesTextBox, "Optional comma-separated subtype or layer names for structure point containment targets.");
-		SetToolTip(_containmentBoundaryTargetGroupsTextBox, "Comma-separated group layer names for structure boundary containment targets.");
-		SetToolTip(_containmentBoundaryTargetLayerNamesTextBox, "Optional comma-separated subtype or layer names for structure boundary containment targets.");
+		SetToolTip(_containmentBoundarySearchDistanceTextBox, "Search distance for structure container candidates.");
+		SetToolTip(_associationPlacementGroupsTextBox, "Fallback group layer names used only when no association rule JSON is loaded.");
+		SetToolTip(_structuralAttachmentTargetGroupsTextBox, "Fallback structural attachment target groups used only when no association rule JSON is loaded.");
+		SetToolTip(_structuralAttachmentTargetLayerNamesTextBox, "Fallback structural attachment subtype or layer names used only when no association rule JSON is loaded.");
+		SetToolTip(_junctionJunctionConnectivityTargetGroupsTextBox, "Fallback JJC target groups used only when no association rule JSON is loaded.");
+		SetToolTip(_junctionJunctionConnectivityTargetLayerNamesTextBox, "Fallback JJC subtype or layer names used only when no association rule JSON is loaded.");
+		SetToolTip(_containmentPointTargetGroupsTextBox, "Fallback structure point containment target groups used only when no association rule JSON is loaded.");
+		SetToolTip(_containmentPointTargetLayerNamesTextBox, "Fallback structure point containment subtype or layer names used only when no association rule JSON is loaded.");
+		SetToolTip(_containmentBoundaryTargetGroupsTextBox, "Fallback structure container target groups used only when no association rule JSON is loaded.");
+		SetToolTip(_containmentBoundaryTargetLayerNamesTextBox, "Fallback structure container subtype or layer names used only when no association rule JSON is loaded.");
 		SetToolTip(_regenerateAssociationRulesButton, "Reads the active map's utility network rules directly through the Pro SDK and rebuilds the local JSON rule catalog.");
 		SetToolTip(_highlightSplitCandidatesCheckBox, "Draws a temporary overlay on split candidates while the prompt is visible.");
 		SetToolTip(_highlightAssociationCandidatesCheckBox, "Draws a temporary overlay on association candidates while the prompt is visible.");
 		SetToolTip(_showAutomaticStepDiagnosticsCheckBox, "Shows popup details when an automatic split or association step fails.");
+		SetToolTip(_useCompactDockpaneLayoutCheckBox, "Reduces spacing, button padding, row height, and footer padding in the bottom-docked template editor.");
+		SetToolTip(_maxRecentTemplatesTextBox, "Maximum number of recent templates to keep in the dockpane history. Values are clamped from 1 to 50.");
+		SetToolTip(_hintSourceColorHexTextBox, "HEX color used for the newly placed/source feature hint, for example #00FF50.");
+		SetToolTip(_hintAssociationTargetColorHexTextBox, "HEX color used for association target hints, for example #FF0000.");
+		SetToolTip(_hintSplitCandidateColorHexTextBox, "HEX color used for split candidate line hints, for example #FF0000.");
 	}
 
 	private static void SetToolTip(FrameworkElement element, string text)
@@ -873,28 +1126,31 @@ internal sealed class TemplateSettingsWindow : Window
 		};
 	}
 
-	private static Style CreateTabItemStyle()
+	private static Style CreateSettingsTabButtonStyle()
 	{
-		Style style = new Style(typeof(TabItem));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, TabBackgroundBrush));
+		Style style = new Style(typeof(Button));
 		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, SectionBorderBrush));
-		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(14.0, 6.0, 14.0, 6.0)));
-		Trigger selectedTrigger = new Trigger
-		{
-			Property = TabItem.IsSelectedProperty,
-			Value = true
-		};
-		selectedTrigger.Setters.Add(new Setter(Control.BackgroundProperty, TabSelectedBackgroundBrush));
-		selectedTrigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Triggers.Add(selectedTrigger);
+		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		ControlTemplate template = new ControlTemplate(typeof(Button));
+		FrameworkElementFactory border = new FrameworkElementFactory(typeof(Border));
+		border.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = RelativeSource.TemplatedParent });
+		border.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = RelativeSource.TemplatedParent });
+		border.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = RelativeSource.TemplatedParent });
+		border.SetValue(Border.CornerRadiusProperty, new CornerRadius(3.0, 3.0, 0.0, 0.0));
+		FrameworkElementFactory presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+		presenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+		presenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+		presenter.SetBinding(ContentPresenter.MarginProperty, new Binding("Padding") { RelativeSource = RelativeSource.TemplatedParent });
+		border.AppendChild(presenter);
+		template.VisualTree = border;
+		style.Setters.Add(new Setter(Control.TemplateProperty, template));
+
 		Trigger hoverTrigger = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true
 		};
 		hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
-		hoverTrigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
 		style.Triggers.Add(hoverTrigger);
 		return style;
 	}
@@ -939,8 +1195,105 @@ internal sealed class TemplateSettingsWindow : Window
 		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
+		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8.0, 4.0, 8.0, 4.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		style.Setters.Add(new Setter(Control.TemplateProperty, CreateComboBoxTemplate()));
 		return style;
+	}
+
+	private static ControlTemplate CreateComboBoxTemplate()
+	{
+		ControlTemplate comboTemplate = new ControlTemplate(typeof(ComboBox));
+		FrameworkElementFactory root = new FrameworkElementFactory(typeof(Grid));
+
+		FrameworkElementFactory toggle = new FrameworkElementFactory(typeof(ToggleButton));
+		toggle.SetValue(FrameworkElement.FocusVisualStyleProperty, null);
+		toggle.SetValue(ButtonBase.ClickModeProperty, ClickMode.Press);
+		toggle.SetBinding(Control.BackgroundProperty, new Binding("Background")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		toggle.SetBinding(Control.BorderBrushProperty, new Binding("BorderBrush")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		toggle.SetBinding(Control.BorderThicknessProperty, new Binding("BorderThickness")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		toggle.SetBinding(ToggleButton.IsCheckedProperty, new Binding("IsDropDownOpen")
+		{
+			RelativeSource = RelativeSource.TemplatedParent,
+			Mode = BindingMode.TwoWay
+		});
+		toggle.SetBinding(ContentControl.ContentProperty, new Binding("SelectionBoxItem")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		toggle.SetBinding(Control.PaddingProperty, new Binding("Padding")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		toggle.SetValue(Control.TemplateProperty, CreateComboBoxToggleTemplate());
+		root.AppendChild(toggle);
+
+		FrameworkElementFactory popup = new FrameworkElementFactory(typeof(Popup));
+		popup.Name = "PART_Popup";
+		popup.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
+		popup.SetValue(Popup.AllowsTransparencyProperty, true);
+		popup.SetValue(Popup.FocusableProperty, false);
+		popup.SetBinding(Popup.IsOpenProperty, new Binding("IsDropDownOpen")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		FrameworkElementFactory popupBorder = new FrameworkElementFactory(typeof(Border));
+		popupBorder.SetValue(Border.BackgroundProperty, SurfaceBackgroundBrush);
+		popupBorder.SetValue(Border.BorderBrushProperty, ControlBorderBrush);
+		popupBorder.SetValue(Border.BorderThicknessProperty, new Thickness(1.0));
+		popupBorder.SetBinding(FrameworkElement.MinWidthProperty, new Binding("ActualWidth")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		FrameworkElementFactory scrollViewer = new FrameworkElementFactory(typeof(ScrollViewer));
+		scrollViewer.SetValue(ScrollViewer.CanContentScrollProperty, true);
+		scrollViewer.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
+		FrameworkElementFactory itemsPresenter = new FrameworkElementFactory(typeof(ItemsPresenter));
+		scrollViewer.AppendChild(itemsPresenter);
+		popupBorder.AppendChild(scrollViewer);
+		popup.AppendChild(popupBorder);
+		root.AppendChild(popup);
+
+		comboTemplate.VisualTree = root;
+		return comboTemplate;
+	}
+
+	private static ControlTemplate CreateComboBoxToggleTemplate()
+	{
+		ControlTemplate toggleTemplate = new ControlTemplate(typeof(ToggleButton));
+		FrameworkElementFactory border = new FrameworkElementFactory(typeof(Border));
+		border.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = RelativeSource.TemplatedParent });
+		border.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = RelativeSource.TemplatedParent });
+		border.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = RelativeSource.TemplatedParent });
+		FrameworkElementFactory grid = new FrameworkElementFactory(typeof(Grid));
+		grid.SetValue(FrameworkElement.MinHeightProperty, 28.0);
+		grid.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0));
+		grid.SetValue(Grid.ColumnProperty, 0);
+		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
+		content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+		content.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+		content.SetBinding(ContentPresenter.ContentProperty, new Binding("Content") { RelativeSource = RelativeSource.TemplatedParent });
+		content.SetBinding(ContentPresenter.MarginProperty, new Binding("Padding") { RelativeSource = RelativeSource.TemplatedParent });
+		grid.AppendChild(content);
+		FrameworkElementFactory arrow = new FrameworkElementFactory(typeof(TextBlock));
+		arrow.SetValue(TextBlock.TextProperty, "v");
+		arrow.SetValue(TextBlock.ForegroundProperty, SecondaryTextBrush);
+		arrow.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 8.0, 0.0));
+		arrow.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Right);
+		arrow.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		grid.AppendChild(arrow);
+		border.AppendChild(grid);
+		toggleTemplate.VisualTree = border;
+		return toggleTemplate;
 	}
 
 	private static Style CreateComboBoxItemStyle()
@@ -972,9 +1325,48 @@ internal sealed class TemplateSettingsWindow : Window
 	{
 		Style style = new Style(typeof(CheckBox));
 		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, WindowBackgroundBrush));
+		style.Setters.Add(new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush));
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
+		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		ControlTemplate template = new ControlTemplate(typeof(CheckBox));
+		FrameworkElementFactory panel = new FrameworkElementFactory(typeof(StackPanel));
+		panel.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+		FrameworkElementFactory box = new FrameworkElementFactory(typeof(Border));
+		box.Name = "CheckBoxGlyph";
+		box.SetValue(FrameworkElement.WidthProperty, 16.0);
+		box.SetValue(FrameworkElement.HeightProperty, 16.0);
+		box.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 8.0, 0.0));
+		box.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = RelativeSource.TemplatedParent });
+		box.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = RelativeSource.TemplatedParent });
+		box.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = RelativeSource.TemplatedParent });
+		FrameworkElementFactory check = new FrameworkElementFactory(typeof(TextBlock));
+		check.Name = "CheckMark";
+		check.SetValue(TextBlock.TextProperty, "✓");
+		check.SetValue(TextBlock.ForegroundProperty, IsDarkTheme ? Brushes.White : Brushes.Black);
+		check.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
+		check.SetValue(TextBlock.FontSizeProperty, 15.0);
+		check.SetValue(TextBlock.LineHeightProperty, 16.0);
+		check.SetValue(TextBlock.TextAlignmentProperty, TextAlignment.Center);
+		check.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+		check.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		check.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
+		box.AppendChild(check);
+		panel.AppendChild(box);
+		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
+		content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
+		content.SetBinding(ContentPresenter.ContentProperty, new Binding("Content") { RelativeSource = RelativeSource.TemplatedParent });
+		panel.AppendChild(content);
+		template.VisualTree = panel;
+		Trigger checkedTrigger = new Trigger
+		{
+			Property = ToggleButton.IsCheckedProperty,
+			Value = true
+		};
+		checkedTrigger.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "CheckMark"));
+		checkedTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, AccentBorderBrush, "CheckBoxGlyph"));
+		template.Triggers.Add(checkedTrigger);
+		style.Setters.Add(new Setter(Control.TemplateProperty, template));
 		style.Triggers.Add(new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
@@ -1013,5 +1405,52 @@ internal sealed class TemplateSettingsWindow : Window
 		disabledTrigger.Setters.Add(new Setter(Control.ForegroundProperty, SystemColors.GrayTextBrush));
 		style.Triggers.Add(disabledTrigger);
 		return style;
+	}
+
+	private static Style CreatePrimaryButtonStyle()
+	{
+		Style style = CreateButtonStyle();
+		style.Setters.Add(new Setter(Control.BackgroundProperty, AccentBorderBrush));
+		style.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+		style.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBorderBrush));
+		Trigger hoverTrigger = new Trigger
+		{
+			Property = UIElement.IsMouseOverProperty,
+			Value = true
+		};
+		hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, AccentButtonHoverBrush));
+		hoverTrigger.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+		hoverTrigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentButtonHoverBrush));
+		style.Triggers.Add(hoverTrigger);
+		return style;
+	}
+
+	private sealed class PlacementOverrideEditorRow
+	{
+		public PlacementOverrideEditorRow(
+			PlacementAttributeOverrideEditorState state,
+			Border container,
+			CheckBox enabledCheckBox,
+			ComboBox valueComboBox,
+			TextBox valueTextBox)
+		{
+			State = state;
+			Container = container;
+			EnabledCheckBox = enabledCheckBox;
+			ValueComboBox = valueComboBox;
+			ValueTextBox = valueTextBox;
+		}
+
+		public PlacementAttributeOverrideEditorState State { get; }
+
+		public Border Container { get; }
+
+		public CheckBox EnabledCheckBox { get; }
+
+		public ComboBox ValueComboBox { get; }
+
+		public TextBox ValueTextBox { get; }
+
+		public bool UseDropDown => ValueComboBox != null;
 	}
 }

@@ -61,7 +61,7 @@ internal sealed class AssociationRuleCatalog
 		{
 			return "Containment";
 		}
-		if ((int)associationType == 1)
+		if (associationType == UtilityNetworkAssociationTypes.JunctionJunctionConnectivity)
 		{
 			return "JunctionJunctionConnectivity";
 		}
@@ -85,9 +85,9 @@ internal sealed class AssociationRuleCatalog
 
 	private static AssociationRuleCatalog Load()
 	{
+		string path = ResolveRuleFilePath(preferExisting: true);
 		try
 		{
-			string path = ResolveRuleFilePath(preferExisting: true);
 			if (!File.Exists(path))
 			{
 				return new AssociationRuleCatalog(new List<AssociationRule>());
@@ -100,10 +100,9 @@ internal sealed class AssociationRuleCatalog
 		}
 		catch (Exception ex)
 		{
-			string path = ResolveRuleFilePath(preferExisting: true);
 			if (File.Exists(path))
 			{
-				DialogService.Show(
+				DialogService.ShowAsync(
 					$"The association rules file could not be loaded and will be ignored.\n\nPath: {path}\n\nError: {ex.Message}",
 					"Template Editor");
 			}

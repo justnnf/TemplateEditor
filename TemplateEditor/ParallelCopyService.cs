@@ -67,8 +67,9 @@ internal static class ParallelCopyService
 				return GetSelectedPolylines(layers).Count > 0;
 			});
 		}
-		catch
+		catch (Exception ex)
 		{
+			LogService.LogException("Could not inspect selected lines for parallel copy.", ex);
 			return false;
 		}
 	}
@@ -281,12 +282,27 @@ internal static class ParallelCopyService
 		{
 			throw new InvalidOperationException("The selected line must contain a valid geometry.");
 		}
-		Geometry offsetGeometry = GeometryEngine.Instance.Offset(sourceLine, offsetDistance, OffsetType.Round, Math.Abs(offsetDistance));
+		double coordinateOffsetDistance = ConvertMetersToSourceUnits(sourceLine, offsetDistance);
+		Geometry offsetGeometry = GeometryEngine.Instance.Offset(sourceLine, coordinateOffsetDistance, OffsetType.Round, Math.Abs(coordinateOffsetDistance));
 		if (offsetGeometry is Polyline offsetLine && !offsetLine.IsEmpty)
 		{
 			return offsetLine;
 		}
 		throw new InvalidOperationException("ArcGIS Pro could not create a parallel copy from the selected line.");
+	}
+
+	private static double ConvertMetersToSourceUnits(Polyline sourceLine, double meters)
+	{
+		SpatialReference spatialReference = sourceLine?.SpatialReference;
+		if (spatialReference == null || spatialReference.IsUnknown)
+		{
+			throw new InvalidOperationException("The selected line has an unknown coordinate system. Choose a line from a projected coordinate system so the meter offset can be converted correctly.");
+		}
+		if (!spatialReference.IsProjected || spatialReference.Unit is not LinearUnit linearUnit)
+		{
+			throw new InvalidOperationException($"The selected line uses '{spatialReference.Name}', which is not a projected linear coordinate system. Project the source layer to a meter/foot-based coordinate system before using parallel copy.");
+		}
+		return linearUnit.ConvertFromMeters(meters);
 	}
 
 	private static CIMSymbolReference CreatePreviewSymbol()

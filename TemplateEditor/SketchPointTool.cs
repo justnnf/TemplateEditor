@@ -22,10 +22,19 @@ internal class SketchPointTool : PreviewSketchTool
 
 	protected override async Task<bool> OnSketchCompleteAsync(Geometry geometry)
 	{
+		await RefreshPlacementRotationAsync();
 		Geometry placementGeometry = (Geometry)(object)PlacementAnchorOverride ?? geometry;
 		SuspendPreview();
-		await CommonFunctions.CreateFeatures(placementGeometry, RotationDegrees);
-		ToolReactivationService.ActivateSelectTool();
+		bool placementSucceeded = false;
+		await RunWithPlacementCursorAsync(async () => placementSucceeded = await CommonFunctions.CreateFeatures(placementGeometry, RotationDegrees));
+		if (EditorDockpaneViewModel.ShouldReturnToSelectAfterPlacement(placementSucceeded))
+		{
+			ToolReactivationService.ActivateSelectTool();
+		}
+		else
+		{
+			ResumePreviewAfterPlacement();
+		}
 		return await base.OnSketchCompleteAsync(geometry);
 	}
 }

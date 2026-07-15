@@ -1,0 +1,16 @@
+{
+  "fields": [
+    {
+      "fieldName": "ownedby",
+      "label": "Owned By",
+      "description": "Session and one-placement override for the configured asset owner.",
+      "domainName": "FAI_Asset_Owner"
+    },
+    {
+      "fieldName": "maintby",
+      "label": "FAI Operated?",
+      "description": "Session and one-placement override for the configured operated flag.",
+      "domainName": "FAI_Yes_No_Text"
+    }
+  ]
+}

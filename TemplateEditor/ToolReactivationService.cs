@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using ArcGIS.Desktop.Framework;
@@ -21,8 +22,8 @@ internal static class ToolReactivationService
 		{
 			return;
 		}
-		int requestId = ++_activationRequestId;
-		_ = ActivateToolAsync(toolId, requestId);
+		int requestId = Interlocked.Increment(ref _activationRequestId);
+		TaskObservationService.Forget(ActivateToolAsync(toolId, requestId), $"Tool reactivation failed for '{toolId}'.");
 	}
 
 	private static async Task ActivateToolAsync(string toolId, int requestId)
@@ -40,15 +41,19 @@ internal static class ToolReactivationService
 			}
 			await FrameworkApplication.SetCurrentToolAsync(toolId);
 		}
-		catch
+		catch (Exception ex)
 		{
 			if (requestId != _activationRequestId)
 			{
 				return;
 			}
+			LogService.LogException($"SetCurrentToolAsync failed for '{toolId}'. Falling back to plug-in command activation.", ex);
 			_ = FrameworkApplication.Current.Dispatcher.BeginInvoke((Action)delegate
 			{
-				((ICommand)FrameworkApplication.GetPlugInWrapper(toolId, true)).Execute(null);
+				if (FrameworkApplication.GetPlugInWrapper(toolId, true) is ICommand command)
+				{
+					command.Execute(null);
+				}
 			});
 		}
 	}

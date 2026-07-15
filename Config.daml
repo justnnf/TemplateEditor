@@ -1,16 +1,16 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <ArcGIS defaultAssembly="TemplateEditor.dll" defaultNamespace="TemplateEditor" xmlns="http://schemas.esri.com/DADF/Registry" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.esri.com/DADF/Registry file:///C:/Program%20Files/ArcGIS/Pro/bin/ArcGIS.Desktop.Framework.xsd">
-  <AddInInfo id="{51ca91f3-e005-4b62-863c-c0a618aada65}" version="1.0.8" desktopVersion="3.3.52636" product="ArcGISPro">
-    <Name>TemplateEditor</Name>
+  <AddInInfo id="{51ca91f3-e005-4b62-863c-c0a618aada65}" version="1.4.2" desktopVersion="3.3.5" product="ArcGISPro">
+    <Name>Template Editor</Name>
     <Description>Template editor tools</Description>
     <Image>Images\AddInDesktop32.png</Image>
-    <Author>J. Foltinek</Author>
+    <Author>FortisAlberta</Author>
     <Company>FortisAlberta</Company>
     <Date>05/17/2026</Date>
     <Subject>Framework</Subject>
   </AddInInfo>
   <modules>
-    <insertModule id="TemplateEditor_Module" className="AddinModule" autoLoad="true" caption="AddinModule">
+    <insertModule id="TemplateEditor_Module" className="TemplateEditor.AddinModule" autoLoad="true" caption="AddinModule">
       <tabs>
         <tab id="TemplateEditor_EditorTab" caption="Templates" keytip="">
           <group refID="TemplateEditor_EditorGroup" />
@@ -24,31 +24,31 @@
         </group>
       </groups>
       <controls>
-        <tool id="TemplateEditor_SketchPointTool" caption="SketchPointTool" className="SketchPointTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
-          <tooltip heading="Tooltip Heading">Tooltip text<disabledText /></tooltip>
+        <tool id="TemplateEditor_SketchPointTool" caption="SketchPointTool" className="TemplateEditor.SketchPointTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
+          <tooltip heading="Place Point Template">Place the selected point template.<disabledText /></tooltip>
         </tool>
-        <tool id="TemplateEditor_SketchPolylineTool" caption="SketchPolylineTool" className="SketchPolylineTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
-          <tooltip heading="Tooltip Heading">Tooltip text<disabledText /></tooltip>
+        <tool id="TemplateEditor_SketchPolylineTool" caption="SketchPolylineTool" className="TemplateEditor.SketchPolylineTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
+          <tooltip heading="Place Line Template">Sketch a line for the selected template.<disabledText /></tooltip>
         </tool>
-        <tool id="TemplateEditor_SketchPolygonTool" caption="SketchPolygonTool" className="SketchPolygonTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
-          <tooltip heading="Tooltip Heading">Tooltip text<disabledText /></tooltip>
+        <tool id="TemplateEditor_SketchPolygonTool" caption="SketchPolygonTool" className="TemplateEditor.SketchPolygonTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
+          <tooltip heading="Place Polygon Template">Sketch a polygon for the selected template.<disabledText /></tooltip>
         </tool>
-        <tool id="TemplateEditor_AddRowTool" caption="AddRowTool" className="AddRowTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
-          <tooltip heading="Tooltip Heading">Tooltip text<disabledText /></tooltip>
+        <tool id="TemplateEditor_AddRowTool" caption="AddRowTool" className="TemplateEditor.AddRowTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
+          <tooltip heading="Create Table Row">Create a non-spatial row for the selected template.<disabledText /></tooltip>
         </tool>
-        <button id="TemplateEditor_TemplateSettings" caption="Settings" className="TemplateSettingsButton" loadOnClick="true" smallImage="Images/ConfigSettings16.png" largeImage="Images/ConfigSettings32.png" keytip="">
+        <button id="TemplateEditor_TemplateSettings" caption="Settings" className="TemplateEditor.TemplateSettingsButton" loadOnClick="true" smallImage="Images/ConfigSettings16.png" largeImage="Images/ConfigSettings32.png" keytip="">
           <tooltip heading="Settings">Choose the template config file and placement options.<disabledText /></tooltip>
         </button>
-        <button id="TemplateEditor_OpenEditorDockpane" caption="Open Editor" className="EditorDockpane_ShowButton" loadOnClick="true" smallImage="Images/TemplateEditor16.png" largeImage="Images/TemplateEditor32.png" keytip="">
+        <button id="TemplateEditor_OpenEditorDockpane" caption="Open Editor" className="TemplateEditor.EditorDockpane_ShowButton" loadOnClick="true" smallImage="Images/TemplateEditor16.png" largeImage="Images/TemplateEditor32.png" keytip="">
           <tooltip heading="Open Editor">Open the template editor.<disabledText /></tooltip>
         </button>
-        <button id="TemplateEditor_ReloadConfig" caption="Reload Config" className="TemplateReloadConfigButton" loadOnClick="true" smallImage="Images/ReloadConfig16.png" largeImage="Images/ReloadConfig32.png" keytip="">
+        <button id="TemplateEditor_ReloadConfig" caption="Reload Config" className="TemplateEditor.TemplateReloadConfigButton" loadOnClick="true" smallImage="Images/ReloadConfig16.png" largeImage="Images/ReloadConfig32.png" keytip="">
           <tooltip heading="Reload Config">Reload the selected template configuration file.<disabledText /></tooltip>
         </button>
       </controls>
       <dockPanes>
-        <dockPane id="TemplateEditor_EditorDockpane" caption="Template Editor" className="EditorDockpaneViewModel" dock="bottom">
-          <content className="EditorDockpaneView" />
+        <dockPane id="TemplateEditor_EditorDockpane" caption="Template Editor" className="TemplateEditor.EditorDockpaneViewModel" dock="bottom">
+          <content className="TemplateEditor.EditorDockpaneView" />
         </dockPane>
       </dockPanes>
     </insertModule>

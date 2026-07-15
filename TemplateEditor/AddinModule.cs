@@ -2,7 +2,6 @@ using System;
 using ArcGIS.Desktop.Core.Events;
 using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
-using ArcGIS.Desktop.Framework.Dialogs;
 
 namespace TemplateEditor;
 
@@ -16,11 +15,16 @@ internal class AddinModule : Module
 	{
 		try
 		{
+			LogService.Write("AddinModule constructor starting.");
 			AddinConfiguration.Initialize();
+			LogService.Write("AddinConfiguration initialized successfully.");
+			ProjectOpenedEvent.Subscribe(OnProjectOpened);
+			LogService.Write("ProjectOpenedEvent subscribed.");
 		}
 		catch (Exception ex)
 		{
-			DialogService.Show("Error instantiating the add-in module:\n" + ex.Message + "\n\n" + ex.StackTrace, "Template Editor");
+			LogService.LogException("Error instantiating the add-in module.", ex);
+			DialogService.Show("Error instantiating the add-in module:\n" + ex.Message + "\n\nDetails were written to the Template Editor log.", "Template Editor");
 		}
 	}
 
@@ -35,6 +39,7 @@ internal class AddinModule : Module
 
 	protected override bool CanUnload()
 	{
+		ProjectOpenedEvent.Unsubscribe(OnProjectOpened);
 		return true;
 	}
 }

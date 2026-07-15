@@ -13,6 +13,7 @@ internal abstract class PreviewSketchTool : MapTool
 {
 	private static PreviewSketchTool _activePreviewTool;
 	private readonly List<IDisposable> _previewOverlays = new List<IDisposable>();
+	private readonly object _previewOverlayLock = new object();
 	private bool _isPreviewUpdateQueued;
 	private bool _isPreviewSuspended;
 	private bool _isSuspendedForPlacement;
@@ -53,10 +54,6 @@ internal abstract class PreviewSketchTool : MapTool
 			_isPreviewSuspended = false;
 		}
 		_lastClientPoint = clientPoint;
-		if (_rotationAnchorClientPoint.HasValue)
-		{
-			UpdateRotationFromMouse(clientPoint);
-		}
 		QueuePreviewUpdate(clientPoint);
 	}
 
@@ -80,7 +77,7 @@ internal abstract class PreviewSketchTool : MapTool
 
 	protected override void OnToolKeyUp(MapViewKeyEventArgs args)
 	{
-		if (!Keyboard.IsKeyDown(Key.R))
+		if (!Keyboard.IsKeyDown(Key.R) && _rotationAnchorClientPoint.HasValue)
 		{
 			EndRotateMode();
 			args.Handled = true;
@@ -132,13 +129,39 @@ internal abstract class PreviewSketchTool : MapTool
 		ClearPreviewOverlay();
 	}
 
+	protected void ResumePreviewAfterPlacement()
+	{
+		_isPreviewSuspended = false;
+		_isSuspendedForPlacement = false;
+		PlacementAnchorOverride = null;
+		RefreshPreview();
+	}
+
+	protected async Task RunWithPlacementCursorAsync(Func<Task> placementAction)
+	{
+		Cursor previousCursor = Cursor;
+		Cursor = Cursors.Wait;
+		await Task.Yield();
+		try
+		{
+			await placementAction();
+		}
+		finally
+		{
+			Cursor = previousCursor;
+		}
+	}
+
 	protected void ClearPreviewOverlay()
 	{
-		foreach (IDisposable previewOverlay in _previewOverlays)
+		lock (_previewOverlayLock)
 		{
-			previewOverlay.Dispose();
+			foreach (IDisposable previewOverlay in _previewOverlays)
+			{
+				previewOverlay.Dispose();
+			}
+			_previewOverlays.Clear();
 		}
-		_previewOverlays.Clear();
 		_isPreviewUpdateQueued = false;
 	}
 
@@ -165,11 +188,36 @@ internal abstract class PreviewSketchTool : MapTool
 		RefreshPreview();
 	}
 
-	private void UpdateRotationFromMouse(Point clientPoint)
+	protected async Task RefreshPlacementRotationAsync()
 	{
-		Point anchorPoint = _rotationAnchorClientPoint.Value;
-		double x = clientPoint.X - anchorPoint.X;
-		double y = anchorPoint.Y - clientPoint.Y;
+		if (!_rotationAnchorClientPoint.HasValue || !_lastClientPoint.HasValue)
+		{
+			return;
+		}
+		Point anchorClientPoint = _rotationAnchorClientPoint.Value;
+		Point currentClientPoint = _lastClientPoint.Value;
+		await QueuedTask.Run(() =>
+		{
+			MapView mapView = MapView.Active;
+			if (mapView == null)
+			{
+				return;
+			}
+			MapPoint anchorMapPoint = mapView.ClientToMap(anchorClientPoint);
+			MapPoint currentMapPoint = mapView.ClientToMap(currentClientPoint);
+			UpdateRotationFromMapPoints(anchorMapPoint, currentMapPoint);
+			PlacementAnchorOverride = anchorMapPoint;
+		});
+	}
+
+	private void UpdateRotationFromMapPoints(MapPoint anchorPoint, MapPoint currentPoint)
+	{
+		if (anchorPoint == null || currentPoint == null)
+		{
+			return;
+		}
+		double x = currentPoint.X - anchorPoint.X;
+		double y = currentPoint.Y - anchorPoint.Y;
 		if (Math.Abs(x) < 0.001 && Math.Abs(y) < 0.001)
 		{
 			return;
@@ -198,7 +246,7 @@ internal abstract class PreviewSketchTool : MapTool
 			return;
 		}
 		_isPreviewUpdateQueued = true;
-		_ = UpdatePreviewAsync(clientPoint);
+		TaskObservationService.Forget(UpdatePreviewAsync(clientPoint), "Preview overlay update failed.");
 	}
 
 	private async Task UpdatePreviewAsync(Point clientPoint)
@@ -218,7 +266,16 @@ internal abstract class PreviewSketchTool : MapTool
 					return;
 				}
 				MapPoint anchorPoint = mapView.ClientToMap(_rotationAnchorClientPoint ?? clientPoint);
-				PlacementAnchorOverride = _rotationAnchorClientPoint.HasValue ? anchorPoint : null;
+				if (_rotationAnchorClientPoint.HasValue)
+				{
+					MapPoint currentPoint = mapView.ClientToMap(clientPoint);
+					UpdateRotationFromMapPoints(anchorPoint, currentPoint);
+					PlacementAnchorOverride = anchorPoint;
+				}
+				else
+				{
+					PlacementAnchorOverride = null;
+				}
 				ClearPreviewOverlay();
 				if (_isPreviewSuspended)
 				{
@@ -226,12 +283,17 @@ internal abstract class PreviewSketchTool : MapTool
 				}
 				foreach (PreviewOverlayGraphic graphic in CommonFunctions.CreatePreviewGraphics(anchorPoint, RotationDegrees))
 				{
-					_previewOverlays.Add(mapView.AddOverlay(graphic.Geometry, graphic.Symbol));
+					IDisposable overlay = mapView.AddOverlay(graphic.Geometry, graphic.Symbol);
+					lock (_previewOverlayLock)
+					{
+						_previewOverlays.Add(overlay);
+					}
 				}
 			});
 		}
-		catch
+		catch (Exception ex)
 		{
+			LogService.LogException("Preview overlay update failed.", ex);
 			ClearPreviewOverlay();
 		}
 		finally

@@ -14,6 +14,7 @@ internal static class ToolCursorLoader
 			return Cursors.Cross;
 		}
 		byte[] cursorBytes = File.ReadAllBytes(cursorPath);
+		// Cursor takes ownership of the stream.
 		return new Cursor(new MemoryStream(cursorBytes));
 	}
 }

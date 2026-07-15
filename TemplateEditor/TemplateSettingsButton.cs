@@ -10,10 +10,13 @@ internal class TemplateSettingsButton : Button
 	{
 		try
 		{
+			LogService.Write("Template settings button clicked.");
 			AddinConfiguration.ShowSettingsWindow();
+			LogService.Write("Template settings window request completed.");
 		}
 		catch (Exception ex)
 		{
+			LogService.LogException("Template settings button failed.", ex);
 			DialogService.Show(ex.Message, "Template Settings");
 		}
 	}

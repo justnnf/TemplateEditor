@@ -14,6 +14,8 @@ internal class EditorDockpaneViewModel : DockPane
 {
 	private const string _dockPaneID = "TemplateEditor_EditorDockpane";
 
+	internal const string ReadyPlacementStatus = "Ready. Please select a template to place.";
+
 	private List<DisplayTemplate> _simpleTemplates;
 
 	private List<DisplayTemplate> _groupTemplates;
@@ -40,15 +42,55 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private int _activationVersion;
 
+	private bool _isApplyingMirrorPlacementSelection;
+
 	private List<DisplayTemplate> _favouriteTemplates;
 
 	private List<DisplayTemplate> _recentTemplates;
 
 	private Dictionary<string, DisplayTemplate> _allTemplatesByKey;
 
+	private string _placementStatus = ReadyPlacementStatus;
+
 	public List<DisplayTemplate> Templates { get; set; }
 
 	public string TemplateCount { get; set; }
+
+	public string SelectedTemplateStatus => SelectedTemplate == null ? "No template selected" : "Selected: " + SelectedTemplate.DisplayName;
+
+	public string PlacementStatus => _placementStatus;
+
+	public bool IsContinuousPlacementEnabled => AddinConfiguration.Settings?.EnableContinuousPlacementMode == true;
+
+	public string PlacementOptionsStatus
+	{
+		get
+		{
+			TemplateEditorSettings settings = AddinConfiguration.Settings;
+			if (settings == null)
+			{
+				return string.Empty;
+			}
+			List<string> options = new List<string>();
+			options.Add(settings.PreventDefaultVersionPlacement ? "DEFAULT blocked" : "DEFAULT allowed");
+			options.Add(settings.EnableAssociationPrompts ? "Associations on" : "Associations off");
+			options.Add(settings.EnableLineSplitPrompts ? "Splits on" : "Splits off");
+			if (settings.EnableContinuousPlacementMode)
+			{
+				options.Add("Continuous on");
+			}
+			if (AddinConfiguration.PlacementMirrorMode != PlacementMirrorMode.None)
+			{
+				options.Add("Mirror " + GetMirrorModeLabel(AddinConfiguration.PlacementMirrorMode));
+			}
+			string overrideStatus = PlacementAttributeOverrideService.GetStatusLabel();
+			if (!string.IsNullOrWhiteSpace(overrideStatus))
+			{
+				options.Add(overrideStatus);
+			}
+			return string.Join(" | ", options);
+		}
+	}
 
 	public ICommand SortCommand { get; }
 
@@ -66,6 +108,14 @@ internal class EditorDockpaneViewModel : DockPane
 
 	public ICommand ToggleFavouriteCommand { get; }
 
+	public ICommand ActivateContinuousPlacementCommand { get; }
+
+	public ICommand StopContinuousPlacementCommand { get; }
+
+	public ICommand ActivateMirrorPlacementCommand { get; }
+
+	public ICommand PlaceWithOverridesCommand { get; }
+
 	public DisplayTemplate SelectedTemplate
 	{
 		get
@@ -78,18 +128,31 @@ internal class EditorDockpaneViewModel : DockPane
 			{
 				return;
 			}
-			_selectedTemplate = value;
-			if (value?.IsGroupChild == true)
-			{
-				ActivateChildTemplate(value);
-			}
-			else
-			{
-				AddinConfiguration.SelectedTemplate = value;
-				ActivateTemplate(value);
-			}
-			NotifyPropertyChanged(() => SelectedTemplate);
+			SelectTemplate(value, resetMirrorMode: !_isApplyingMirrorPlacementSelection);
 		}
+	}
+
+	private void SelectTemplate(DisplayTemplate template, bool resetMirrorMode = true, bool activateTemplate = true)
+	{
+		_selectedTemplate = template;
+		ApplySelectedTemplateState(template, resetMirrorMode);
+		if (activateTemplate && template != null)
+		{
+			ActivateTemplate(template);
+		}
+	}
+
+	private void ApplySelectedTemplateState(DisplayTemplate template, bool resetMirrorMode = true)
+	{
+		if (resetMirrorMode)
+		{
+			AddinConfiguration.SetPlacementMirrorMode(PlacementMirrorMode.None);
+		}
+		AddinConfiguration.SetSelectedTemplate(template);
+		NotifyPropertyChanged(() => SelectedTemplate);
+		NotifyPropertyChanged(() => SelectedTemplateStatus);
+		NotifyPropertyChanged(() => PlacementOptionsStatus);
+		SetPlacementStatusCore(template == null ? ReadyPlacementStatus : "Selected: " + GetPlacementStatusTemplateText(template) + ". Click the map to place.");
 	}
 
 	private static void ActivateTemplate(DisplayTemplate selectedTemplate)
@@ -100,7 +163,7 @@ internal class EditorDockpaneViewModel : DockPane
 		}
 		EditorDockpaneViewModel viewModel = FrameworkApplication.DockPaneManager.Find(_dockPaneID) as EditorDockpaneViewModel;
 		int activationVersion = viewModel == null ? 0 : ++viewModel._activationVersion;
-		_ = ActivateSelectedTemplateToolAsync(selectedTemplate, activationVersion);
+		TaskObservationService.Forget(ActivateSelectedTemplateToolAsync(selectedTemplate, activationVersion), $"Template activation failed for '{selectedTemplate?.Name}'.");
 	}
 
 	private static async Task ActivateSelectedTemplateToolAsync(DisplayTemplate selectedTemplate, int activationVersion)
@@ -158,7 +221,7 @@ internal class EditorDockpaneViewModel : DockPane
 		}
 		if (GeometryTypeHelper.IsPolygon(templateGeometryType))
 		{
-			SimpleTemplate simpleTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault((SimpleTemplate n) => n.Name == AddinConfiguration.SelectedTemplate?.Name);
+			SimpleTemplate simpleTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, AddinConfiguration.SelectedTemplate?.Name, StringComparison.OrdinalIgnoreCase));
 			return simpleTemplate?.Geometry == null ? "TemplateEditor_SketchPolygonTool" : "TemplateEditor_SketchPointTool";
 		}
 		return "esri_mapping_exploreTool";
@@ -248,23 +311,107 @@ internal class EditorDockpaneViewModel : DockPane
 
 	protected EditorDockpaneViewModel()
 	{
+		LogService.Write("EditorDockpaneViewModel constructor starting.");
 		SortCommand = new RelayCommand(SortTemplates);
 		ClearSearchCommand = new RelayCommand(_ => SearchText = string.Empty);
 		ActivateSelectedTemplateCommand = new RelayCommand(_ =>
 		{
-			if (SelectedTemplate?.IsGroupChild == true)
+			if (SelectedTemplate == null)
 			{
-				ActivateChildTemplate(SelectedTemplate);
 				return;
 			}
-			ActivateTemplate(SelectedTemplate);
+			SelectTemplate(SelectedTemplate);
 		});
 		ActivateChildTemplateCommand = new RelayCommand(ActivateChildTemplate);
 		ToggleGroupExpansionCommand = new RelayCommand(ToggleGroupExpansion);
 		DeactivateTemplateCommand = new RelayCommand(_ => DeactivateTemplate());
 		ReloadConfigCommand = new RelayCommand(_ => ReloadTemplateConfig());
 		ToggleFavouriteCommand = new RelayCommand(ToggleFavourite);
-		LoadTemplatesFromConfig();
+		ActivateContinuousPlacementCommand = new RelayCommand(ActivateContinuousPlacement);
+		StopContinuousPlacementCommand = new RelayCommand(_ => StopContinuousPlacement());
+		ActivateMirrorPlacementCommand = new RelayCommand(ActivateMirrorPlacement);
+		PlaceWithOverridesCommand = new RelayCommand(parameter => _ = PlaceWithOverridesAsync(parameter));
+		try
+		{
+			LoadTemplatesFromConfig();
+			LogService.Write("EditorDockpaneViewModel loaded templates successfully.");
+		}
+		catch (Exception ex)
+		{
+			InitializeEmptyTemplateLists();
+			SetPlacementStatusCore("Choose a valid template configuration to begin.");
+			LogService.LogException("Template editor dockpane could not load templates during initialization.", ex);
+			DialogService.ShowAsync("Template configuration could not be loaded.\n\n" + ex.Message, "Template Editor");
+		}
+	}
+
+	private void ActivateContinuousPlacement(object parameter)
+	{
+		if (parameter is not DisplayTemplate template)
+		{
+			return;
+		}
+		SetContinuousPlacementMode(true);
+		SelectTemplate(template);
+	}
+
+
+	private void ActivateMirrorPlacement(object parameter)
+	{
+		if (parameter is not Tuple<DisplayTemplate, PlacementMirrorMode> mirrorRequest || mirrorRequest.Item1 == null)
+		{
+			return;
+		}
+		AddinConfiguration.SetPlacementMirrorMode(mirrorRequest.Item2);
+		NotifyPropertyChanged(() => PlacementOptionsStatus);
+		if (Equals(_selectedTemplate, mirrorRequest.Item1))
+		{
+			SelectTemplate(mirrorRequest.Item1, resetMirrorMode: false);
+			return;
+		}
+		_isApplyingMirrorPlacementSelection = true;
+		try
+		{
+			SelectedTemplate = mirrorRequest.Item1;
+		}
+		finally
+		{
+			_isApplyingMirrorPlacementSelection = false;
+		}
+	}
+
+	private void StopContinuousPlacement()
+	{
+		SetContinuousPlacementMode(false);
+		DeactivateTemplate();
+	}
+
+	private async Task PlaceWithOverridesAsync(object parameter)
+	{
+		if (parameter is not DisplayTemplate template)
+		{
+			return;
+		}
+		if (!await PlacementAttributeOverrideService.ConfigureOneTimePlacementOverridesAsync(template))
+		{
+			return;
+		}
+		SelectTemplate(template);
+	}
+
+	private void SetContinuousPlacementMode(bool enabled)
+	{
+		TemplateEditorSettings settings = AddinConfiguration.Settings?.Clone() ?? new TemplateEditorSettings();
+		if (settings.EnableContinuousPlacementMode == enabled)
+		{
+			NotifyPropertyChanged(() => IsContinuousPlacementEnabled);
+			NotifyPropertyChanged(() => PlacementOptionsStatus);
+			return;
+		}
+		settings.EnableContinuousPlacementMode = enabled;
+		AddinConfiguration.ApplySettings(settings);
+		NotifyPropertyChanged(() => IsContinuousPlacementEnabled);
+		NotifyPropertyChanged(() => PlacementOptionsStatus);
 	}
 
 	private void ActivateChildTemplate(object parameter)
@@ -279,10 +426,7 @@ internal class EditorDockpaneViewModel : DockPane
 		{
 			return;
 		}
-		_selectedTemplate = childRow;
-		AddinConfiguration.SelectedTemplate = childRow;
-		NotifyPropertyChanged(() => SelectedTemplate);
-		ActivateTemplate(childRow);
+		SelectTemplate(childRow, resetMirrorMode: !_isApplyingMirrorPlacementSelection);
 	}
 
 	private void ToggleGroupExpansion(object parameter)
@@ -295,9 +439,7 @@ internal class EditorDockpaneViewModel : DockPane
 		if (!template.IsExpanded && _selectedTemplate?.IsGroupChild == true &&
 			string.Equals(_selectedTemplate.ParentTemplateName, template.Name, StringComparison.OrdinalIgnoreCase))
 		{
-			_selectedTemplate = template;
-			AddinConfiguration.SelectedTemplate = template;
-			NotifyPropertyChanged(() => SelectedTemplate);
+			SelectTemplate(template, resetMirrorMode: false, activateTemplate: false);
 		}
 		FilterTemplates();
 	}
@@ -305,9 +447,7 @@ internal class EditorDockpaneViewModel : DockPane
 	private void DeactivateTemplate()
 	{
 		_activationVersion++;
-		_selectedTemplate = null;
-		AddinConfiguration.SelectedTemplate = null;
-		NotifyPropertyChanged(() => SelectedTemplate);
+		SelectTemplate(null, activateTemplate: false);
 		ToolReactivationService.ActivateSelectTool();
 	}
 
@@ -317,9 +457,7 @@ internal class EditorDockpaneViewModel : DockPane
 		{
 			string selectedTemplateName = SelectedTemplate?.Name;
 			LoadTemplatesFromConfig();
-			_selectedTemplate = Templates.FirstOrDefault((DisplayTemplate template) => string.Equals(template.Name, selectedTemplateName, StringComparison.OrdinalIgnoreCase));
-			AddinConfiguration.SelectedTemplate = _selectedTemplate;
-			NotifyPropertyChanged(() => SelectedTemplate);
+			SelectTemplate(Templates.FirstOrDefault((DisplayTemplate template) => string.Equals(template.Name, selectedTemplateName, StringComparison.OrdinalIgnoreCase)), resetMirrorMode: false, activateTemplate: false);
 		}
 		catch (Exception ex)
 		{
@@ -337,7 +475,7 @@ internal class EditorDockpaneViewModel : DockPane
 				EditorDockpaneViewModel.Show();
 				return;
 			}
-			AddinConfiguration.Templates = AddinConfiguration.LoadTemplateConfig();
+			AddinConfiguration.ReloadTemplates();
 			DialogService.Show("Template configuration reloaded.", "Template Editor");
 		}
 		catch (Exception ex)
@@ -348,23 +486,25 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private void LoadTemplatesFromConfig()
 	{
-		AddinConfiguration.Templates = AddinConfiguration.LoadTemplateConfig();
-		Dictionary<string, SimpleTemplate> simpleTemplatesByName = AddinConfiguration.Templates.SimpleTemplates
+		TemplateConfig templates = AddinConfiguration.ReloadTemplates();
+		templates.SimpleTemplates ??= new List<SimpleTemplate>();
+		templates.GroupTemplates ??= new List<GroupTemplate>();
+		Dictionary<string, SimpleTemplate> simpleTemplatesByName = templates.SimpleTemplates
 			.GroupBy((SimpleTemplate template) => template.Name, StringComparer.OrdinalIgnoreCase)
 			.ToDictionary((IGrouping<string, SimpleTemplate> group) => group.Key, (IGrouping<string, SimpleTemplate> group) => group.First(), StringComparer.OrdinalIgnoreCase);
 		_simpleTemplates = new List<DisplayTemplate>();
-		foreach (SimpleTemplate simpleTemplate in AddinConfiguration.Templates.SimpleTemplates)
+		foreach (SimpleTemplate simpleTemplate in templates.SimpleTemplates)
 		{
-			if (!AddinConfiguration.Templates.GroupTemplates.Any((GroupTemplate n) => (n.SimpleTemplates ?? Enumerable.Empty<SimpleTemplateReference>()).Select((SimpleTemplateReference r) => r.Name).Contains(simpleTemplate.Name)))
+			if (!templates.GroupTemplates.Any((GroupTemplate n) => (n.SimpleTemplates ?? Enumerable.Empty<SimpleTemplateReference>()).Any((SimpleTemplateReference r) => string.Equals(r.Name, simpleTemplate.Name, StringComparison.OrdinalIgnoreCase))))
 			{
 				_simpleTemplates.Add(CreateDisplayTemplate(simpleTemplate));
 			}
 		}
-		_groupTemplates = (from n in AddinConfiguration.Templates.GroupTemplates
+		_groupTemplates = (from n in templates.GroupTemplates
 			select CreateDisplayTemplate(n, simpleTemplatesByName) into n
 			orderby n.Name
 			select n).ToList();
-		List<DisplayTemplate> _allSimpleTemplates = (from n in AddinConfiguration.Templates.SimpleTemplates
+		List<DisplayTemplate> _allSimpleTemplates = (from n in templates.SimpleTemplates
 			select CreateDisplayTemplate(n) into n
 			orderby n.Name
 			select n).ToList();
@@ -383,6 +523,21 @@ internal class EditorDockpaneViewModel : DockPane
 			_showGroupTemplates = true;
 		}
 		FilterTemplates();
+	}
+
+	private void InitializeEmptyTemplateLists()
+	{
+		_simpleTemplates = new List<DisplayTemplate>();
+		_groupTemplates = new List<DisplayTemplate>();
+		_allTemplates = new List<DisplayTemplate>();
+		_favouriteTemplates = new List<DisplayTemplate>();
+		_recentTemplates = new List<DisplayTemplate>();
+		_allTemplatesByKey = new Dictionary<string, DisplayTemplate>(StringComparer.OrdinalIgnoreCase);
+		Templates = new List<DisplayTemplate>();
+		TemplateCount = "0 template(s)";
+		_showGroupTemplates = true;
+		NotifyPropertyChanged(() => Templates);
+		NotifyPropertyChanged(() => TemplateCount);
 	}
 
 	private static DisplayTemplate CreateDisplayTemplate(SimpleTemplate simpleTemplate)
@@ -447,13 +602,100 @@ internal class EditorDockpaneViewModel : DockPane
 		if (_selectedTemplate?.IsGroupChild == true && !Templates.Any((DisplayTemplate template) => string.Equals(template.UniqueKey, _selectedTemplate.UniqueKey, StringComparison.OrdinalIgnoreCase)))
 		{
 			_selectedTemplate = null;
-			AddinConfiguration.SelectedTemplate = null;
+			AddinConfiguration.ClearSelectedTemplate();
 			NotifyPropertyChanged(() => SelectedTemplate);
+			NotifyPropertyChanged(() => SelectedTemplateStatus);
+			SetPlacementStatusCore(ReadyPlacementStatus);
 			ToolReactivationService.ActivateSelectTool();
 		}
 		TemplateCount = $"{Templates.Count} template(s)";
 		NotifyPropertyChanged(() => Templates);
 		NotifyPropertyChanged(() => TemplateCount);
+		NotifyPropertyChanged(() => PlacementOptionsStatus);
+	}
+
+	internal static void PostPlacementSummary(string summary, string details = null, bool warning = false)
+	{
+		CompleteTemplateSelectionAfterPlacement();
+		string message = string.IsNullOrWhiteSpace(details) ? summary : summary + "\n" + details;
+		DialogService.ShowToast(message, "Template Editor", warning ? FeedbackSeverity.Warning : FeedbackSeverity.Success);
+	}
+
+	internal static bool ShouldReturnToSelectAfterPlacement(bool placementSucceeded)
+	{
+		return !placementSucceeded || AddinConfiguration.Settings?.EnableContinuousPlacementMode != true || AddinConfiguration.SelectedTemplate == null;
+	}
+
+	private static void CompleteTemplateSelectionAfterPlacement()
+	{
+		if (FrameworkApplication.DockPaneManager.Find(_dockPaneID) is not EditorDockpaneViewModel viewModel)
+		{
+			if (AddinConfiguration.Settings?.EnableContinuousPlacementMode != true)
+			{
+				AddinConfiguration.ClearSelectedTemplate(resetMirrorMode: true);
+			}
+			return;
+		}
+		if (viewModel.IsContinuousPlacementEnabled && viewModel._selectedTemplate != null)
+		{
+			AddinConfiguration.SetSelectedTemplate(viewModel._selectedTemplate);
+			viewModel.NotifyPropertyChanged(() => viewModel.SelectedTemplate);
+			viewModel.NotifyPropertyChanged(() => viewModel.SelectedTemplateStatus);
+			viewModel.NotifyPropertyChanged(() => viewModel.PlacementOptionsStatus);
+			viewModel.SetPlacementStatusCore("Continuous: " + viewModel.GetPlacementStatusTemplateText(viewModel._selectedTemplate) + ". Click the map to place again.");
+			return;
+		}
+		AddinConfiguration.SetPlacementMirrorMode(PlacementMirrorMode.None);
+		viewModel.NotifyPropertyChanged(() => viewModel.SelectedTemplate);
+		viewModel.NotifyPropertyChanged(() => viewModel.SelectedTemplateStatus);
+		viewModel.NotifyPropertyChanged(() => viewModel.PlacementOptionsStatus);
+		viewModel.SetPlacementStatusCore(viewModel._selectedTemplate == null
+			? ReadyPlacementStatus
+			: "Placed: " + viewModel.GetPlacementStatusTemplateText(viewModel._selectedTemplate) + ". Click the highlighted template or press Enter to place again.");
+	}
+
+	internal static void SetPlacementStatus(string status)
+	{
+		if (FrameworkApplication.DockPaneManager.Find(_dockPaneID) is EditorDockpaneViewModel viewModel)
+		{
+			viewModel.SetPlacementStatusCore(status);
+		}
+	}
+
+	internal static void RefreshSettingsStatus()
+	{
+		if (FrameworkApplication.DockPaneManager.Find(_dockPaneID) is EditorDockpaneViewModel viewModel)
+		{
+			viewModel.NotifyPropertyChanged(() => viewModel.IsContinuousPlacementEnabled);
+			viewModel.NotifyPropertyChanged(() => viewModel.PlacementOptionsStatus);
+		}
+	}
+
+	private void SetPlacementStatusCore(string status)
+	{
+		_placementStatus = string.IsNullOrWhiteSpace(status) ? ReadyPlacementStatus : status;
+		NotifyPropertyChanged(() => PlacementStatus);
+	}
+
+	private string GetPlacementStatusTemplateText(DisplayTemplate template)
+	{
+		if (template == null)
+		{
+			return string.Empty;
+		}
+		string mirrorLabel = GetMirrorModeLabel(AddinConfiguration.PlacementMirrorMode);
+		return string.IsNullOrWhiteSpace(mirrorLabel) ? template.DisplayName : template.DisplayName + " (" + mirrorLabel + ")";
+	}
+
+	private static string GetMirrorModeLabel(PlacementMirrorMode mirrorMode)
+	{
+		return mirrorMode switch
+		{
+			PlacementMirrorMode.Horizontal => "Horizontal",
+			PlacementMirrorMode.Vertical => "Vertical",
+			PlacementMirrorMode.Both => "Both",
+			_ => string.Empty
+		};
 	}
 
 	private IEnumerable<DisplayTemplate> GetCurrentViewTemplates()

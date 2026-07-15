@@ -11,6 +11,8 @@ namespace TemplateEditor;
 
 internal static class AddinConfiguration
 {
+	public static event Action SettingsChanged;
+
 	private const string TemplateConfigFilePathKey = "TemplateConfigFilePath";
 
 	private const string LegacyTemplateConfigFilePathKey = "FramingConfigFilePath";
@@ -38,17 +40,52 @@ internal static class AddinConfiguration
 
 	public static TemplateEditorSettings Settings { get; private set; }
 
-	public static TemplateConfig Templates { get; set; }
+	public static TemplateConfig Templates { get; private set; }
 
-	public static DisplayTemplate SelectedTemplate { get; set; }
+	public static DisplayTemplate SelectedTemplate { get; private set; }
+
+	public static PlacementMirrorMode PlacementMirrorMode { get; private set; }
 
 	public static string TemplateConfigFilePath => Settings?.TemplateConfigFilePath;
 
 	public static bool ValidateConfig => Settings != null && Settings.ValidateConfig;
 
+	public static TemplateConfig ReloadTemplates()
+	{
+		TemplateConfig templates = LoadTemplateConfig();
+		SetTemplates(templates);
+		return templates;
+	}
+
+	public static void SetTemplates(TemplateConfig templates)
+	{
+		Templates = templates;
+		TemplateCache.Initialize(templates);
+	}
+
+	public static void SetSelectedTemplate(DisplayTemplate template)
+	{
+		SelectedTemplate = template;
+	}
+
+	public static void ClearSelectedTemplate(bool resetMirrorMode = false)
+	{
+		SelectedTemplate = null;
+		if (resetMirrorMode)
+		{
+			PlacementMirrorMode = PlacementMirrorMode.None;
+		}
+	}
+
+	public static void SetPlacementMirrorMode(PlacementMirrorMode mirrorMode)
+	{
+		PlacementMirrorMode = mirrorMode;
+	}
+
 	public static void Initialize()
 	{
 		LoadPackagedDefaults();
+		PlacementAttributeOverrideService.Initialize();
 		LoadUserSettings();
 		GroupFeatureLayerNames ??= new List<string>();
 		Settings ??= new TemplateEditorSettings();
@@ -117,6 +154,7 @@ internal static class AddinConfiguration
 		Settings.Normalize();
 		SaveUserSettings();
 		AssociationRuleCatalog.Reload();
+		SettingsChanged?.Invoke();
 	}
 
 	public static void SaveSettings()
@@ -194,8 +232,9 @@ internal static class AddinConfiguration
 		{
 			userSettingsEnvelope = JsonSerializer.Deserialize<UserSettingsEnvelope>(File.ReadAllText(settingsPath));
 		}
-		catch (Exception)
+		catch (Exception ex)
 		{
+			LogService.LogException($"User settings could not be loaded from '{settingsPath}'. Falling back to packaged/default settings.", ex);
 			TryMoveCorruptSettingsFile(settingsPath);
 			return;
 		}
@@ -221,9 +260,9 @@ internal static class AddinConfiguration
 			string backupPath = settingsPath + ".corrupt-" + DateTime.Now.ToString("yyyyMMddHHmmss");
 			File.Move(settingsPath, backupPath);
 		}
-		catch
+		catch (Exception ex)
 		{
-			// Ignore backup failures and keep the packaged/default settings active.
+			LogService.LogException($"Could not move corrupt settings file '{settingsPath}' to a backup path.", ex);
 		}
 	}
 

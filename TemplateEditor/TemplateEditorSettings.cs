@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 
 namespace TemplateEditor;
 
@@ -88,6 +89,8 @@ internal sealed class TemplateEditorSettings
 
 	public string AssociationPromptMode { get; set; } = "AlwaysAsk";
 
+	public string ConfiguredAssociationPlacementMode { get; set; } = "Fast";
+
 	public bool StopAfterFirstSuccessfulAssociation { get; set; } = true;
 
 	public bool HighlightAssociationCandidates { get; set; } = true;
@@ -96,6 +99,26 @@ internal sealed class TemplateEditorSettings
 
 	public bool ShowAutomaticStepDiagnostics { get; set; } = true;
 
+	public bool UseCompactDockpaneLayout { get; set; }
+
+	public bool EnableContinuousPlacementMode { get; set; }
+
+	public List<string> SymbolRotationFieldNames { get; set; } = new List<string>
+	{
+		"ROTATION",
+		"SYMBOLROTATION",
+		"SYMBOL_ROTATION",
+		"ANGLE"
+	};
+
+	public double DefaultSymbolRotationWhenMissing { get; set; } = 90.0;
+
+	public string HintSourceColorHex { get; set; } = "#00FF50";
+
+	public string HintAssociationTargetColorHex { get; set; } = "#FF0000";
+
+	public string HintSplitCandidateColorHex { get; set; } = "#FF0000";
+
 	public string AssociationRulesJsonPath { get; set; }
 
 	public List<string> FavouriteTemplateKeys { get; set; } = new List<string>();
@@ -103,6 +126,8 @@ internal sealed class TemplateEditorSettings
 	public int MaxRecentTemplates { get; set; } = 15;
 
 	public List<string> RecentTemplateKeys { get; set; } = new List<string>();
+
+	public List<PlacementAttributeOverrideValue> SessionAttributeOverrides { get; set; } = new List<PlacementAttributeOverrideValue>();
 
 	public double AssociationSearchDistance { get; set; } = 1.0;
 
@@ -148,79 +173,24 @@ internal sealed class TemplateEditorSettings
 
 	public List<string> ContainmentBoundaryTargetGroups { get; set; } = new List<string>
 	{
-		"STRUCTUREBOUNDARY"
+		"STRUCTUREBOUNDARY",
+		"STRUCTURELINE"
 	};
 
 	public List<string> ContainmentBoundaryTargetLayerNames { get; set; } = new List<string>
 	{
 		"CUBICLE",
 		"FACILITY BOUNDARY",
-		"FOUNDATION BOUNDARY"
+		"FOUNDATION BOUNDARY",
+		"TRENCH",
+		"CONDUIT"
 	};
 
 	public TemplateEditorSettings Clone()
 	{
-		return new TemplateEditorSettings
-		{
-			TemplateConfigFilePath = TemplateConfigFilePath,
-			ValidateConfig = ValidateConfig,
-			PreventDefaultVersionPlacement = PreventDefaultVersionPlacement,
-			EnableLineSplitPrompts = EnableLineSplitPrompts,
-			EnablePointPlacementSplitPrompt = EnablePointPlacementSplitPrompt,
-			EnableLineEndpointSplitPrompt = EnableLineEndpointSplitPrompt,
-			EnableParallelCopyPrompt = EnableParallelCopyPrompt,
-			EnableSplitAtLineStartPoint = EnableSplitAtLineStartPoint,
-			EnableSplitAtLineEndPoint = EnableSplitAtLineEndPoint,
-			EnableConfiguredLinePartSplits = EnableConfiguredLinePartSplits,
-			SuppressDuplicateSplitPrompts = SuppressDuplicateSplitPrompts,
-			SplitOnlyInteriorCandidates = SplitOnlyInteriorCandidates,
-			MaxSplitCandidatesToReview = MaxSplitCandidatesToReview,
-			SplitPromptMode = SplitPromptMode,
-			SplitSearchDistance = SplitSearchDistance,
-			SplitPointPlacementGroups = new List<string>(SplitPointPlacementGroups ?? new List<string>()),
-			SplitLinePlacementGroups = new List<string>(SplitLinePlacementGroups ?? new List<string>()),
-			SplitTargetLineGroups = new List<string>(SplitTargetLineGroups ?? new List<string>()),
-			SplitTargetLayerNames = new List<string>(SplitTargetLayerNames ?? new List<string>()),
-			EnableMultiSegmentParallelCopy = EnableMultiSegmentParallelCopy,
-			RequireConnectedParallelCopySpan = RequireConnectedParallelCopySpan,
-			ParallelCopyEndpointMatchTolerance = ParallelCopyEndpointMatchTolerance,
-			DefaultParallelCopyOffsetDistance = DefaultParallelCopyOffsetDistance,
-			DefaultParallelCopyLeftSide = DefaultParallelCopyLeftSide,
-			RememberLastParallelCopyOptions = RememberLastParallelCopyOptions,
-			AutoCreateParallelCopyWhenSelectedLineExists = AutoCreateParallelCopyWhenSelectedLineExists,
-			EnableAssociationPrompts = EnableAssociationPrompts,
-			EnableStructuralAttachmentPrompts = EnableStructuralAttachmentPrompts,
-			EnableContainmentPointPrompts = EnableContainmentPointPrompts,
-			EnableContainmentBoundaryPrompts = EnableContainmentBoundaryPrompts,
-			EnableJunctionJunctionConnectivityPrompts = EnableJunctionJunctionConnectivityPrompts,
-			EnableLineAssociationPrompts = EnableLineAssociationPrompts,
-			EnableLineStructuralAttachmentPrompts = EnableLineStructuralAttachmentPrompts,
-			EnableLineContainmentPointPrompts = EnableLineContainmentPointPrompts,
-			EnableLineContainmentBoundaryPrompts = EnableLineContainmentBoundaryPrompts,
-			AssociationPromptMode = AssociationPromptMode,
-			StopAfterFirstSuccessfulAssociation = StopAfterFirstSuccessfulAssociation,
-			HighlightAssociationCandidates = HighlightAssociationCandidates,
-			HighlightSplitCandidates = HighlightSplitCandidates,
-			ShowAutomaticStepDiagnostics = ShowAutomaticStepDiagnostics,
-			AssociationRulesJsonPath = AssociationRulesJsonPath,
-			FavouriteTemplateKeys = new List<string>(FavouriteTemplateKeys ?? new List<string>()),
-			MaxRecentTemplates = MaxRecentTemplates,
-			RecentTemplateKeys = new List<string>(RecentTemplateKeys ?? new List<string>()),
-			AssociationSearchDistance = AssociationSearchDistance,
-			StructuralAttachmentSearchDistance = StructuralAttachmentSearchDistance,
-			JunctionJunctionConnectivitySearchDistance = JunctionJunctionConnectivitySearchDistance,
-			ContainmentPointSearchDistance = ContainmentPointSearchDistance,
-			ContainmentBoundarySearchDistance = ContainmentBoundarySearchDistance,
-			AssociationPlacementGroups = new List<string>(AssociationPlacementGroups ?? new List<string>()),
-			StructuralAttachmentTargetGroups = new List<string>(StructuralAttachmentTargetGroups ?? new List<string>()),
-			StructuralAttachmentTargetLayerNames = new List<string>(StructuralAttachmentTargetLayerNames ?? new List<string>()),
-			JunctionJunctionConnectivityTargetGroups = new List<string>(JunctionJunctionConnectivityTargetGroups ?? new List<string>()),
-			JunctionJunctionConnectivityTargetLayerNames = new List<string>(JunctionJunctionConnectivityTargetLayerNames ?? new List<string>()),
-			ContainmentPointTargetGroups = new List<string>(ContainmentPointTargetGroups ?? new List<string>()),
-			ContainmentPointTargetLayerNames = new List<string>(ContainmentPointTargetLayerNames ?? new List<string>()),
-			ContainmentBoundaryTargetGroups = new List<string>(ContainmentBoundaryTargetGroups ?? new List<string>()),
-			ContainmentBoundaryTargetLayerNames = new List<string>(ContainmentBoundaryTargetLayerNames ?? new List<string>())
-		};
+		TemplateEditorSettings clone = JsonSerializer.Deserialize<TemplateEditorSettings>(JsonSerializer.Serialize(this)) ?? new TemplateEditorSettings();
+		clone.Normalize();
+		return clone;
 	}
 
 	public void Normalize()
@@ -237,6 +207,10 @@ internal sealed class TemplateEditorSettings
 		AssociationRulesJsonPath = string.IsNullOrWhiteSpace(AssociationRulesJsonPath) ? null : AssociationRulesJsonPath.Trim();
 		SplitPromptMode = NormalizeChoice(SplitPromptMode, "AlwaysAsk", "AutoWhenOne", "Never");
 		AssociationPromptMode = NormalizeChoice(AssociationPromptMode, "AlwaysAsk", "AutoWhenOne", "ReviewMultipleOnly", "Never");
+		ConfiguredAssociationPlacementMode = NormalizeChoice(ConfiguredAssociationPlacementMode, "Fast", "Fast", "Debug");
+		HintSourceColorHex = NormalizeHexColor(HintSourceColorHex, "#00FF50");
+		HintAssociationTargetColorHex = NormalizeHexColor(HintAssociationTargetColorHex, "#FF0000");
+		HintSplitCandidateColorHex = NormalizeHexColor(HintSplitCandidateColorHex, "#FF0000");
 		SplitPointPlacementGroups = NormalizeGroupNames(SplitPointPlacementGroups);
 		SplitLinePlacementGroups = NormalizeGroupNames(SplitLinePlacementGroups);
 		SplitTargetLineGroups = NormalizeGroupNames(SplitTargetLineGroups);
@@ -250,9 +224,12 @@ internal sealed class TemplateEditorSettings
 		ContainmentPointTargetLayerNames = NormalizeGroupNames(ContainmentPointTargetLayerNames);
 		ContainmentBoundaryTargetGroups = NormalizeGroupNames(ContainmentBoundaryTargetGroups);
 		ContainmentBoundaryTargetLayerNames = NormalizeGroupNames(ContainmentBoundaryTargetLayerNames);
+		SymbolRotationFieldNames = NormalizeGroupNames(SymbolRotationFieldNames);
+		DefaultSymbolRotationWhenMissing = NormalizeRotationDegrees(DefaultSymbolRotationWhenMissing);
 		MaxRecentTemplates = Math.Max(1, Math.Min(50, MaxRecentTemplates));
 		FavouriteTemplateKeys ??= new List<string>();
 		RecentTemplateKeys ??= new List<string>();
+		SessionAttributeOverrides = PlacementAttributeOverrideService.NormalizeOverrides(SessionAttributeOverrides);
 	}
 
 	public static List<string> ParseGroupNames(string text)
@@ -277,5 +254,25 @@ internal sealed class TemplateEditorSettings
 	private static string NormalizeChoice(string value, string defaultValue, params string[] validValues)
 	{
 		return validValues.Contains(value, StringComparer.OrdinalIgnoreCase) ? validValues.First((string validValue) => string.Equals(validValue, value, StringComparison.OrdinalIgnoreCase)) : defaultValue;
+	}
+
+	private static string NormalizeHexColor(string value, string fallback)
+	{
+		string normalized = (value ?? string.Empty).Trim();
+		if (normalized.StartsWith("#", StringComparison.Ordinal))
+		{
+			normalized = normalized.Substring(1);
+		}
+		if (normalized.Length != 6 || normalized.Any((char c) => !Uri.IsHexDigit(c)))
+		{
+			return fallback;
+		}
+		return "#" + normalized.ToUpperInvariant();
+	}
+
+	private static double NormalizeRotationDegrees(double degrees)
+	{
+		degrees %= 360.0;
+		return degrees < 0.0 ? degrees + 360.0 : degrees;
 	}
 }
