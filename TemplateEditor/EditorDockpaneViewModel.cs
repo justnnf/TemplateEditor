@@ -660,6 +660,7 @@ internal class EditorDockpaneViewModel : DockPane
 		{
 			viewModel.SetPlacementStatusCore(status);
 		}
+		DialogService.UpdatePlacementProgress(status);
 	}
 
 	internal static void RefreshSettingsStatus()

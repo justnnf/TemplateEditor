@@ -5,6 +5,8 @@ namespace TemplateEditor;
 
 internal static class DialogService
 {
+	private static PlacementProgressWindow _placementProgressWindow;
+
 	public static MessageBoxResult Show(string message, string title)
 	{
 		return Show(message, title, MessageBoxButton.OK);
@@ -47,6 +49,48 @@ internal static class DialogService
 			FeedbackToastWindow toast = new FeedbackToastWindow(title, summary, detail, severity);
 			toast.Show();
 		}));
+	}
+
+	public static void BeginPlacementProgress(string title, string message)
+	{
+		Application.Current?.Dispatcher.BeginInvoke(new System.Action(() =>
+		{
+			ClosePlacementProgressCore();
+			PlacementProgressWindow progressWindow = new PlacementProgressWindow(title, message);
+			if (Application.Current?.MainWindow != null)
+			{
+				progressWindow.Owner = Application.Current.MainWindow;
+			}
+			_placementProgressWindow = progressWindow;
+			progressWindow.Show();
+		}));
+	}
+
+	public static void UpdatePlacementProgress(string message)
+	{
+		if (string.IsNullOrWhiteSpace(message))
+		{
+			return;
+		}
+		Application.Current?.Dispatcher.BeginInvoke(new System.Action(() =>
+		{
+			_placementProgressWindow?.SetMessage(message);
+		}));
+	}
+
+	public static void EndPlacementProgress()
+	{
+		Application.Current?.Dispatcher.BeginInvoke(new System.Action(ClosePlacementProgressCore));
+	}
+
+	private static void ClosePlacementProgressCore()
+	{
+		if (_placementProgressWindow == null)
+		{
+			return;
+		}
+		_placementProgressWindow.Close();
+		_placementProgressWindow = null;
 	}
 
 	private static MessageBoxResult ShowPrompt(string message, string title, MessageBoxButton buttons)

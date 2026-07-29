@@ -281,6 +281,7 @@ internal static class CommonFunctions
 			return false;
 		}
 		PlacementAttributeOverrideService.BeginPlacement();
+		DialogService.BeginPlacementProgress("Template Editor", "Preparing " + selectedTemplate.DisplayName + " for placement...");
 		try
 		{
 			EditorDockpaneViewModel.SetPlacementStatus("Preparing " + selectedTemplate.DisplayName + ": checking the target version and placement options...");
@@ -341,6 +342,7 @@ internal static class CommonFunctions
 		}
 		finally
 		{
+			DialogService.EndPlacementProgress();
 			PlacementAttributeOverrideService.EndPlacementAttempt();
 			EditorDockpaneViewModel.RefreshSettingsStatus();
 		}
@@ -540,6 +542,8 @@ internal static class CommonFunctions
 		EditOperation operation = new EditOperation
 		{
 			Name = "Create template part",
+			ProgressMessage = "Creating template part...",
+			ShowProgressor = true,
 			SelectNewFeatures = true
 		};
 		List<PlacedFeatureContext> createdFeatures = new List<PlacedFeatureContext>();
@@ -668,6 +672,8 @@ internal static class CommonFunctions
 		EditOperation operation = new EditOperation
 		{
 			Name = options.OperationName,
+			ProgressMessage = "Placing template features...",
+			ShowProgressor = true,
 			SelectNewFeatures = true
 		};
 		List<PlacedFeatureContext> createdFeatures = new List<PlacedFeatureContext>();
@@ -873,7 +879,9 @@ internal static class CommonFunctions
 		{
 			EditOperation operation = new EditOperation
 			{
-				Name = "Create template associations"
+				Name = "Create template associations",
+				ProgressMessage = "Creating template associations...",
+				ShowProgressor = true
 			};
 			foreach (AssociationObject association in placement.ConfiguredAssociations)
 			{
@@ -966,7 +974,9 @@ internal static class CommonFunctions
 			}
 			EditOperation operation = new EditOperation
 			{
-				Name = "Create template association"
+				Name = "Create template association",
+				ProgressMessage = "Creating template association...",
+				ShowProgressor = true
 			};
 			operation.Create(assocDesc);
 			return operation.Execute() && operation.IsSucceeded ? null : operation.ErrorMessage;

@@ -51,6 +51,43 @@ internal sealed class AssociationRuleCatalog
 			Matches(rule.ToAssetType, contentOrCreated.AssetType));
 	}
 
+	public HashSet<string> GetAllowedCounterpartTables(AssociationType associationType, FeatureLayerInfo knownSide, bool knownSideIsFrom)
+	{
+		if (!HasRules || knownSide == null)
+		{
+			return null;
+		}
+		string normalizedType = GetRuleAssociationTypeName(associationType);
+		if (normalizedType == null)
+		{
+			return null;
+		}
+		HashSet<string> allowedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		foreach (AssociationRule rule in _rules)
+		{
+			if (!string.Equals(rule.AssociationType, normalizedType, StringComparison.OrdinalIgnoreCase))
+			{
+				continue;
+			}
+			string knownTableRuleValue = knownSideIsFrom ? rule.FromTable : rule.ToTable;
+			string knownAssetGroupRuleValue = knownSideIsFrom ? rule.FromAssetGroup : rule.ToAssetGroup;
+			string knownAssetTypeRuleValue = knownSideIsFrom ? rule.FromAssetType : rule.ToAssetType;
+			if (!Matches(knownTableRuleValue, knownSide.TableName) ||
+				!Matches(knownAssetGroupRuleValue, knownSide.AssetGroup) ||
+				!Matches(knownAssetTypeRuleValue, knownSide.AssetType))
+			{
+				continue;
+			}
+			string counterpartTable = knownSideIsFrom ? rule.ToTable : rule.FromTable;
+			if (string.IsNullOrWhiteSpace(counterpartTable))
+			{
+				return null;
+			}
+			allowedTables.Add(Normalize(counterpartTable));
+		}
+		return allowedTables;
+	}
+
 	private static string GetRuleAssociationTypeName(AssociationType associationType)
 	{
 		if (associationType == AssociationType.Attachment)

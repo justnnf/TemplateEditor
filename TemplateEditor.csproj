@@ -21,7 +21,7 @@
     <AddInImage>Images\AddInDesktop32.png</AddInImage>
     <AddInAuthor>FortisAlberta</AddInAuthor>
     <AddInCompany>FortisAlberta</AddInCompany>
-    <AddInVersion>1.4.2</AddInVersion>
+    <AddInVersion>1.5.0</AddInVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -67,6 +67,10 @@
     <Content Include="TemplateEditor\PlacementAttributeOverrides.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include=".github\copilot-instructions.md" />
   </ItemGroup>
 
   <ItemGroup>

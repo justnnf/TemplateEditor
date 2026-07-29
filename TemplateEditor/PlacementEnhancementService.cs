@@ -598,16 +598,22 @@ internal static class PlacementEnhancementService
 
 	private static async Task<List<FeatureCandidate>> FindSplitCandidatesAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, MapPoint point)
 	{
+		if (!IsSplitAllowedForPlacedFeature(createdFeature))
+		{
+			return new List<FeatureCandidate>();
+		}
 		TemplateEditorSettings settings = AddinConfiguration.Settings;
 		Geometry searchGeometry = await CreateSearchGeometryAsync(point, settings.SplitSearchDistance);
-		// Optimize: Build HashSet for O(1) lookups instead of O(n) Any() per feature
+		if (!await HasNearbyFeatureCandidatesAsync(settings.SplitTargetLineGroups, settings.SplitTargetLayerNames, searchGeometry, layerContextPredicate: IsElectricLineLayerContext))
+		{
+			return new List<FeatureCandidate>();
+		}
 		HashSet<string> createdFeatureKeys = BuildCreatedFeatureKeySet(featuresCreatedByOperation);
-		// Pass maxCandidates to enable early termination in the search
 		List<FeatureCandidate> candidates = await FindFeatureCandidatesAsync(settings.SplitTargetLineGroups, settings.SplitTargetLayerNames, searchGeometry, createdFeature.Geometry, delegate(FeatureLayer layer, Feature feature, Geometry geometry)
 		{
 			return !IsFeatureInSet(createdFeatureKeys, layer, feature.GetObjectID()) &&
 				(!settings.SplitOnlyInteriorCandidates || IsInteriorSplitCandidate(geometry, point));
-		}, "Line", false, settings.MaxSplitCandidatesToReview);
+		}, "Line", false, settings.MaxSplitCandidatesToReview, layerContextPredicate: IsElectricLineLayerContext);
 		return candidates;
 	}
 
@@ -645,15 +651,33 @@ internal static class PlacementEnhancementService
 	private static async Task<List<FeatureCandidate>> FindAssociationCandidatesAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, IEnumerable<string> targetGroups, IEnumerable<string> targetLayerNames, double searchDistance, AssociationType associationType, string labelPrefix, bool createdFeatureIsAssociationSource = false, Func<Geometry, bool> geometryPredicate = null)
 	{
 		Geometry searchGeometry = await CreateSearchGeometryAsync(createdFeature.Geometry, searchDistance);
+		bool useRuleCatalogSearchScope = AssociationRuleCatalog.Current.HasRules;
+		if (!await HasNearbyFeatureCandidatesAsync(targetGroups, targetLayerNames, searchGeometry, useRuleCatalogSearchScope))
+		{
+			return new List<FeatureCandidate>();
+		}
 		FeatureLayerInfo createdFeatureInfo = await GetPlacedFeatureInfoAsync(createdFeature);
-		// Optimize: Build HashSet for O(1) lookups instead of O(n) Any() per feature
+		Func<LayerSearchContext, bool> layerContextPredicate = null;
+		AssociationRuleCatalog catalog = AssociationRuleCatalog.Current;
+		if (catalog.HasRules && createdFeatureInfo != null)
+		{
+			HashSet<string> allowedCounterpartTables = catalog.GetAllowedCounterpartTables(associationType, createdFeatureInfo, createdFeatureIsAssociationSource);
+			if (allowedCounterpartTables != null)
+			{
+				if (allowedCounterpartTables.Count == 0)
+				{
+					return new List<FeatureCandidate>();
+				}
+				layerContextPredicate = (LayerSearchContext context) => allowedCounterpartTables.Contains(NormalizeAssociationName(ResolveUtilityNetworkTableName(context.OwningGroupName, context.Layer?.Name)));
+			}
+		}
 		HashSet<string> createdFeatureKeys = BuildCreatedFeatureKeySet(featuresCreatedByOperation);
 		List<FeatureCandidate> candidates = await FindFeatureCandidatesAsync(targetGroups, targetLayerNames, searchGeometry, createdFeature.Geometry, delegate(FeatureLayer layer, Feature feature, Geometry geometry)
 		{
 			return (geometryPredicate == null || geometryPredicate(geometry)) &&
 				!IsFeatureInSet(createdFeatureKeys, layer, feature.GetObjectID()) &&
 				IsAllowedAssociationCandidate(associationType, layer, feature, createdFeatureInfo, createdFeatureIsAssociationSource);
-		}, labelPrefix, AssociationRuleCatalog.Current.HasRules);
+		}, labelPrefix, useRuleCatalogSearchScope, int.MaxValue, layerContextPredicate);
 		foreach (FeatureCandidate candidate in candidates)
 		{
 			candidate.AssociationType = associationType;
@@ -841,13 +865,66 @@ internal static class PlacementEnhancementService
 		return value.Replace(" ", string.Empty).Replace("-", string.Empty).Replace("_", string.Empty).ToUpperInvariant();
 	}
 
-	private static async Task<List<FeatureCandidate>> FindFeatureCandidatesAsync(IEnumerable<string> targetGroupNames, IEnumerable<string> targetLayerNames, Geometry searchGeometry, Geometry sourceGeometry, Func<FeatureLayer, Feature, Geometry, bool> includePredicate, string labelPrefix, bool useRuleCatalogSearchScope = false, int maxCandidates = int.MaxValue)
+	private static bool IsSplitAllowedForPlacedFeature(PlacedFeatureContext createdFeature)
+	{
+		string sourceTableName = ResolveUtilityNetworkTableName(createdFeature?.Template?.GroupLayer, createdFeature?.Layer?.Name);
+		return string.Equals(sourceTableName, "ElectricDevice", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static bool IsElectricLineLayerContext(LayerSearchContext context)
+	{
+		if (context?.Layer == null)
+		{
+			return false;
+		}
+		string tableName = ResolveUtilityNetworkTableName(context.OwningGroupName, context.Layer.Name);
+		return string.Equals(tableName, "ElectricLine", StringComparison.OrdinalIgnoreCase);
+	}
+
+	private static async Task<bool> HasNearbyFeatureCandidatesAsync(IEnumerable<string> targetGroupNames, IEnumerable<string> targetLayerNames, Geometry searchGeometry, bool useRuleCatalogSearchScope = false, Func<LayerSearchContext, bool> layerContextPredicate = null)
 	{
 		if (MapView.Active == null || searchGeometry == null)
 		{
-			return new List<FeatureCandidate>();
+			return false;
 		}
-		// Optimize: Use HashSet for O(1) lookups instead of Contains() on List
+		List<LayerSearchContext> layerContexts = BuildLayerSearchContexts(targetGroupNames, targetLayerNames, useRuleCatalogSearchScope, layerContextPredicate);
+		if (layerContexts.Count == 0)
+		{
+			return false;
+		}
+		return await QueuedTask.Run(delegate
+		{
+			foreach (LayerSearchContext layerContext in layerContexts)
+			{
+				FeatureLayer layer = layerContext.Layer;
+				SpatialReference layerSpatialReference = GetLayerSpatialReference(layer);
+				Geometry layerSearchGeometry;
+				try
+				{
+					layerSearchGeometry = ProjectGeometry(searchGeometry, layerSpatialReference);
+				}
+				catch
+				{
+					continue;
+				}
+				SpatialQueryFilter filter = new SpatialQueryFilter
+				{
+					FilterGeometry = layerSearchGeometry,
+					SpatialRelationship = SpatialRelationship.Intersects,
+					SubFields = "OBJECTID"
+				};
+				using RowCursor cursor = layer.Search(filter);
+				if (cursor.MoveNext())
+				{
+					return true;
+				}
+			}
+			return false;
+		});
+	}
+
+	private static List<LayerSearchContext> BuildLayerSearchContexts(IEnumerable<string> targetGroupNames, IEnumerable<string> targetLayerNames, bool useRuleCatalogSearchScope, Func<LayerSearchContext, bool> layerContextPredicate)
+	{
 		HashSet<string> targetGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		if (targetGroupNames != null)
 		{
@@ -872,23 +949,42 @@ internal static class PlacementEnhancementService
 		}
 		if (!useRuleCatalogSearchScope && targetGroups.Count == 0)
 		{
-			return new List<FeatureCandidate>();
+			return new List<LayerSearchContext>();
 		}
 		IEnumerable<FeatureLayer> searchLayers = useRuleCatalogSearchScope
 			? MapView.Active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>()
 			: MapMemberLookupService.GetFeatureLayersForGroups(targetGroups);
-		// Optimize: Materialize layerContexts once and pre-allocate capacity hint
 		List<LayerSearchContext> layerContexts = new List<LayerSearchContext>();
 		foreach (FeatureLayer layer in searchLayers)
 		{
-			if (useRuleCatalogSearchScope || targetLayers.Count == 0 || targetLayers.Contains(layer.Name.ToUpperInvariant()))
+			if (!useRuleCatalogSearchScope && targetLayers.Count > 0 && !targetLayers.Contains(layer.Name.ToUpperInvariant()))
 			{
-				layerContexts.Add(new LayerSearchContext
-				{
-					Layer = layer,
-					OwningGroupName = MapMemberLookupService.GetOwningGroupName(layer)
-				});
+				continue;
 			}
+			LayerSearchContext context = new LayerSearchContext
+			{
+				Layer = layer,
+				OwningGroupName = MapMemberLookupService.GetOwningGroupName(layer)
+			};
+			if (layerContextPredicate != null && !layerContextPredicate(context))
+			{
+				continue;
+			}
+			layerContexts.Add(context);
+		}
+		return layerContexts;
+	}
+
+	private static async Task<List<FeatureCandidate>> FindFeatureCandidatesAsync(IEnumerable<string> targetGroupNames, IEnumerable<string> targetLayerNames, Geometry searchGeometry, Geometry sourceGeometry, Func<FeatureLayer, Feature, Geometry, bool> includePredicate, string labelPrefix, bool useRuleCatalogSearchScope = false, int maxCandidates = int.MaxValue, Func<LayerSearchContext, bool> layerContextPredicate = null)
+	{
+		if (MapView.Active == null || searchGeometry == null)
+		{
+			return new List<FeatureCandidate>();
+		}
+		List<LayerSearchContext> layerContexts = BuildLayerSearchContexts(targetGroupNames, targetLayerNames, useRuleCatalogSearchScope, layerContextPredicate);
+		if (layerContexts.Count == 0)
+		{
+			return new List<FeatureCandidate>();
 		}
 		return await QueuedTask.Run(delegate
 		{
@@ -955,9 +1051,7 @@ internal static class PlacementEnhancementService
 					continue;
 				}
 				double distance = GetDistance(projectedSourceGeometry, geometry);
-				string featureIdentifier = GetFeatureIdentifier(feature, layer);
-				// Optimize: Use string concatenation instead of interpolation for better performance
-				string label = labelPrefix + ": " + owningGroupName + "/" + layerName + " (" + featureIdentifier + ")";
+				string label = labelPrefix + ": " + owningGroupName + "/" + layerName + " (OID " + feature.GetObjectID() + ")";
 				candidates.Add(new FeatureCandidate
 				{
 					Layer = layer,
@@ -974,7 +1068,7 @@ internal static class PlacementEnhancementService
 				candidates.Sort((a, b) =>
 				{
 					int distanceComparison = a.Distance.CompareTo(b.Distance);
-					return distanceComparison != 0 ? distanceComparison : string.CompareOrdinal(a.Label, b.Label);
+					return distanceComparison != 0 ? distanceComparison : a.ObjectID.CompareTo(b.ObjectID);
 				});
 			}
 			return candidates;
@@ -1103,7 +1197,9 @@ internal static class PlacementEnhancementService
 		{
 			EditOperation editOperation = new EditOperation
 			{
-				Name = "Split underlying line"
+				Name = "Split underlying line",
+				ProgressMessage = "Splitting underlying line...",
+				ShowProgressor = true
 			};
 			editOperation.Split(targetLayer, targetObjectId, splitPoint);
 			if (!editOperation.IsEmpty && !editOperation.Execute())
@@ -1119,7 +1215,9 @@ internal static class PlacementEnhancementService
 		{
 			EditOperation editOperation = new EditOperation
 			{
-				Name = "Create association"
+				Name = "Create association",
+				ProgressMessage = "Creating association...",
+				ShowProgressor = true
 			};
 			RowHandle targetHandle = new RowHandle((MapMember)candidate.Layer, candidate.ObjectID);
 			RowHandle createdHandle = new RowHandle((MapMember)createdFeature.Layer, createdFeature.ObjectID);

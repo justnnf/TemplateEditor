@@ -334,3 +334,69 @@ internal sealed class FeedbackPromptWindow : Window
 
 	private static Brush AccentHoverBrush => new SolidColorBrush(Color.FromRgb(32, 128, 224));
 }
+
+internal sealed class PlacementProgressWindow : Window
+{
+	private TextBlock _messageText;
+
+	public PlacementProgressWindow(string title, string message)
+	{
+		Title = title;
+		Width = 430.0;
+		SizeToContent = SizeToContent.Height;
+		WindowStartupLocation = WindowStartupLocation.CenterOwner;
+		ShowInTaskbar = false;
+		ResizeMode = ResizeMode.NoResize;
+		Topmost = true;
+		Background = IsDarkTheme
+			? new SolidColorBrush(Color.FromRgb(45, 45, 48))
+			: new SolidColorBrush(Color.FromRgb(250, 250, 250));
+		Content = BuildContent();
+		SetMessage(message);
+	}
+
+	public void SetMessage(string message)
+	{
+		_messageText.Text = string.IsNullOrWhiteSpace(message)
+			? "Working on placement..."
+			: message;
+	}
+
+	private UIElement BuildContent()
+	{
+		Border frame = new Border
+		{
+			BorderBrush = IsDarkTheme
+				? new SolidColorBrush(Color.FromRgb(96, 96, 100))
+				: new SolidColorBrush(Color.FromRgb(168, 168, 168)),
+			BorderThickness = new Thickness(1.0),
+			Padding = new Thickness(12.0)
+		};
+
+		StackPanel panel = new StackPanel();
+		ProgressBar progress = new ProgressBar
+		{
+			IsIndeterminate = true,
+			Height = 10.0,
+			Margin = new Thickness(0.0, 0.0, 0.0, 8.0)
+		};
+		panel.Children.Add(progress);
+
+		_messageText = new TextBlock
+		{
+			TextWrapping = TextWrapping.Wrap,
+			Foreground = IsDarkTheme
+				? new SolidColorBrush(Color.FromRgb(242, 242, 242))
+				: new SolidColorBrush(Color.FromRgb(20, 20, 20)),
+			MaxHeight = 120.0
+		};
+		panel.Children.Add(_messageText);
+
+		frame.Child = panel;
+		return frame;
+	}
+
+	private static bool IsDarkTheme => FrameworkApplication.ApplicationTheme == ApplicationTheme.Dark;
+}
+
+

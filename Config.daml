@@ -1,6 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <ArcGIS defaultAssembly="TemplateEditor.dll" defaultNamespace="TemplateEditor" xmlns="http://schemas.esri.com/DADF/Registry" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.esri.com/DADF/Registry file:///C:/Program%20Files/ArcGIS/Pro/bin/ArcGIS.Desktop.Framework.xsd">
-  <AddInInfo id="{51ca91f3-e005-4b62-863c-c0a618aada65}" version="1.4.2" desktopVersion="3.3.5" product="ArcGISPro">
+  <AddInInfo id="{51ca91f3-e005-4b62-863c-c0a618aada65}" version="1.5.0" desktopVersion="3.3.5" product="ArcGISPro">
     <Name>Template Editor</Name>
     <Description>Template editor tools</Description>
     <Image>Images\AddInDesktop32.png</Image>
