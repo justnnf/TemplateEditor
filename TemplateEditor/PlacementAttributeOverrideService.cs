@@ -8,38 +8,63 @@ using System.Threading.Tasks;
 using ArcGIS.Core.Data;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
-using DataDomain = ArcGIS.Core.Data.Domain;
-using DataSubtype = ArcGIS.Core.Data.Subtype;
 
 namespace TemplateEditor;
 
 internal static class PlacementAttributeOverrideService
 {
+	private sealed class OverrideFieldSummary
+	{
+		public bool IsApplicable { get; set; }
+
+		public string ConfiguredValueSummary { get; set; }
+
+		public List<string> AvailableValues { get; set; } = new List<string>();
+
+		public string FirstConfiguredValue { get; set; }
+	}
+
+	private sealed class FieldDomainSummary
+	{
+		public static FieldDomainSummary Empty { get; } = new FieldDomainSummary();
+
+		public bool IsApplicable { get; set; }
+
+		public List<string> AvailableValues { get; set; } = new List<string>();
+	}
+
+	private readonly struct OverrideValidationResult
+	{
+		public static OverrideValidationResult Invalid { get; } = new OverrideValidationResult(isValid: false, null);
+
+		public bool IsValid { get; }
+
+		public string ConfigValue { get; }
+
+		public OverrideValidationResult(bool isValid, string configValue)
+		{
+			IsValid = isValid;
+			ConfigValue = configValue;
+		}
+	}
+
 	private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
 	{
 		PropertyNameCaseInsensitive = true,
 		WriteIndented = true
 	};
 
-	private static readonly string FavouriteDirectoryPath =
-		Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FortisAlberta", "TemplateEditor");
+	private static readonly string FavouriteDirectoryPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FortisAlberta", "TemplateEditor");
 
 	private static readonly string FavouriteFilePath = Path.Combine(FavouriteDirectoryPath, "placement-override-favourites.json");
 
-	private static readonly string[] AlwaysVisiblePlacementEditorFields =
-	{
-		"PHASESNORMAL",
-		"VOLTAGEGROUP",
-		"OWNEDBY",
-		"MAINTBY"
-	};
+	private static readonly string[] AlwaysVisiblePlacementEditorFields = new string[4] { "PHASESNORMAL", "VOLTAGEGROUP", "OWNEDBY", "MAINTBY" };
 
 	private static readonly object _syncRoot = new object();
 
 	private static List<PlacementAttributeOverrideDefinition> _definitions = new List<PlacementAttributeOverrideDefinition>();
 
-	private static Dictionary<string, Dictionary<string, object>> _pendingPlacementValuesByPart =
-		new Dictionary<string, Dictionary<string, object>>(StringComparer.OrdinalIgnoreCase);
+	private static Dictionary<string, Dictionary<string, object>> _pendingPlacementValuesByPart = new Dictionary<string, Dictionary<string, object>>(StringComparer.OrdinalIgnoreCase);
 
 	private static HashSet<string> _placementWarnings = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -52,20 +77,17 @@ internal static class PlacementAttributeOverrideService
 
 	public static List<PlacementAttributeOverrideValue> NormalizeOverrides(IEnumerable<PlacementAttributeOverrideValue> overrides)
 	{
-		return (overrides ?? Enumerable.Empty<PlacementAttributeOverrideValue>())
-			.Where(value => !string.IsNullOrWhiteSpace(value?.FieldName))
-			.GroupBy(value => NormalizeFieldName(value.FieldName), StringComparer.OrdinalIgnoreCase)
-			.Select(group =>
+		return (overrides ?? Enumerable.Empty<PlacementAttributeOverrideValue>()).Where((PlacementAttributeOverrideValue value) => !string.IsNullOrWhiteSpace(value?.FieldName)).GroupBy<PlacementAttributeOverrideValue, string>((PlacementAttributeOverrideValue value) => NormalizeFieldName(value.FieldName), StringComparer.OrdinalIgnoreCase).Select(delegate(IGrouping<string, PlacementAttributeOverrideValue> group)
+		{
+			PlacementAttributeOverrideValue placementAttributeOverrideValue = group.Last();
+			return new PlacementAttributeOverrideValue
 			{
-				PlacementAttributeOverrideValue latest = group.Last();
-				return new PlacementAttributeOverrideValue
-				{
-					FieldName = group.Key,
-					Enabled = latest.Enabled,
-					Value = string.IsNullOrWhiteSpace(latest.Value) ? null : latest.Value.Trim()
-				};
-			})
-			.OrderBy(value => value.FieldName, StringComparer.OrdinalIgnoreCase)
+				FieldName = group.Key,
+				Enabled = placementAttributeOverrideValue.Enabled,
+				Value = (string.IsNullOrWhiteSpace(placementAttributeOverrideValue.Value) ? null : placementAttributeOverrideValue.Value.Trim())
+			};
+		})
+			.OrderBy<PlacementAttributeOverrideValue, string>((PlacementAttributeOverrideValue value) => value.FieldName, StringComparer.OrdinalIgnoreCase)
 			.ToList();
 	}
 
@@ -78,28 +100,32 @@ internal static class PlacementAttributeOverrideService
 	{
 		lock (_syncRoot)
 		{
-			return _pendingPlacementValuesByPart.Any(part => part.Value?.Count > 0);
+			return _pendingPlacementValuesByPart.Any(delegate(KeyValuePair<string, Dictionary<string, object>> part)
+			{
+				Dictionary<string, object> value = part.Value;
+				return value != null && value.Count > 0;
+			});
 		}
 	}
 
 	public static string GetStatusLabel()
 	{
-		List<string> parts = new List<string>();
+		List<string> list = new List<string>();
 		if (HasSessionOverrides())
 		{
-			parts.Add("Session attrs on");
+			list.Add("Session attrs on");
 		}
 		if (HasPendingPlacementOverrides())
 		{
-			parts.Add("Next-place attrs on");
+			list.Add("Next-place attrs on");
 		}
-		return string.Join(" | ", parts);
+		return string.Join(" | ", list);
 	}
 
 	public static IReadOnlyList<PlacementAttributeOverrideEditorState> BuildSessionEditorStates(IEnumerable<PlacementAttributeOverrideValue> selectedValues = null)
 	{
-		List<PlacementAttributeOverrideValue> currentValues = NormalizeOverrides(selectedValues ?? AddinConfiguration.Settings?.SessionAttributeOverrides);
-		return BuildEditorStatesAsync(GetAllSimpleTemplates(), currentValues, includeUnavailableDefinitions: true).GetAwaiter().GetResult();
+		List<PlacementAttributeOverrideValue> selectedValues2 = NormalizeOverrides(selectedValues ?? AddinConfiguration.Settings?.SessionAttributeOverrides);
+		return BuildEditorStatesAsync(GetAllSimpleTemplates(), selectedValues2, includeUnavailableDefinitions: true).GetAwaiter().GetResult();
 	}
 
 	public static async Task<bool> ConfigureOneTimePlacementOverridesAsync(DisplayTemplate template)
@@ -108,7 +134,7 @@ internal static class PlacementAttributeOverrideService
 		{
 			return false;
 		}
-		PlacementAttributeEditorModel editorModel = await BuildPlacementEditorModelAsync(template).ConfigureAwait(true);
+		PlacementAttributeEditorModel editorModel = await BuildPlacementEditorModelAsync(template).ConfigureAwait(continueOnCapturedContext: true);
 		if (editorModel == null || editorModel.Parts.Count == 0)
 		{
 			DialogService.Show("No placement targets were found for the selected template.", "Template Editor");
@@ -133,25 +159,22 @@ internal static class PlacementAttributeOverrideService
 		{
 			return new List<PlacementAttributeOverrideFavouriteSummary>();
 		}
-		PlacementAttributeOverrideFavouriteCatalog catalog = LoadFavouriteCatalog();
-		return catalog.Favourites
-			.Where(favourite => string.Equals(NormalizeTemplateKey(favourite.TemplateKey), normalizedTemplateKey, StringComparison.OrdinalIgnoreCase))
-			.OrderBy(favourite => favourite.Name, StringComparer.OrdinalIgnoreCase)
-			.Select(favourite => new PlacementAttributeOverrideFavouriteSummary
+		PlacementAttributeOverrideFavouriteCatalog placementAttributeOverrideFavouriteCatalog = LoadFavouriteCatalog();
+		return (from favourite in placementAttributeOverrideFavouriteCatalog.Favourites.Where((PlacementAttributeOverrideFavourite favourite) => string.Equals(NormalizeTemplateKey(favourite.TemplateKey), normalizedTemplateKey, StringComparison.OrdinalIgnoreCase)).OrderBy<PlacementAttributeOverrideFavourite, string>((PlacementAttributeOverrideFavourite favourite) => favourite.Name, StringComparer.OrdinalIgnoreCase)
+			select new PlacementAttributeOverrideFavouriteSummary
 			{
 				Id = favourite.Id,
 				Name = favourite.Name,
 				TemplateKey = favourite.TemplateKey,
 				TemplateDisplayName = favourite.TemplateDisplayName
-			})
-			.ToList();
+			}).ToList();
 	}
 
 	public static void SavePlacementFavourite(PlacementAttributeEditorModel editorModel, string favouriteName)
 	{
 		if (editorModel == null)
 		{
-			throw new ArgumentNullException(nameof(editorModel));
+			throw new ArgumentNullException("editorModel");
 		}
 		string normalizedTemplateKey = NormalizeTemplateKey(editorModel.TemplateKey);
 		string trimmedName = favouriteName?.Trim();
@@ -163,30 +186,27 @@ internal static class PlacementAttributeOverrideService
 		{
 			throw new InvalidOperationException("Enter a favourite name.");
 		}
-
-		PlacementAttributeOverrideFavouriteCatalog catalog = LoadFavouriteCatalog();
-		PlacementAttributeOverrideFavourite existing = catalog.Favourites.FirstOrDefault(favourite =>
-			string.Equals(NormalizeTemplateKey(favourite.TemplateKey), normalizedTemplateKey, StringComparison.OrdinalIgnoreCase) &&
-			string.Equals(favourite.Name, trimmedName, StringComparison.OrdinalIgnoreCase));
-		string timestamp = DateTime.UtcNow.ToString("o");
-		if (existing == null)
+		PlacementAttributeOverrideFavouriteCatalog placementAttributeOverrideFavouriteCatalog = LoadFavouriteCatalog();
+		PlacementAttributeOverrideFavourite placementAttributeOverrideFavourite = placementAttributeOverrideFavouriteCatalog.Favourites.FirstOrDefault((PlacementAttributeOverrideFavourite favourite) => string.Equals(NormalizeTemplateKey(favourite.TemplateKey), normalizedTemplateKey, StringComparison.OrdinalIgnoreCase) && string.Equals(favourite.Name, trimmedName, StringComparison.OrdinalIgnoreCase));
+		string text = DateTime.UtcNow.ToString("o");
+		if (placementAttributeOverrideFavourite == null)
 		{
-			existing = new PlacementAttributeOverrideFavourite
+			placementAttributeOverrideFavourite = new PlacementAttributeOverrideFavourite
 			{
 				Id = Guid.NewGuid().ToString("N"),
 				Name = trimmedName,
 				TemplateKey = editorModel.TemplateKey,
 				TemplateDisplayName = editorModel.TemplateDisplayName,
-				CreatedUtc = timestamp
+				CreatedUtc = text
 			};
-			catalog.Favourites.Add(existing);
+			placementAttributeOverrideFavouriteCatalog.Favourites.Add(placementAttributeOverrideFavourite);
 		}
-		existing.Name = trimmedName;
-		existing.TemplateKey = editorModel.TemplateKey;
-		existing.TemplateDisplayName = editorModel.TemplateDisplayName;
-		existing.UpdatedUtc = timestamp;
-		existing.PartValues = BuildFavouritePartValueMap(editorModel);
-		SaveFavouriteCatalog(catalog);
+		placementAttributeOverrideFavourite.Name = trimmedName;
+		placementAttributeOverrideFavourite.TemplateKey = editorModel.TemplateKey;
+		placementAttributeOverrideFavourite.TemplateDisplayName = editorModel.TemplateDisplayName;
+		placementAttributeOverrideFavourite.UpdatedUtc = text;
+		placementAttributeOverrideFavourite.PartValues = BuildFavouritePartValueMap(editorModel);
+		SaveFavouriteCatalog(placementAttributeOverrideFavouriteCatalog);
 	}
 
 	public static bool DeletePlacementFavourite(string templateKey, string favouriteId)
@@ -196,15 +216,13 @@ internal static class PlacementAttributeOverrideService
 		{
 			return false;
 		}
-		PlacementAttributeOverrideFavouriteCatalog catalog = LoadFavouriteCatalog();
-		int removed = catalog.Favourites.RemoveAll(favourite =>
-			string.Equals(NormalizeTemplateKey(favourite.TemplateKey), normalizedTemplateKey, StringComparison.OrdinalIgnoreCase) &&
-			string.Equals(favourite.Id, favouriteId, StringComparison.OrdinalIgnoreCase));
-		if (removed <= 0)
+		PlacementAttributeOverrideFavouriteCatalog placementAttributeOverrideFavouriteCatalog = LoadFavouriteCatalog();
+		int num = placementAttributeOverrideFavouriteCatalog.Favourites.RemoveAll((PlacementAttributeOverrideFavourite favourite) => string.Equals(NormalizeTemplateKey(favourite.TemplateKey), normalizedTemplateKey, StringComparison.OrdinalIgnoreCase) && string.Equals(favourite.Id, favouriteId, StringComparison.OrdinalIgnoreCase));
+		if (num <= 0)
 		{
 			return false;
 		}
-		SaveFavouriteCatalog(catalog);
+		SaveFavouriteCatalog(placementAttributeOverrideFavouriteCatalog);
 		return true;
 	}
 
@@ -214,49 +232,45 @@ internal static class PlacementAttributeOverrideService
 		{
 			return "Choose a saved favourite first.";
 		}
-		PlacementAttributeOverrideFavourite favourite = LoadFavouriteCatalog().Favourites.FirstOrDefault(candidate =>
-			string.Equals(NormalizeTemplateKey(candidate.TemplateKey), NormalizeTemplateKey(editorModel.TemplateKey), StringComparison.OrdinalIgnoreCase) &&
-			string.Equals(candidate.Id, favouriteId, StringComparison.OrdinalIgnoreCase));
-		if (favourite == null)
+		PlacementAttributeOverrideFavourite placementAttributeOverrideFavourite = LoadFavouriteCatalog().Favourites.FirstOrDefault((PlacementAttributeOverrideFavourite candidate) => string.Equals(NormalizeTemplateKey(candidate.TemplateKey), NormalizeTemplateKey(editorModel.TemplateKey), StringComparison.OrdinalIgnoreCase) && string.Equals(candidate.Id, favouriteId, StringComparison.OrdinalIgnoreCase));
+		if (placementAttributeOverrideFavourite == null)
 		{
 			return "The selected favourite could not be found.";
 		}
-
-		List<string> warnings = new List<string>();
-		bool anyApplied = false;
-		foreach (PlacementAttributeEditorPartState part in editorModel.Parts ?? Enumerable.Empty<PlacementAttributeEditorPartState>())
+		List<string> list = new List<string>();
+		bool flag = false;
+		IEnumerable<PlacementAttributeEditorPartState> parts = editorModel.Parts;
+		foreach (PlacementAttributeEditorPartState item in parts ?? Enumerable.Empty<PlacementAttributeEditorPartState>())
 		{
-			if (!favourite.PartValues.TryGetValue(part.PartKey ?? string.Empty, out Dictionary<string, string> partValues) || partValues == null)
+			if (!placementAttributeOverrideFavourite.PartValues.TryGetValue(item.PartKey ?? string.Empty, out var value) || value == null)
 			{
 				continue;
 			}
-			foreach (PlacementAttributeEditorFieldState field in part.AttributeFields ?? Enumerable.Empty<PlacementAttributeEditorFieldState>())
+			IEnumerable<PlacementAttributeEditorFieldState> attributeFields = item.AttributeFields;
+			foreach (PlacementAttributeEditorFieldState item2 in attributeFields ?? Enumerable.Empty<PlacementAttributeEditorFieldState>())
 			{
-				if (!partValues.TryGetValue(NormalizeFieldName(field.FieldName), out string favouriteValue))
+				if (!value.TryGetValue(NormalizeFieldName(item2.FieldName), out var value2) || string.IsNullOrWhiteSpace(value2))
 				{
 					continue;
 				}
-				if (string.IsNullOrWhiteSpace(favouriteValue))
+				if (item2.HasDomainValues)
 				{
-					continue;
+					List<string> availableValues = item2.AvailableValues;
+					if (availableValues != null && availableValues.Count > 0 && !item2.AvailableValues.Contains<string>(value2 ?? string.Empty, StringComparer.OrdinalIgnoreCase))
+					{
+						list.Add($"Skipped {item2.Label ?? item2.FieldName} on {item.DisplayName} because '{value2}' is no longer valid.");
+						continue;
+					}
 				}
-				if (field.HasDomainValues &&
-					field.AvailableValues?.Count > 0 &&
-					!field.AvailableValues.Contains(favouriteValue ?? string.Empty, StringComparer.OrdinalIgnoreCase))
-				{
-					warnings.Add($"Skipped {field.Label ?? field.FieldName} on {part.DisplayName} because '{favouriteValue}' is no longer valid.");
-					continue;
-				}
-				field.CurrentValue = favouriteValue ?? string.Empty;
-				anyApplied = true;
+				item2.CurrentValue = value2 ?? string.Empty;
+				flag = true;
 			}
 		}
-
-		if (!anyApplied && warnings.Count == 0)
+		if (!flag && list.Count == 0)
 		{
 			return "The selected favourite does not contain any values that apply to this template.";
 		}
-		return warnings.Count == 0 ? null : string.Join(Environment.NewLine, warnings.Distinct(StringComparer.OrdinalIgnoreCase));
+		return (list.Count == 0) ? null : string.Join(Environment.NewLine, list.Distinct<string>(StringComparer.OrdinalIgnoreCase));
 	}
 
 	public static void BeginPlacement()
@@ -269,18 +283,18 @@ internal static class PlacementAttributeOverrideService
 
 	public static string EndPlacementAttempt()
 	{
-		string warnings = ConsumePlacementWarnings();
+		string result = ConsumePlacementWarnings();
 		ClearPendingPlacementOverrides();
-		return warnings;
+		return result;
 	}
 
 	public static string ConsumePlacementWarnings()
 	{
 		lock (_syncRoot)
 		{
-			string warnings = BuildWarningsText(_placementWarnings);
+			string result = BuildWarningsText(_placementWarnings);
 			_placementWarnings.Clear();
-			return warnings;
+			return result;
 		}
 	}
 
@@ -300,32 +314,30 @@ internal static class PlacementAttributeOverrideService
 		}
 	}
 
-	public static async Task<Dictionary<string, object>> ApplyOverridesAsync(
-		SimpleTemplate template,
-		Dictionary<string, object> defaultFieldValues,
-		DataSubtype subtype,
-		List<Field> fields,
-		string placementPartKey = null)
+	public static async Task<Dictionary<string, object>> ApplyOverridesAsync(SimpleTemplate template, Dictionary<string, object> defaultFieldValues, Subtype subtype, List<Field> fields, string placementPartKey = null)
 	{
 		Dictionary<string, object> effectiveValues = new Dictionary<string, object>(defaultFieldValues ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
 		if (template == null || fields == null || fields.Count == 0)
 		{
 			return effectiveValues;
 		}
-		foreach ((PlacementAttributeOverrideDefinition definition, PlacementAttributeOverrideValue value) in GetActiveOverrideSelections())
+		foreach (var activeOverrideSelection in GetActiveOverrideSelections())
 		{
-			Field field = fields.FirstOrDefault(candidate => string.Equals(candidate.Name, definition.FieldName, StringComparison.OrdinalIgnoreCase));
-			if (field == null)
+			PlacementAttributeOverrideDefinition definition = activeOverrideSelection.Definition;
+			PlacementAttributeOverrideValue value = activeOverrideSelection.Value;
+			Field field = fields.FirstOrDefault((Field candidate) => string.Equals(candidate.Name, definition.FieldName, StringComparison.OrdinalIgnoreCase));
+			if (field != null)
 			{
-				continue;
+				OverrideValidationResult validation = await ValidateOverrideAsync(definition, field, subtype, value.Value).ConfigureAwait(continueOnCapturedContext: false);
+				if (!validation.IsValid)
+				{
+					RegisterPlacementWarning($"Skipped {definition.Label} override '{value.Value}' for {template.Name}.");
+				}
+				else
+				{
+					effectiveValues[field.Name] = validation.ConfigValue;
+				}
 			}
-			OverrideValidationResult validation = await ValidateOverrideAsync(definition, field, subtype, value.Value).ConfigureAwait(false);
-			if (!validation.IsValid)
-			{
-				RegisterPlacementWarning($"Skipped {definition.Label} override '{value.Value}' for {template.Name}.");
-				continue;
-			}
-			effectiveValues[field.Name] = validation.ConfigValue;
 		}
 		ApplyPendingPlacementValues(effectiveValues, placementPartKey);
 		return effectiveValues;
@@ -335,81 +347,78 @@ internal static class PlacementAttributeOverrideService
 	{
 		try
 		{
-			string catalogPath = ResolveCatalogFilePath();
-			if (string.IsNullOrWhiteSpace(catalogPath) || !File.Exists(catalogPath))
+			string text = ResolveCatalogFilePath();
+			if (string.IsNullOrWhiteSpace(text) || !File.Exists(text))
 			{
 				_definitions = new List<PlacementAttributeOverrideDefinition>();
 				return;
 			}
-			PlacementAttributeOverrideCatalog catalog = JsonSerializer.Deserialize<PlacementAttributeOverrideCatalog>(File.ReadAllText(catalogPath), _jsonOptions);
-			_definitions = (catalog?.Fields ?? new List<PlacementAttributeOverrideDefinition>())
-				.Where(definition => !string.IsNullOrWhiteSpace(definition?.FieldName))
-				.Select(definition => new PlacementAttributeOverrideDefinition
-				{
-					FieldName = NormalizeFieldName(definition.FieldName),
-					Label = string.IsNullOrWhiteSpace(definition.Label) ? NormalizeFieldName(definition.FieldName) : definition.Label.Trim(),
-					Description = string.IsNullOrWhiteSpace(definition.Description) ? null : definition.Description.Trim(),
-					DomainName = string.IsNullOrWhiteSpace(definition.DomainName) ? null : definition.DomainName.Trim()
-				})
-				.GroupBy(definition => definition.FieldName, StringComparer.OrdinalIgnoreCase)
-				.Select(group => group.First())
-				.ToList();
+			_definitions = (from @group in (from definition in JsonSerializer.Deserialize<PlacementAttributeOverrideCatalog>(File.ReadAllText(text), _jsonOptions)?.Fields ?? new List<PlacementAttributeOverrideDefinition>()
+					where !string.IsNullOrWhiteSpace(definition?.FieldName)
+					select new PlacementAttributeOverrideDefinition
+					{
+						FieldName = NormalizeFieldName(definition.FieldName),
+						Label = (string.IsNullOrWhiteSpace(definition.Label) ? NormalizeFieldName(definition.FieldName) : definition.Label.Trim()),
+						Description = (string.IsNullOrWhiteSpace(definition.Description) ? null : definition.Description.Trim()),
+						DomainName = (string.IsNullOrWhiteSpace(definition.DomainName) ? null : definition.DomainName.Trim())
+					}).GroupBy<PlacementAttributeOverrideDefinition, string>((PlacementAttributeOverrideDefinition definition) => definition.FieldName, StringComparer.OrdinalIgnoreCase)
+				select @group.First()).ToList();
 		}
-		catch (Exception ex)
+		catch (Exception exception)
 		{
 			_definitions = new List<PlacementAttributeOverrideDefinition>();
-			LogService.LogException("Placement override definitions could not be loaded.", ex);
+			LogService.LogException("Placement override definitions could not be loaded.", exception);
 		}
 	}
 
 	private static IEnumerable<SimpleTemplate> GetAllSimpleTemplates()
 	{
-		if (AddinConfiguration.Templates?.SimpleTemplates?.Count > 0)
+		TemplateConfig templates = AddinConfiguration.Templates;
+		if (templates != null && templates.SimpleTemplates?.Count > 0)
 		{
 			return AddinConfiguration.Templates.SimpleTemplates;
 		}
 		try
 		{
-			return AddinConfiguration.HasValidTemplateConfigPath()
-				? AddinConfiguration.LoadTemplateConfig().SimpleTemplates
-				: Enumerable.Empty<SimpleTemplate>();
+			IEnumerable<SimpleTemplate> result;
+			if (!AddinConfiguration.HasValidTemplateConfigPath())
+			{
+				result = Enumerable.Empty<SimpleTemplate>();
+			}
+			else
+			{
+				IEnumerable<SimpleTemplate> simpleTemplates = AddinConfiguration.LoadTemplateConfig().SimpleTemplates;
+				result = simpleTemplates;
+			}
+			return result;
 		}
-		catch (Exception ex)
+		catch (Exception exception)
 		{
-			LogService.LogException("Could not load simple templates while resolving placement attribute overrides.", ex);
+			LogService.LogException("Could not load simple templates while resolving placement attribute overrides.", exception);
 			return Enumerable.Empty<SimpleTemplate>();
 		}
 	}
 
 	private static IEnumerable<SimpleTemplate> GetPlacementTargetTemplates(DisplayTemplate displayTemplate)
 	{
-		if (displayTemplate?.IsGroupChild == true)
+		if (displayTemplate?.IsGroupChild ?? false)
 		{
-			// ✅ Use cache for O(1) lookup instead of O(n) FirstOrDefault
-			GroupTemplate parentTemplate = TemplateCache.GetGroupTemplate(displayTemplate.ParentTemplateName);
-			SimpleTemplateReference childTemplateRef = parentTemplate?.SimpleTemplates?.FirstOrDefault(reference =>
-				reference.FeatureId == displayTemplate.FeatureId &&
-				string.Equals(reference.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase));
-			// ✅ Use cache for O(1) lookup instead of O(n) FirstOrDefault
-			SimpleTemplate childTemplate = TemplateCache.GetSimpleTemplate(childTemplateRef?.Name);
+			SimpleTemplate childTemplate = TemplateCache.GetSimpleTemplate((TemplateCache.GetGroupTemplate(displayTemplate.ParentTemplateName)?.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference reference) => reference.FeatureId == displayTemplate.FeatureId && string.Equals(reference.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase)))?.Name);
 			if (childTemplate != null)
 			{
 				yield return childTemplate;
 			}
 			yield break;
 		}
-		// ✅ Use cache for O(1) lookup instead of O(n) FirstOrDefault
 		SimpleTemplate simpleTemplate = TemplateCache.GetSimpleTemplate(displayTemplate?.Name);
 		if (simpleTemplate != null)
 		{
 			yield return simpleTemplate;
 			yield break;
 		}
-		// ✅ Use cache for O(1) lookup instead of O(n) FirstOrDefault
-		GroupTemplate groupTemplate = TemplateCache.GetGroupTemplate(displayTemplate?.Name);
-		foreach (SimpleTemplateReference templateReference in groupTemplate?.SimpleTemplates ?? Enumerable.Empty<SimpleTemplateReference>())
+		IEnumerable<SimpleTemplateReference> enumerable = TemplateCache.GetGroupTemplate(displayTemplate?.Name)?.SimpleTemplates;
+		foreach (SimpleTemplateReference templateReference in enumerable ?? Enumerable.Empty<SimpleTemplateReference>())
 		{
-			// ✅ Use cache for O(1) lookup instead of O(n) FirstOrDefault
 			SimpleTemplate targetTemplate = TemplateCache.GetSimpleTemplate(templateReference.Name);
 			if (targetTemplate != null)
 			{
@@ -424,26 +433,42 @@ internal static class PlacementAttributeOverrideService
 		{
 			return null;
 		}
-		return string.IsNullOrWhiteSpace(parentTemplateName)
-			? "SIMPLE|" + template.Name
-			: "GROUP|" + parentTemplateName + "|" + featureId + "|" + template.Name;
+		return string.IsNullOrWhiteSpace(parentTemplateName) ? ("SIMPLE|" + template.Name) : ("GROUP|" + parentTemplateName + "|" + featureId + "|" + template.Name);
 	}
 
 	private static async Task<PlacementAttributeEditorModel> BuildPlacementEditorModelAsync(DisplayTemplate displayTemplate)
 	{
-		List<PlacementAttributeEditorPartState> parts = await BuildPlacementEditorPartsAsync(displayTemplate).ConfigureAwait(false);
+		List<PlacementAttributeEditorPartState> parts = await BuildPlacementEditorPartsAsync(displayTemplate).ConfigureAwait(continueOnCapturedContext: false);
 		if (parts.Count == 0)
 		{
 			return null;
 		}
-		return new PlacementAttributeEditorModel
+		PlacementAttributeEditorModel obj = new PlacementAttributeEditorModel
 		{
 			TemplateKey = displayTemplate.UniqueKey,
-			TemplateDisplayName = displayTemplate.DisplayName,
-			IsGroupTemplate = parts.Count > 1 || displayTemplate.IsGroupChild != true && AddinConfiguration.Templates?.GroupTemplates?.Any(group => string.Equals(group.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase)) == true,
-			Parts = parts,
-			AvailableFavourites = GetPlacementFavourites(displayTemplate.UniqueKey).ToList()
+			TemplateDisplayName = displayTemplate.DisplayName
 		};
+		int isGroupTemplate;
+		if (parts.Count <= 1)
+		{
+			if (!displayTemplate.IsGroupChild)
+			{
+				TemplateConfig templates = AddinConfiguration.Templates;
+				isGroupTemplate = ((templates != null && templates.GroupTemplates?.Any((GroupTemplate group) => string.Equals(group.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase)) == true) ? 1 : 0);
+			}
+			else
+			{
+				isGroupTemplate = 0;
+			}
+		}
+		else
+		{
+			isGroupTemplate = 1;
+		}
+		obj.IsGroupTemplate = (byte)isGroupTemplate != 0;
+		obj.Parts = parts;
+		obj.AvailableFavourites = GetPlacementFavourites(displayTemplate.UniqueKey).ToList();
+		return obj;
 	}
 
 	private static async Task<List<PlacementAttributeEditorPartState>> BuildPlacementEditorPartsAsync(DisplayTemplate displayTemplate)
@@ -455,21 +480,11 @@ internal static class PlacementAttributeOverrideService
 		}
 		if (displayTemplate.IsGroupChild)
 		{
-			GroupTemplate parentTemplate = AddinConfiguration.Templates?.GroupTemplates?.FirstOrDefault(group =>
-				string.Equals(group.Name, displayTemplate.ParentTemplateName, StringComparison.OrdinalIgnoreCase));
-			SimpleTemplateReference childReference = parentTemplate?.SimpleTemplates?.FirstOrDefault(reference =>
-				reference.FeatureId == displayTemplate.FeatureId &&
-				string.Equals(reference.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase));
-			SimpleTemplate childTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault(template =>
-				string.Equals(template.Name, childReference?.Name, StringComparison.OrdinalIgnoreCase));
+			SimpleTemplateReference childReference = (AddinConfiguration.Templates?.GroupTemplates?.FirstOrDefault((GroupTemplate group) => string.Equals(group.Name, displayTemplate.ParentTemplateName, StringComparison.OrdinalIgnoreCase)))?.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference reference) => reference.FeatureId == displayTemplate.FeatureId && string.Equals(reference.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase));
+			SimpleTemplate childTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault((SimpleTemplate template) => string.Equals(template.Name, childReference?.Name, StringComparison.OrdinalIgnoreCase));
 			if (childTemplate != null)
 			{
-				PlacementAttributeEditorPartState part = await BuildPlacementEditorPartAsync(
-					childTemplate,
-					BuildPlacementPartKey(childTemplate, displayTemplate.ParentTemplateName, displayTemplate.FeatureId),
-					displayTemplate.FeatureId > 0 ? $"{displayTemplate.FeatureId}. {childTemplate.Name}" : childTemplate.Name,
-					childTemplate.TemplateType,
-					displayTemplate.FeatureId).ConfigureAwait(false);
+				PlacementAttributeEditorPartState part = await BuildPlacementEditorPartAsync(childTemplate, BuildPlacementPartKey(childTemplate, displayTemplate.ParentTemplateName, displayTemplate.FeatureId), (displayTemplate.FeatureId > 0) ? $"{displayTemplate.FeatureId}. {childTemplate.Name}" : childTemplate.Name, childTemplate.TemplateType, displayTemplate.FeatureId).ConfigureAwait(continueOnCapturedContext: false);
 				if (part != null)
 				{
 					parts.Add(part);
@@ -477,54 +492,34 @@ internal static class PlacementAttributeOverrideService
 			}
 			return parts;
 		}
-
-		SimpleTemplate simpleTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault(template =>
-			string.Equals(template.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase));
+		SimpleTemplate simpleTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault((SimpleTemplate template) => string.Equals(template.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase));
 		if (simpleTemplate != null)
 		{
-			PlacementAttributeEditorPartState simplePart = await BuildPlacementEditorPartAsync(
-				simpleTemplate,
-				BuildPlacementPartKey(simpleTemplate),
-				simpleTemplate.Name,
-				simpleTemplate.TemplateType,
-				0).ConfigureAwait(false);
+			PlacementAttributeEditorPartState simplePart = await BuildPlacementEditorPartAsync(simpleTemplate, BuildPlacementPartKey(simpleTemplate), simpleTemplate.Name, simpleTemplate.TemplateType, 0).ConfigureAwait(continueOnCapturedContext: false);
 			if (simplePart != null)
 			{
 				parts.Add(simplePart);
 			}
 			return parts;
 		}
-
-		GroupTemplate groupTemplate = AddinConfiguration.Templates?.GroupTemplates?.FirstOrDefault(template =>
-			string.Equals(template.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase));
-		foreach (SimpleTemplateReference templateReference in groupTemplate?.SimpleTemplates ?? Enumerable.Empty<SimpleTemplateReference>())
+		GroupTemplate groupTemplate = AddinConfiguration.Templates?.GroupTemplates?.FirstOrDefault((GroupTemplate template) => string.Equals(template.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase));
+		IEnumerable<SimpleTemplateReference> enumerable = groupTemplate?.SimpleTemplates;
+		foreach (SimpleTemplateReference templateReference in enumerable ?? Enumerable.Empty<SimpleTemplateReference>())
 		{
-			SimpleTemplate targetTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault(template =>
-				string.Equals(template.Name, templateReference.Name, StringComparison.OrdinalIgnoreCase));
-			if (targetTemplate == null)
+			SimpleTemplate targetTemplate = AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault((SimpleTemplate template) => string.Equals(template.Name, templateReference.Name, StringComparison.OrdinalIgnoreCase));
+			if (targetTemplate != null)
 			{
-				continue;
-			}
-			PlacementAttributeEditorPartState part = await BuildPlacementEditorPartAsync(
-				targetTemplate,
-				BuildPlacementPartKey(targetTemplate, groupTemplate.Name, templateReference.FeatureId),
-				templateReference.FeatureId > 0 ? $"{templateReference.FeatureId}. {targetTemplate.Name}" : targetTemplate.Name,
-				targetTemplate.TemplateType,
-				templateReference.FeatureId).ConfigureAwait(false);
-			if (part != null)
-			{
-				parts.Add(part);
+				PlacementAttributeEditorPartState part2 = await BuildPlacementEditorPartAsync(targetTemplate, BuildPlacementPartKey(targetTemplate, groupTemplate.Name, templateReference.FeatureId), (templateReference.FeatureId > 0) ? $"{templateReference.FeatureId}. {targetTemplate.Name}" : targetTemplate.Name, targetTemplate.TemplateType, templateReference.FeatureId).ConfigureAwait(continueOnCapturedContext: false);
+				if (part2 != null)
+				{
+					parts.Add(part2);
+				}
 			}
 		}
 		return parts;
 	}
 
-	private static async Task<PlacementAttributeEditorPartState> BuildPlacementEditorPartAsync(
-		SimpleTemplate template,
-		string partKey,
-		string displayName,
-		string detailText,
-		int featureId)
+	private static async Task<PlacementAttributeEditorPartState> BuildPlacementEditorPartAsync(SimpleTemplate template, string partKey, string displayName, string detailText, int featureId)
 	{
 		if (template == null)
 		{
@@ -535,7 +530,7 @@ internal static class PlacementAttributeOverrideService
 		{
 			return null;
 		}
-		List<PlacementAttributeEditorFieldState> fieldStates = await BuildPlacementFieldStatesAsync(template, mapMember).ConfigureAwait(false);
+		List<PlacementAttributeEditorFieldState> fieldStates = await BuildPlacementFieldStatesAsync(template, mapMember).ConfigureAwait(continueOnCapturedContext: false);
 		if (fieldStates.Count == 0)
 		{
 			return null;
@@ -553,50 +548,52 @@ internal static class PlacementAttributeOverrideService
 
 	private static async Task<List<PlacementAttributeEditorFieldState>> BuildPlacementFieldStatesAsync(SimpleTemplate template, MapMember mapMember)
 	{
-		(TableDefinition definition, DataSubtype subtype) = await QueuedTask.Run(() => GetDefinitionAndSubtype(mapMember, template)).ConfigureAwait(false);
-		List<Field> fields = await QueuedTask.Run(() => definition?.GetFields()?.ToList() ?? new List<Field>()).ConfigureAwait(false);
+		(TableDefinition Definition, Subtype Subtype) tuple = await QueuedTask.Run<(TableDefinition, Subtype)>((Func<(TableDefinition, Subtype)>)(() => GetDefinitionAndSubtype(mapMember, template)), TaskCreationOptions.None).ConfigureAwait(continueOnCapturedContext: false);
+		TableDefinition definition = tuple.Definition;
+		Subtype subtype = tuple.Subtype;
+		List<Field> fields = await QueuedTask.Run<List<Field>>((Func<List<Field>>)delegate
+		{
+			TableDefinition obj = definition;
+			return ((obj == null) ? null : obj.GetFields()?.ToList()) ?? new List<Field>();
+		}, TaskCreationOptions.None).ConfigureAwait(continueOnCapturedContext: false);
 		Dictionary<string, object> configuredValues = new Dictionary<string, object>(template.DefaultFieldValues ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
 		AddAlwaysVisiblePlacementEditorFields(configuredValues, fields);
-		Dictionary<string, object> currentValues = await ApplySessionOverridesOnlyAsync(template, configuredValues, subtype, fields).ConfigureAwait(false);
-		return await QueuedTask.Run(() =>
+		Dictionary<string, object> currentValues = await ApplySessionOverridesOnlyAsync(template, configuredValues, subtype, fields).ConfigureAwait(continueOnCapturedContext: false);
+		return await QueuedTask.Run<List<PlacementAttributeEditorFieldState>>((Func<List<PlacementAttributeEditorFieldState>>)delegate
 		{
-			List<PlacementAttributeEditorFieldState> states = new List<PlacementAttributeEditorFieldState>();
-			foreach (string fieldName in configuredValues.Keys.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
+			List<PlacementAttributeEditorFieldState> list = new List<PlacementAttributeEditorFieldState>();
+			foreach (string fieldName in configuredValues.Keys.OrderBy<string, string>((string name) => name, StringComparer.OrdinalIgnoreCase))
 			{
-				if (ShouldHidePlacementEditorField(fieldName))
+				if (!ShouldHidePlacementEditorField(fieldName))
 				{
-					continue;
+					Field val = fields.FirstOrDefault((Field candidate) => string.Equals(candidate.Name, fieldName, StringComparison.OrdinalIgnoreCase));
+					if (val != null)
+					{
+						List<string> availableDomainValues = GetAvailableDomainValues(val, subtype);
+						string configuredValue = ConvertToEditorValue(configuredValues.TryGetValue(fieldName, out var value) ? value : null);
+						string currentValue = ConvertToEditorValue(currentValues.TryGetValue(val.Name, out var value2) ? value2 : null);
+						if (ShouldShowPlacementEditorField(val.Name, configuredValue, currentValue, availableDomainValues))
+						{
+							list.Add(new PlacementAttributeEditorFieldState
+							{
+								FieldName = val.Name,
+								Label = val.AliasName,
+								ConfiguredValue = configuredValue,
+								CurrentValue = currentValue,
+								HasDomainValues = (availableDomainValues.Count > 0),
+								AvailableValues = availableDomainValues
+							});
+						}
+					}
 				}
-				Field field = fields.FirstOrDefault(candidate => string.Equals(candidate.Name, fieldName, StringComparison.OrdinalIgnoreCase));
-				if (field == null)
-				{
-					continue;
-				}
-				List<string> domainValues = GetAvailableDomainValues(field, subtype);
-				string configuredEditorValue = ConvertToEditorValue(configuredValues.TryGetValue(fieldName, out object configuredValue) ? configuredValue : null);
-				string currentEditorValue = ConvertToEditorValue(currentValues.TryGetValue(field.Name, out object currentValue) ? currentValue : null);
-				if (!ShouldShowPlacementEditorField(field.Name, configuredEditorValue, currentEditorValue, domainValues))
-				{
-					continue;
-				}
-				states.Add(new PlacementAttributeEditorFieldState
-				{
-					FieldName = field.Name,
-					Label = field.AliasName,
-					ConfiguredValue = configuredEditorValue,
-					CurrentValue = currentEditorValue,
-					HasDomainValues = domainValues.Count > 0,
-					AvailableValues = domainValues
-				});
 			}
-			return states;
-		}).ConfigureAwait(false);
+			return list;
+		}, TaskCreationOptions.None).ConfigureAwait(continueOnCapturedContext: false);
 	}
 
 	private static bool ShouldHidePlacementEditorField(string fieldName)
 	{
-		return string.Equals(fieldName, "ASSETGROUP", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(fieldName, "ASSETTYPE", StringComparison.OrdinalIgnoreCase);
+		return string.Equals(fieldName, "ASSETGROUP", StringComparison.OrdinalIgnoreCase) || string.Equals(fieldName, "ASSETTYPE", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static void AddAlwaysVisiblePlacementEditorFields(Dictionary<string, object> configuredValues, List<Field> fields)
@@ -605,14 +602,11 @@ internal static class PlacementAttributeOverrideService
 		{
 			return;
 		}
-		foreach (string preferredFieldName in AlwaysVisiblePlacementEditorFields)
+		string[] alwaysVisiblePlacementEditorFields = AlwaysVisiblePlacementEditorFields;
+		foreach (string preferredFieldName in alwaysVisiblePlacementEditorFields)
 		{
-			Field field = fields.FirstOrDefault(candidate => string.Equals(candidate.Name, preferredFieldName, StringComparison.OrdinalIgnoreCase));
-			if (field == null || ShouldHidePlacementEditorField(field.Name))
-			{
-				continue;
-			}
-			if (!configuredValues.Keys.Any(candidate => string.Equals(candidate, field.Name, StringComparison.OrdinalIgnoreCase)))
+			Field field = fields.FirstOrDefault((Field candidate) => string.Equals(candidate.Name, preferredFieldName, StringComparison.OrdinalIgnoreCase));
+			if (field != null && !ShouldHidePlacementEditorField(field.Name) && !configuredValues.Keys.Any((string candidate) => string.Equals(candidate, field.Name, StringComparison.OrdinalIgnoreCase)))
 			{
 				configuredValues[field.Name] = null;
 			}
@@ -627,28 +621,22 @@ internal static class PlacementAttributeOverrideService
 		}
 		if (domainValues == null || domainValues.Count == 0)
 		{
-			return !AlwaysVisiblePlacementEditorFields.Contains(NormalizeFieldName(fieldName), StringComparer.OrdinalIgnoreCase);
+			return !AlwaysVisiblePlacementEditorFields.Contains<string>(NormalizeFieldName(fieldName), StringComparer.OrdinalIgnoreCase);
 		}
-		return domainValues.Any(value => !IsNotApplicableEditorValue(value));
+		return domainValues.Any((string value) => !IsNotApplicableEditorValue(value));
 	}
 
 	private static bool IsNotApplicableEditorValue(string value)
 	{
-		string normalized = (value ?? string.Empty).Trim();
-		if (string.IsNullOrWhiteSpace(normalized))
+		string text = (value ?? string.Empty).Trim();
+		if (string.IsNullOrWhiteSpace(text))
 		{
 			return true;
 		}
-		return string.Equals(normalized, "Not Applicable", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(normalized, "N/A", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(normalized, "NA", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(normalized, "Unknown", StringComparison.OrdinalIgnoreCase);
+		return string.Equals(text, "Not Applicable", StringComparison.OrdinalIgnoreCase) || string.Equals(text, "N/A", StringComparison.OrdinalIgnoreCase) || string.Equals(text, "NA", StringComparison.OrdinalIgnoreCase) || string.Equals(text, "Unknown", StringComparison.OrdinalIgnoreCase);
 	}
 
-	private static async Task<IReadOnlyList<PlacementAttributeOverrideEditorState>> BuildEditorStatesAsync(
-		IEnumerable<SimpleTemplate> templates,
-		IEnumerable<PlacementAttributeOverrideValue> selectedValues,
-		bool includeUnavailableDefinitions)
+	private static async Task<IReadOnlyList<PlacementAttributeOverrideEditorState>> BuildEditorStatesAsync(IEnumerable<SimpleTemplate> templates, IEnumerable<PlacementAttributeOverrideValue> selectedValues, bool includeUnavailableDefinitions)
 	{
 		List<SimpleTemplate> templateList = (templates ?? Enumerable.Empty<SimpleTemplate>()).ToList();
 		List<PlacementAttributeOverrideValue> selectedValueList = NormalizeOverrides(selectedValues);
@@ -656,116 +644,105 @@ internal static class PlacementAttributeOverrideService
 		List<PlacementAttributeOverrideEditorState> states = new List<PlacementAttributeOverrideEditorState>();
 		foreach (PlacementAttributeOverrideDefinition definition in _definitions)
 		{
-			OverrideFieldSummary summary = await SummarizeFieldAsync(templateList, definition, domainSummaryCache).ConfigureAwait(false);
-			if (!summary.IsApplicable && !includeUnavailableDefinitions)
+			OverrideFieldSummary summary = await SummarizeFieldAsync(templateList, definition, domainSummaryCache).ConfigureAwait(continueOnCapturedContext: false);
+			if (summary.IsApplicable || includeUnavailableDefinitions)
 			{
-				continue;
+				PlacementAttributeOverrideValue selected = selectedValueList.FirstOrDefault((PlacementAttributeOverrideValue value) => string.Equals(value.FieldName, definition.FieldName, StringComparison.OrdinalIgnoreCase));
+				List<string> availableValues = summary.AvailableValues.OrderBy<string, string>((string value) => value, StringComparer.OrdinalIgnoreCase).ToList();
+				string editorValue = (string.IsNullOrWhiteSpace(selected?.Value) ? (availableValues.FirstOrDefault() ?? summary.FirstConfiguredValue) : selected.Value);
+				if (!string.IsNullOrWhiteSpace(editorValue) && availableValues.Count > 0 && !availableValues.Contains<string>(editorValue, StringComparer.OrdinalIgnoreCase))
+				{
+					availableValues.Insert(0, editorValue);
+				}
+				states.Add(new PlacementAttributeOverrideEditorState
+				{
+					Definition = definition,
+					IsEnabled = (selected?.Enabled ?? false),
+					Value = editorValue,
+					ConfiguredValueSummary = (summary.IsApplicable ? summary.ConfiguredValueSummary : "Not currently found in the loaded template configuration."),
+					AvailableValues = availableValues
+				});
 			}
-			PlacementAttributeOverrideValue selected = selectedValueList.FirstOrDefault(value =>
-				string.Equals(value.FieldName, definition.FieldName, StringComparison.OrdinalIgnoreCase));
-			List<string> availableValues = summary.AvailableValues.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToList();
-			string editorValue = string.IsNullOrWhiteSpace(selected?.Value)
-				? availableValues.FirstOrDefault() ?? summary.FirstConfiguredValue
-				: selected.Value;
-			if (!string.IsNullOrWhiteSpace(editorValue) &&
-				availableValues.Count > 0 &&
-				!availableValues.Contains(editorValue, StringComparer.OrdinalIgnoreCase))
-			{
-				availableValues.Insert(0, editorValue);
-			}
-			states.Add(new PlacementAttributeOverrideEditorState
-			{
-				Definition = definition,
-				IsEnabled = selected?.Enabled == true,
-				Value = editorValue,
-				ConfiguredValueSummary = summary.IsApplicable ? summary.ConfiguredValueSummary : "Not currently found in the loaded template configuration.",
-				AvailableValues = availableValues
-			});
 		}
 		return states;
 	}
 
-	private static IReadOnlyList<PlacementAttributeOverrideEditorState> BuildLightweightEditorStates(
-		IEnumerable<SimpleTemplate> templates,
-		IEnumerable<PlacementAttributeOverrideValue> selectedValues,
-		bool includeUnavailableDefinitions)
+	private static IReadOnlyList<PlacementAttributeOverrideEditorState> BuildLightweightEditorStates(IEnumerable<SimpleTemplate> templates, IEnumerable<PlacementAttributeOverrideValue> selectedValues, bool includeUnavailableDefinitions)
 	{
-		List<SimpleTemplate> templateList = (templates ?? Enumerable.Empty<SimpleTemplate>()).ToList();
-		List<PlacementAttributeOverrideValue> selectedValueList = NormalizeOverrides(selectedValues);
-		List<PlacementAttributeOverrideEditorState> states = new List<PlacementAttributeOverrideEditorState>();
+		List<SimpleTemplate> list = (templates ?? Enumerable.Empty<SimpleTemplate>()).ToList();
+		List<PlacementAttributeOverrideValue> source = NormalizeOverrides(selectedValues);
+		List<PlacementAttributeOverrideEditorState> list2 = new List<PlacementAttributeOverrideEditorState>();
 		foreach (PlacementAttributeOverrideDefinition definition in _definitions)
 		{
-			HashSet<string> configuredValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			bool isApplicable = false;
-			foreach (SimpleTemplate template in templateList)
+			HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			bool flag = false;
+			foreach (SimpleTemplate item in list)
 			{
-				Dictionary<string, object> defaultFieldValues = template.DefaultFieldValues ?? new Dictionary<string, object>();
-				string configuredFieldName = FindConfiguredFieldName(defaultFieldValues.Keys, definition.FieldName);
-				if (configuredFieldName == null)
+				Dictionary<string, object> dictionary = item.DefaultFieldValues ?? new Dictionary<string, object>();
+				string text = FindConfiguredFieldName(dictionary.Keys, definition.FieldName);
+				if (text != null)
 				{
-					continue;
+					flag = true;
+					string text2 = Convert.ToString(CommonFunctions.GetObjectValue(dictionary[text]));
+					if (!string.IsNullOrWhiteSpace(text2))
+					{
+						hashSet.Add(text2);
+					}
 				}
-				isApplicable = true;
-				string configuredValue = Convert.ToString(CommonFunctions.GetObjectValue(defaultFieldValues[configuredFieldName]));
-				if (!string.IsNullOrWhiteSpace(configuredValue))
+			}
+			if (flag || includeUnavailableDefinitions)
+			{
+				PlacementAttributeOverrideValue placementAttributeOverrideValue = source.FirstOrDefault((PlacementAttributeOverrideValue value) => string.Equals(value.FieldName, definition.FieldName, StringComparison.OrdinalIgnoreCase));
+				List<string> list3 = hashSet.OrderBy<string, string>((string value) => value, StringComparer.OrdinalIgnoreCase).ToList();
+				string text3 = (string.IsNullOrWhiteSpace(placementAttributeOverrideValue?.Value) ? list3.FirstOrDefault() : placementAttributeOverrideValue.Value);
+				if (!string.IsNullOrWhiteSpace(text3) && list3.Count > 0 && !list3.Contains<string>(text3, StringComparer.OrdinalIgnoreCase))
 				{
-					configuredValues.Add(configuredValue);
+					list3.Insert(0, text3);
 				}
+				int count = hashSet.Count;
+				if (1 == 0)
+				{
+				}
+				string text4 = count switch
+				{
+					0 => flag ? "Configured default varies by template." : "Not currently found in the loaded template configuration.", 
+					1 => "Configured default: " + hashSet.First(), 
+					_ => "Configured defaults: " + string.Join(", ", list3), 
+				};
+				if (1 == 0)
+				{
+				}
+				string configuredValueSummary = text4;
+				list2.Add(new PlacementAttributeOverrideEditorState
+				{
+					Definition = definition,
+					IsEnabled = (placementAttributeOverrideValue?.Enabled ?? false),
+					Value = text3,
+					ConfiguredValueSummary = configuredValueSummary,
+					AvailableValues = list3
+				});
 			}
-			if (!isApplicable && !includeUnavailableDefinitions)
-			{
-				continue;
-			}
-			PlacementAttributeOverrideValue selected = selectedValueList.FirstOrDefault(value =>
-				string.Equals(value.FieldName, definition.FieldName, StringComparison.OrdinalIgnoreCase));
-			List<string> availableValues = configuredValues.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToList();
-			string editorValue = string.IsNullOrWhiteSpace(selected?.Value)
-				? availableValues.FirstOrDefault()
-				: selected.Value;
-			if (!string.IsNullOrWhiteSpace(editorValue) &&
-				availableValues.Count > 0 &&
-				!availableValues.Contains(editorValue, StringComparer.OrdinalIgnoreCase))
-			{
-				availableValues.Insert(0, editorValue);
-			}
-			string configuredValueSummary = configuredValues.Count switch
-			{
-				0 => isApplicable ? "Configured default varies by template." : "Not currently found in the loaded template configuration.",
-				1 => "Configured default: " + configuredValues.First(),
-				_ => "Configured defaults: " + string.Join(", ", availableValues)
-			};
-			states.Add(new PlacementAttributeOverrideEditorState
-			{
-				Definition = definition,
-				IsEnabled = selected?.Enabled == true,
-				Value = editorValue,
-				ConfiguredValueSummary = configuredValueSummary,
-				AvailableValues = availableValues
-			});
 		}
-		return states;
+		return list2;
 	}
 
 	private static string ResolveCatalogFilePath()
 	{
-		string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? string.Empty;
-		string[] candidatePaths =
+		string path = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? string.Empty;
+		string[] source = new string[2]
 		{
-			Path.Combine(assemblyDirectory, "PlacementAttributeOverrides.json"),
-			Path.Combine(assemblyDirectory, "TemplateEditor", "PlacementAttributeOverrides.json")
+			Path.Combine(path, "PlacementAttributeOverrides.json"),
+			Path.Combine(path, "TemplateEditor", "PlacementAttributeOverrides.json")
 		};
-		return candidatePaths.FirstOrDefault(File.Exists);
+		return source.FirstOrDefault(File.Exists);
 	}
 
 	private static async Task<OverrideFieldSummary> SummarizeFieldAsync(IEnumerable<SimpleTemplate> templates, PlacementAttributeOverrideDefinition definition)
 	{
-		return await SummarizeFieldAsync(templates, definition, new Dictionary<string, FieldDomainSummary>(StringComparer.OrdinalIgnoreCase)).ConfigureAwait(false);
+		return await SummarizeFieldAsync(templates, definition, new Dictionary<string, FieldDomainSummary>(StringComparer.OrdinalIgnoreCase)).ConfigureAwait(continueOnCapturedContext: false);
 	}
 
-	private static async Task<OverrideFieldSummary> SummarizeFieldAsync(
-		IEnumerable<SimpleTemplate> templates,
-		PlacementAttributeOverrideDefinition definition,
-		Dictionary<string, FieldDomainSummary> domainSummaryCache)
+	private static async Task<OverrideFieldSummary> SummarizeFieldAsync(IEnumerable<SimpleTemplate> templates, PlacementAttributeOverrideDefinition definition, Dictionary<string, FieldDomainSummary> domainSummaryCache)
 	{
 		HashSet<string> configuredValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		HashSet<string> availableValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -782,7 +759,7 @@ internal static class PlacementAttributeOverrideService
 					configuredValues.Add(configuredValue);
 				}
 			}
-			FieldDomainSummary domainSummary = await GetFieldDomainSummaryAsync(template, definition.FieldName, definition.DomainName, domainSummaryCache).ConfigureAwait(false);
+			FieldDomainSummary domainSummary = await GetFieldDomainSummaryAsync(template, definition.FieldName, definition.DomainName, domainSummaryCache).ConfigureAwait(continueOnCapturedContext: false);
 			if (!domainSummary.IsApplicable)
 			{
 				continue;
@@ -793,31 +770,33 @@ internal static class PlacementAttributeOverrideService
 				availableValues.Add(value);
 			}
 		}
-		string configuredValueSummary = configuredValues.Count switch
+		int count = configuredValues.Count;
+		if (1 == 0)
 		{
-			0 => isApplicable
-				? "The field is available on matching templates even when the config JSON does not set a default."
-				: "Not currently found on the loaded template targets.",
-			1 => "Configured default: " + configuredValues.First(),
-			_ => "Configured defaults: " + string.Join(", ", configuredValues.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+		}
+		string text = count switch
+		{
+			0 => isApplicable ? "The field is available on matching templates even when the config JSON does not set a default." : "Not currently found on the loaded template targets.", 
+			1 => "Configured default: " + configuredValues.First(), 
+			_ => "Configured defaults: " + string.Join(", ", configuredValues.OrderBy<string, string>((string result) => result, StringComparer.OrdinalIgnoreCase)), 
 		};
+		if (1 == 0)
+		{
+		}
+		string configuredValueSummary = text;
 		return new OverrideFieldSummary
 		{
 			IsApplicable = isApplicable,
 			ConfiguredValueSummary = configuredValueSummary,
 			AvailableValues = availableValues.ToList(),
-			FirstConfiguredValue = configuredValues.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).FirstOrDefault()
+			FirstConfiguredValue = configuredValues.OrderBy<string, string>((string result) => result, StringComparer.OrdinalIgnoreCase).FirstOrDefault()
 		};
 	}
 
-	private static async Task<FieldDomainSummary> GetFieldDomainSummaryAsync(
-		SimpleTemplate template,
-		string fieldName,
-		string expectedDomainName,
-		Dictionary<string, FieldDomainSummary> cache)
+	private static async Task<FieldDomainSummary> GetFieldDomainSummaryAsync(SimpleTemplate template, string fieldName, string expectedDomainName, Dictionary<string, FieldDomainSummary> cache)
 	{
 		string cacheKey = BuildFieldDomainSummaryCacheKey(template, fieldName, expectedDomainName);
-		if (!string.IsNullOrWhiteSpace(cacheKey) && cache != null && cache.TryGetValue(cacheKey, out FieldDomainSummary cachedSummary))
+		if (!string.IsNullOrWhiteSpace(cacheKey) && cache != null && cache.TryGetValue(cacheKey, out var cachedSummary))
 		{
 			return cachedSummary;
 		}
@@ -826,97 +805,88 @@ internal static class PlacementAttributeOverrideService
 		{
 			return CacheFieldDomainSummary(cache, cacheKey, FieldDomainSummary.Empty);
 		}
-		FieldDomainSummary summary = await QueuedTask.Run(() =>
+		return CacheFieldDomainSummary(cache, cacheKey, await QueuedTask.Run<FieldDomainSummary>((Func<FieldDomainSummary>)delegate
 		{
-			(TableDefinition definition, DataSubtype subtype) = GetDefinitionAndSubtype(target, template);
-			Field field = definition?.GetFields()?.FirstOrDefault(candidate => string.Equals(candidate.Name, fieldName, StringComparison.OrdinalIgnoreCase));
-			if (field == null)
+			(TableDefinition Definition, Subtype Subtype) definitionAndSubtype = GetDefinitionAndSubtype(target, template);
+			TableDefinition item = definitionAndSubtype.Definition;
+			Subtype item2 = definitionAndSubtype.Subtype;
+			Field val = ((item == null) ? null : item.GetFields()?.FirstOrDefault((Field candidate) => string.Equals(candidate.Name, fieldName, StringComparison.OrdinalIgnoreCase)));
+			if (val == null)
 			{
 				return FieldDomainSummary.Empty;
 			}
-			DataDomain domain = field.GetDomain(subtype) ?? field.GetDomain((DataSubtype)null);
-			if (domain == null)
+			Domain val2 = val.GetDomain(item2) ?? val.GetDomain((Subtype)null);
+			if (val2 == null)
 			{
 				return FieldDomainSummary.Empty;
 			}
-			string actualDomainName = TryGetDomainName(domain);
-			if (!string.IsNullOrWhiteSpace(expectedDomainName) &&
-				!string.Equals(expectedDomainName, actualDomainName, StringComparison.OrdinalIgnoreCase))
+			string b = TryGetDomainName(val2);
+			if (!string.IsNullOrWhiteSpace(expectedDomainName) && !string.Equals(expectedDomainName, b, StringComparison.OrdinalIgnoreCase))
 			{
 				return FieldDomainSummary.Empty;
 			}
-			if (domain is CodedValueDomain codedDomain)
+			CodedValueDomain val3 = (CodedValueDomain)(object)((val2 is CodedValueDomain) ? val2 : null);
+			return (val3 != null) ? new FieldDomainSummary
 			{
-				return new FieldDomainSummary
-				{
-					IsApplicable = true,
-					AvailableValues = codedDomain.GetCodedValuePairs().Values.Select(value => Convert.ToString(value)).Where(value => !string.IsNullOrWhiteSpace(value)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
-				};
-			}
-			return new FieldDomainSummary
+				IsApplicable = true,
+				AvailableValues = (from value in val3.GetCodedValuePairs().Values
+					select Convert.ToString(value) into value
+					where !string.IsNullOrWhiteSpace(value)
+					select value).Distinct<string>(StringComparer.OrdinalIgnoreCase).ToList()
+			} : new FieldDomainSummary
 			{
 				IsApplicable = true
 			};
-		}).ConfigureAwait(false);
-		return CacheFieldDomainSummary(cache, cacheKey, summary);
+		}, TaskCreationOptions.None).ConfigureAwait(continueOnCapturedContext: false));
 	}
 
-	private static async Task<OverrideValidationResult> ValidateOverrideAsync(
-		PlacementAttributeOverrideDefinition definition,
-		Field field,
-		DataSubtype subtype,
-		string value)
+	private static async Task<OverrideValidationResult> ValidateOverrideAsync(PlacementAttributeOverrideDefinition definition, Field field, Subtype subtype, string value)
 	{
 		if (string.IsNullOrWhiteSpace(value))
 		{
 			return OverrideValidationResult.Invalid;
 		}
-		return await QueuedTask.Run(() =>
+		return await QueuedTask.Run<OverrideValidationResult>((Func<OverrideValidationResult>)delegate
 		{
-			DataDomain domain = field.GetDomain(subtype) ?? field.GetDomain((DataSubtype)null);
-			if (domain == null)
+			Domain val = field.GetDomain(subtype) ?? field.GetDomain((Subtype)null);
+			if (val == null)
 			{
-				return new OverrideValidationResult(true, value.Trim());
+				return new OverrideValidationResult(isValid: true, value.Trim());
 			}
-			string actualDomainName = TryGetDomainName(domain);
-			if (!string.IsNullOrWhiteSpace(definition.DomainName) &&
-				!string.Equals(definition.DomainName, actualDomainName, StringComparison.OrdinalIgnoreCase))
+			string b = TryGetDomainName(val);
+			if (!string.IsNullOrWhiteSpace(definition.DomainName) && !string.Equals(definition.DomainName, b, StringComparison.OrdinalIgnoreCase))
 			{
 				return OverrideValidationResult.Invalid;
 			}
-			if (domain is CodedValueDomain codedDomain)
+			CodedValueDomain val2 = (CodedValueDomain)(object)((val is CodedValueDomain) ? val : null);
+			if (val2 != null)
 			{
-				string match = codedDomain.GetCodedValuePairs().Values
-					.Select(candidate => Convert.ToString(candidate))
-					.FirstOrDefault(candidate => string.Equals(candidate, value, StringComparison.OrdinalIgnoreCase));
-				return string.IsNullOrWhiteSpace(match) ? OverrideValidationResult.Invalid : new OverrideValidationResult(true, match);
+				string text = val2.GetCodedValuePairs().Values.Select((string candidate) => Convert.ToString(candidate)).FirstOrDefault((string candidate) => string.Equals(candidate, value, StringComparison.OrdinalIgnoreCase));
+				return string.IsNullOrWhiteSpace(text) ? OverrideValidationResult.Invalid : new OverrideValidationResult(isValid: true, text);
 			}
-			return new OverrideValidationResult(true, value.Trim());
-		}).ConfigureAwait(false);
+			return new OverrideValidationResult(isValid: true, value.Trim());
+		}, TaskCreationOptions.None).ConfigureAwait(continueOnCapturedContext: false);
 	}
 
-	private static async Task<Dictionary<string, object>> ApplySessionOverridesOnlyAsync(
-		SimpleTemplate template,
-		Dictionary<string, object> defaultFieldValues,
-		DataSubtype subtype,
-		List<Field> fields)
+	private static async Task<Dictionary<string, object>> ApplySessionOverridesOnlyAsync(SimpleTemplate template, Dictionary<string, object> defaultFieldValues, Subtype subtype, List<Field> fields)
 	{
 		Dictionary<string, object> effectiveValues = new Dictionary<string, object>(defaultFieldValues ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
 		if (template == null || fields == null || fields.Count == 0)
 		{
 			return effectiveValues;
 		}
-		foreach ((PlacementAttributeOverrideDefinition definition, PlacementAttributeOverrideValue value) in GetSessionOverrideSelections())
+		foreach (var sessionOverrideSelection in GetSessionOverrideSelections())
 		{
-			Field field = fields.FirstOrDefault(candidate => string.Equals(candidate.Name, definition.FieldName, StringComparison.OrdinalIgnoreCase));
-			if (field == null)
+			PlacementAttributeOverrideDefinition definition = sessionOverrideSelection.Definition;
+			PlacementAttributeOverrideValue value = sessionOverrideSelection.Value;
+			Field field = fields.FirstOrDefault((Field candidate) => string.Equals(candidate.Name, definition.FieldName, StringComparison.OrdinalIgnoreCase));
+			if (field != null)
 			{
-				continue;
-			}
-			OverrideValidationResult validation = await ValidateOverrideAsync(definition, field, subtype, value.Value).ConfigureAwait(false);
-			if (validation.IsValid)
-			{
-				effectiveValues[field.Name] = validation.ConfigValue;
+				OverrideValidationResult validation = await ValidateOverrideAsync(definition, field, subtype, value.Value).ConfigureAwait(continueOnCapturedContext: false);
+				if (validation.IsValid)
+				{
+					effectiveValues[field.Name] = validation.ConfigValue;
+				}
 			}
 		}
 		return effectiveValues;
@@ -924,14 +894,14 @@ internal static class PlacementAttributeOverrideService
 
 	private static IEnumerable<(PlacementAttributeOverrideDefinition Definition, PlacementAttributeOverrideValue Value)> GetSessionOverrideSelections()
 	{
-		Dictionary<string, PlacementAttributeOverrideValue> valuesByField = GetEnabledOverrides(AddinConfiguration.Settings?.SessionAttributeOverrides)
-			.ToDictionary(value => NormalizeFieldName(value.FieldName), StringComparer.OrdinalIgnoreCase);
+		Dictionary<string, PlacementAttributeOverrideValue> valuesByField = GetEnabledOverrides(AddinConfiguration.Settings?.SessionAttributeOverrides).ToDictionary<PlacementAttributeOverrideValue, string>((PlacementAttributeOverrideValue placementAttributeOverrideValue) => NormalizeFieldName(placementAttributeOverrideValue.FieldName), StringComparer.OrdinalIgnoreCase);
 		foreach (PlacementAttributeOverrideDefinition definition in _definitions)
 		{
-			if (valuesByField.TryGetValue(definition.FieldName, out PlacementAttributeOverrideValue value))
+			if (valuesByField.TryGetValue(definition.FieldName, out var value))
 			{
-				yield return (definition, value);
+				yield return (Definition: definition, Value: value);
 			}
+			value = null;
 		}
 	}
 
@@ -942,8 +912,9 @@ internal static class PlacementAttributeOverrideService
 
 	private static IEnumerable<PlacementAttributeOverrideValue> GetEnabledOverrides(IEnumerable<PlacementAttributeOverrideValue> overrides)
 	{
-		return NormalizeOverrides(overrides)
-			.Where(value => value.Enabled && !string.IsNullOrWhiteSpace(value.Value));
+		return from value in NormalizeOverrides(overrides)
+			where value.Enabled && !string.IsNullOrWhiteSpace(value.Value)
+			select value;
 	}
 
 	private static MapMember GetMapMemberForTemplate(SimpleTemplate template)
@@ -952,53 +923,54 @@ internal static class PlacementAttributeOverrideService
 		{
 			return null;
 		}
-		string groupLayerName = template.GroupLayer.ToUpperInvariant();
-		if (AddinConfiguration.GroupFeatureLayerNames.Contains(groupLayerName))
+		string item = template.GroupLayer.ToUpperInvariant();
+		if (AddinConfiguration.GroupFeatureLayerNames.Contains(item))
 		{
-			return MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
+			return (MapMember)(object)MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
 		}
-		return MapMemberLookupService.GetTableByName(template.SubtypeLayer, template.GroupLayer);
+		return (MapMember)(object)MapMemberLookupService.GetTableByName(template.SubtypeLayer, template.GroupLayer);
 	}
 
-	private static (TableDefinition Definition, DataSubtype Subtype) GetDefinitionAndSubtype(MapMember mapMember, SimpleTemplate template)
+	private static (TableDefinition Definition, Subtype Subtype) GetDefinitionAndSubtype(MapMember mapMember, SimpleTemplate template)
 	{
 		if (mapMember == null)
 		{
-			return (null, null);
+			return (Definition: null, Subtype: null);
 		}
+		FeatureLayer val = (FeatureLayer)(object)((mapMember is FeatureLayer) ? mapMember : null);
 		TableDefinition definition;
-		if (mapMember is FeatureLayer featureLayer)
+		if (val != null)
 		{
-			definition = (TableDefinition)featureLayer.GetFeatureClass().GetDefinition();
-		}
-		else if (mapMember is StandaloneTable standaloneTable)
-		{
-			definition = standaloneTable.GetTable().GetDefinition();
+			definition = (TableDefinition)(object)val.GetFeatureClass().GetDefinition();
 		}
 		else
 		{
-			return (null, null);
+			StandaloneTable val2 = (StandaloneTable)(object)((mapMember is StandaloneTable) ? mapMember : null);
+			if (val2 == null)
+			{
+				return (Definition: null, Subtype: null);
+			}
+			definition = val2.GetTable().GetDefinition();
 		}
 		string subtypeField = definition.GetSubtypeField();
 		if (string.IsNullOrWhiteSpace(subtypeField))
 		{
-			return (definition, null);
+			return (Definition: definition, Subtype: null);
 		}
-		Dictionary<string, object> defaultFieldValues = template.DefaultFieldValues ?? new Dictionary<string, object>();
-		string configuredFieldName = FindConfiguredFieldName(defaultFieldValues.Keys, subtypeField);
-		if (configuredFieldName == null)
+		Dictionary<string, object> dictionary = template.DefaultFieldValues ?? new Dictionary<string, object>();
+		string text = FindConfiguredFieldName(dictionary.Keys, subtypeField);
+		if (text == null)
 		{
-			return (definition, null);
+			return (Definition: definition, Subtype: null);
 		}
-		string subtypeName = Convert.ToString(CommonFunctions.GetObjectValue(defaultFieldValues[configuredFieldName]));
-		DataSubtype subtype = definition.GetSubtypes().FirstOrDefault(candidate => string.Equals(candidate.GetName(), subtypeName, StringComparison.OrdinalIgnoreCase));
-		return (definition, subtype);
+		string subtypeName = Convert.ToString(CommonFunctions.GetObjectValue(dictionary[text]));
+		Subtype item = definition.GetSubtypes().FirstOrDefault((Subtype candidate) => string.Equals(candidate.GetName(), subtypeName, StringComparison.OrdinalIgnoreCase));
+		return (Definition: definition, Subtype: item);
 	}
 
 	private static string FindConfiguredFieldName(IEnumerable<string> fieldNames, string expectedFieldName)
 	{
-		return (fieldNames ?? Enumerable.Empty<string>())
-			.FirstOrDefault(fieldName => string.Equals(fieldName, expectedFieldName, StringComparison.OrdinalIgnoreCase));
+		return (fieldNames ?? Enumerable.Empty<string>()).FirstOrDefault((string fieldName) => string.Equals(fieldName, expectedFieldName, StringComparison.OrdinalIgnoreCase));
 	}
 
 	private static string NormalizeFieldName(string fieldName)
@@ -1011,32 +983,31 @@ internal static class PlacementAttributeOverrideService
 		return (templateKey ?? string.Empty).Trim();
 	}
 
-	private static string TryGetDomainName(DataDomain domain)
+	private static string TryGetDomainName(Domain domain)
 	{
 		try
 		{
-			return domain?.GetName();
+			return (domain != null) ? domain.GetName() : null;
 		}
-		catch (Exception ex)
+		catch (Exception exception)
 		{
-			LogService.LogException("Could not resolve domain name while evaluating placement attribute overrides.", ex);
+			LogService.LogException("Could not resolve domain name while evaluating placement attribute overrides.", exception);
 			return null;
 		}
 	}
 
-	private static List<string> GetAvailableDomainValues(Field field, DataSubtype subtype)
+	private static List<string> GetAvailableDomainValues(Field field, Subtype subtype)
 	{
-		DataDomain domain = field?.GetDomain(subtype) ?? field?.GetDomain((DataSubtype)null);
-		if (domain is not CodedValueDomain codedDomain)
+		Domain val = ((field != null) ? field.GetDomain(subtype) : null) ?? ((field != null) ? field.GetDomain((Subtype)null) : null);
+		CodedValueDomain val2 = (CodedValueDomain)(object)((val is CodedValueDomain) ? val : null);
+		if (val2 == null)
 		{
 			return new List<string>();
 		}
-		return codedDomain.GetCodedValuePairs().Values
-			.Select(value => Convert.ToString(value))
-			.Where(value => !string.IsNullOrWhiteSpace(value))
-			.Distinct(StringComparer.OrdinalIgnoreCase)
-			.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-			.ToList();
+		return (from value in val2.GetCodedValuePairs().Values
+			select Convert.ToString(value) into value
+			where !string.IsNullOrWhiteSpace(value)
+			select value).Distinct<string>(StringComparer.OrdinalIgnoreCase).OrderBy<string, string>((string value) => value, StringComparer.OrdinalIgnoreCase).ToList();
 	}
 
 	private static string ConvertToEditorValue(object value)
@@ -1046,20 +1017,22 @@ internal static class PlacementAttributeOverrideService
 
 	private static Dictionary<string, Dictionary<string, string>> BuildFavouritePartValueMap(PlacementAttributeEditorModel editorModel)
 	{
-		Dictionary<string, Dictionary<string, string>> result = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
-		foreach (PlacementAttributeEditorPartState part in editorModel?.Parts ?? Enumerable.Empty<PlacementAttributeEditorPartState>())
+		Dictionary<string, Dictionary<string, string>> dictionary = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+		IEnumerable<PlacementAttributeEditorPartState> enumerable = editorModel?.Parts;
+		foreach (PlacementAttributeEditorPartState item in enumerable ?? Enumerable.Empty<PlacementAttributeEditorPartState>())
 		{
-			Dictionary<string, string> fieldValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-			foreach (PlacementAttributeEditorFieldState field in part.AttributeFields ?? Enumerable.Empty<PlacementAttributeEditorFieldState>())
+			Dictionary<string, string> dictionary2 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+			IEnumerable<PlacementAttributeEditorFieldState> attributeFields = item.AttributeFields;
+			foreach (PlacementAttributeEditorFieldState item2 in attributeFields ?? Enumerable.Empty<PlacementAttributeEditorFieldState>())
 			{
-				if (!string.IsNullOrWhiteSpace(field.CurrentValue))
+				if (!string.IsNullOrWhiteSpace(item2.CurrentValue))
 				{
-					fieldValues[NormalizeFieldName(field.FieldName)] = field.CurrentValue.Trim();
+					dictionary2[NormalizeFieldName(item2.FieldName)] = item2.CurrentValue.Trim();
 				}
 			}
-			result[part.PartKey ?? string.Empty] = fieldValues;
+			dictionary[item.PartKey ?? string.Empty] = dictionary2;
 		}
-		return result;
+		return dictionary;
 	}
 
 	private static PlacementAttributeOverrideFavouriteCatalog LoadFavouriteCatalog()
@@ -1072,18 +1045,23 @@ internal static class PlacementAttributeOverrideService
 				{
 					return new PlacementAttributeOverrideFavouriteCatalog();
 				}
-				PlacementAttributeOverrideFavouriteCatalog catalog = JsonSerializer.Deserialize<PlacementAttributeOverrideFavouriteCatalog>(File.ReadAllText(FavouriteFilePath), _jsonOptions);
-				catalog ??= new PlacementAttributeOverrideFavouriteCatalog();
-				catalog.Favourites ??= new List<PlacementAttributeOverrideFavourite>();
-				catalog.Favourites = catalog.Favourites
-					.Where(favourite => !string.IsNullOrWhiteSpace(favourite?.Id) && !string.IsNullOrWhiteSpace(favourite.TemplateKey))
-					.ToList();
-				return catalog;
+				PlacementAttributeOverrideFavouriteCatalog placementAttributeOverrideFavouriteCatalog = JsonSerializer.Deserialize<PlacementAttributeOverrideFavouriteCatalog>(File.ReadAllText(FavouriteFilePath), _jsonOptions);
+				if (placementAttributeOverrideFavouriteCatalog == null)
+				{
+					placementAttributeOverrideFavouriteCatalog = new PlacementAttributeOverrideFavouriteCatalog();
+				}
+				PlacementAttributeOverrideFavouriteCatalog placementAttributeOverrideFavouriteCatalog2 = placementAttributeOverrideFavouriteCatalog;
+				if (placementAttributeOverrideFavouriteCatalog2.Favourites == null)
+				{
+					List<PlacementAttributeOverrideFavourite> list = (placementAttributeOverrideFavouriteCatalog2.Favourites = new List<PlacementAttributeOverrideFavourite>());
+				}
+				placementAttributeOverrideFavouriteCatalog.Favourites = placementAttributeOverrideFavouriteCatalog.Favourites.Where((PlacementAttributeOverrideFavourite favourite) => !string.IsNullOrWhiteSpace(favourite?.Id) && !string.IsNullOrWhiteSpace(favourite.TemplateKey)).ToList();
+				return placementAttributeOverrideFavouriteCatalog;
 			}
 		}
-		catch (Exception ex)
+		catch (Exception exception)
 		{
-			LogService.LogException("Placement override favourites could not be loaded.", ex);
+			LogService.LogException("Placement override favourites could not be loaded.", exception);
 			return new PlacementAttributeOverrideFavouriteCatalog();
 		}
 	}
@@ -1095,8 +1073,8 @@ internal static class PlacementAttributeOverrideService
 			lock (_syncRoot)
 			{
 				Directory.CreateDirectory(FavouriteDirectoryPath);
-				string json = JsonSerializer.Serialize(catalog ?? new PlacementAttributeOverrideFavouriteCatalog(), _jsonOptions);
-				File.WriteAllText(FavouriteFilePath, json);
+				string contents = JsonSerializer.Serialize(catalog ?? new PlacementAttributeOverrideFavouriteCatalog(), _jsonOptions);
+				AtomicFileService.WriteAllText(FavouriteFilePath, contents);
 			}
 		}
 		catch (Exception ex)
@@ -1108,21 +1086,22 @@ internal static class PlacementAttributeOverrideService
 
 	private static Dictionary<string, Dictionary<string, object>> BuildPendingPlacementValueMap(PlacementAttributeEditorModel editorModel)
 	{
-		Dictionary<string, Dictionary<string, object>> result =
-			new Dictionary<string, Dictionary<string, object>>(StringComparer.OrdinalIgnoreCase);
-		foreach (PlacementAttributeEditorPartState part in editorModel?.Parts ?? Enumerable.Empty<PlacementAttributeEditorPartState>())
+		Dictionary<string, Dictionary<string, object>> dictionary = new Dictionary<string, Dictionary<string, object>>(StringComparer.OrdinalIgnoreCase);
+		IEnumerable<PlacementAttributeEditorPartState> enumerable = editorModel?.Parts;
+		foreach (PlacementAttributeEditorPartState item in enumerable ?? Enumerable.Empty<PlacementAttributeEditorPartState>())
 		{
-			Dictionary<string, object> fieldValues = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-			foreach (PlacementAttributeEditorFieldState field in part.AttributeFields ?? Enumerable.Empty<PlacementAttributeEditorFieldState>())
+			Dictionary<string, object> dictionary2 = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+			IEnumerable<PlacementAttributeEditorFieldState> attributeFields = item.AttributeFields;
+			foreach (PlacementAttributeEditorFieldState item2 in attributeFields ?? Enumerable.Empty<PlacementAttributeEditorFieldState>())
 			{
-				fieldValues[field.FieldName] = string.IsNullOrWhiteSpace(field.CurrentValue) ? null : field.CurrentValue.Trim();
+				dictionary2[item2.FieldName] = (string.IsNullOrWhiteSpace(item2.CurrentValue) ? null : item2.CurrentValue.Trim());
 			}
-			if (fieldValues.Count > 0 && !string.IsNullOrWhiteSpace(part.PartKey))
+			if (dictionary2.Count > 0 && !string.IsNullOrWhiteSpace(item.PartKey))
 			{
-				result[part.PartKey] = fieldValues;
+				dictionary[item.PartKey] = dictionary2;
 			}
 		}
-		return result;
+		return dictionary;
 	}
 
 	private static void ApplyPendingPlacementValues(Dictionary<string, object> effectiveValues, string placementPartKey)
@@ -1131,18 +1110,18 @@ internal static class PlacementAttributeOverrideService
 		{
 			return;
 		}
-		Dictionary<string, object> pendingValues = null;
+		Dictionary<string, object> value = null;
 		lock (_syncRoot)
 		{
-			if (!_pendingPlacementValuesByPart.TryGetValue(placementPartKey, out pendingValues))
+			if (!_pendingPlacementValuesByPart.TryGetValue(placementPartKey, out value))
 			{
 				return;
 			}
-			pendingValues = new Dictionary<string, object>(pendingValues, StringComparer.OrdinalIgnoreCase);
+			value = new Dictionary<string, object>(value, StringComparer.OrdinalIgnoreCase);
 		}
-		foreach ((string fieldName, object fieldValue) in pendingValues)
+		foreach (var (key, value2) in value)
 		{
-			effectiveValues[fieldName] = fieldValue;
+			effectiveValues[key] = value2;
 		}
 	}
 
@@ -1152,17 +1131,10 @@ internal static class PlacementAttributeOverrideService
 		{
 			return null;
 		}
-		return string.Join("|",
-			template.GroupLayer ?? string.Empty,
-			template.SubtypeLayer ?? string.Empty,
-			NormalizeFieldName(fieldName),
-			(expectedDomainName ?? string.Empty).Trim());
+		return string.Join("|", template.GroupLayer ?? string.Empty, template.SubtypeLayer ?? string.Empty, NormalizeFieldName(fieldName), (expectedDomainName ?? string.Empty).Trim());
 	}
 
-	private static FieldDomainSummary CacheFieldDomainSummary(
-		Dictionary<string, FieldDomainSummary> cache,
-		string cacheKey,
-		FieldDomainSummary summary)
+	private static FieldDomainSummary CacheFieldDomainSummary(Dictionary<string, FieldDomainSummary> cache, string cacheKey, FieldDomainSummary summary)
 	{
 		if (cache != null && !string.IsNullOrWhiteSpace(cacheKey))
 		{
@@ -1185,46 +1157,11 @@ internal static class PlacementAttributeOverrideService
 
 	private static string BuildWarningsText(IEnumerable<string> warnings)
 	{
-		List<string> warningList = (warnings ?? Enumerable.Empty<string>()).Where(warning => !string.IsNullOrWhiteSpace(warning)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-		if (warningList.Count == 0)
+		List<string> list = (warnings ?? Enumerable.Empty<string>()).Where((string warning) => !string.IsNullOrWhiteSpace(warning)).Distinct<string>(StringComparer.OrdinalIgnoreCase).ToList();
+		if (list.Count == 0)
 		{
 			return null;
 		}
-		return "Override notes:\n" + string.Join("\n", warningList.Select(warning => "- " + warning));
-	}
-
-	private sealed class OverrideFieldSummary
-	{
-		public bool IsApplicable { get; set; }
-
-		public string ConfiguredValueSummary { get; set; }
-
-		public List<string> AvailableValues { get; set; } = new List<string>();
-
-		public string FirstConfiguredValue { get; set; }
-	}
-
-	private sealed class FieldDomainSummary
-	{
-		public static FieldDomainSummary Empty { get; } = new FieldDomainSummary();
-
-		public bool IsApplicable { get; set; }
-
-		public List<string> AvailableValues { get; set; } = new List<string>();
-	}
-
-	private readonly struct OverrideValidationResult
-	{
-		public static OverrideValidationResult Invalid { get; } = new OverrideValidationResult(false, null);
-
-		public OverrideValidationResult(bool isValid, string configValue)
-		{
-			IsValid = isValid;
-			ConfigValue = configValue;
-		}
-
-		public bool IsValid { get; }
-
-		public string ConfigValue { get; }
+		return "Override notes:\n" + string.Join("\n", list.Select((string warning) => "- " + warning));
 	}
 }

@@ -10,66 +10,79 @@ namespace TemplateEditor;
 
 internal sealed class SearchHighlightTextBlock : TextBlock
 {
-	public static readonly DependencyProperty HighlightTextProperty = DependencyProperty.Register(
-		nameof(HighlightText),
-		typeof(string),
-		typeof(SearchHighlightTextBlock),
-		new PropertyMetadata(string.Empty, OnDisplayTextChanged));
+	private readonly struct TextRange(int start, int length)
+	{
+		public int Start { get; } = start;
 
-	public static readonly DependencyProperty SearchTextProperty = DependencyProperty.Register(
-		nameof(SearchText),
-		typeof(string),
-		typeof(SearchHighlightTextBlock),
-		new PropertyMetadata(string.Empty, OnDisplayTextChanged));
+		public int Length { get; } = length;
+
+		public int End => Start + Length;
+	}
+
+	public static readonly DependencyProperty HighlightTextProperty;
+
+	public static readonly DependencyProperty SearchTextProperty;
 
 	public string HighlightText
 	{
-		get => (string)GetValue(HighlightTextProperty);
-		set => SetValue(HighlightTextProperty, value);
+		get
+		{
+			return (string)((DependencyObject)this).GetValue(HighlightTextProperty);
+		}
+		set
+		{
+			((DependencyObject)this).SetValue(HighlightTextProperty, (object)value);
+		}
 	}
 
 	public string SearchText
 	{
-		get => (string)GetValue(SearchTextProperty);
-		set => SetValue(SearchTextProperty, value);
+		get
+		{
+			return (string)((DependencyObject)this).GetValue(SearchTextProperty);
+		}
+		set
+		{
+			((DependencyObject)this).SetValue(SearchTextProperty, (object)value);
+		}
 	}
 
 	private static void OnDisplayTextChanged(DependencyObject dependencyObject, DependencyPropertyChangedEventArgs e)
 	{
-		((SearchHighlightTextBlock)dependencyObject).UpdateInlines();
+		((SearchHighlightTextBlock)(object)dependencyObject).UpdateInlines();
 	}
 
 	private void UpdateInlines()
 	{
-		Inlines.Clear();
+		base.Inlines.Clear();
 		string text = HighlightText ?? string.Empty;
 		if (string.IsNullOrEmpty(text))
 		{
 			return;
 		}
-		List<TextRange> ranges = GetMatchedRanges(text, SearchText);
-		if (ranges.Count == 0)
+		List<TextRange> matchedRanges = GetMatchedRanges(text, SearchText);
+		if (matchedRanges.Count == 0)
 		{
-			Inlines.Add(new Run(text));
+			base.Inlines.Add(new Run(text));
 			return;
 		}
-		int position = 0;
-		foreach (TextRange range in ranges)
+		int num = 0;
+		foreach (TextRange item in matchedRanges)
 		{
-			if (range.Start > position)
+			if (item.Start > num)
 			{
-				Inlines.Add(new Run(text.Substring(position, range.Start - position)));
+				base.Inlines.Add(new Run(text.Substring(num, item.Start - num)));
 			}
-			Inlines.Add(new Run(text.Substring(range.Start, range.Length))
+			base.Inlines.Add(new Run(text.Substring(item.Start, item.Length))
 			{
 				Background = new SolidColorBrush(Color.FromArgb(77, 0, 120, 240)),
-				Foreground = Foreground
+				Foreground = base.Foreground
 			});
-			position = range.Start + range.Length;
+			num = item.Start + item.Length;
 		}
-		if (position < text.Length)
+		if (num < text.Length)
 		{
-			Inlines.Add(new Run(text.Substring(position)));
+			base.Inlines.Add(new Run(text.Substring(num)));
 		}
 	}
 
@@ -79,52 +92,53 @@ internal sealed class SearchHighlightTextBlock : TextBlock
 		{
 			return new List<TextRange>();
 		}
-		List<TextRange> rawRanges = new List<TextRange>();
-		foreach (string term in searchText.Split((char[])null, StringSplitOptions.RemoveEmptyEntries).Distinct(StringComparer.OrdinalIgnoreCase))
+		List<TextRange> list = new List<TextRange>();
+		foreach (string item in searchText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Distinct<string>(StringComparer.OrdinalIgnoreCase))
 		{
-			int startIndex = 0;
-			while (startIndex < text.Length)
+			int num = 0;
+			while (num < text.Length)
 			{
-				int index = text.IndexOf(term, startIndex, StringComparison.OrdinalIgnoreCase);
-				if (index < 0)
+				int num2 = text.IndexOf(item, num, StringComparison.OrdinalIgnoreCase);
+				if (num2 < 0)
 				{
 					break;
 				}
-				rawRanges.Add(new TextRange(index, term.Length));
-				startIndex = index + term.Length;
+				list.Add(new TextRange(num2, item.Length));
+				num = num2 + item.Length;
 			}
 		}
-		return MergeRanges(rawRanges.OrderBy((TextRange range) => range.Start).ThenBy((TextRange range) => range.Length).ToList());
+		return MergeRanges((from range in list
+			orderby range.Start, range.Length
+			select range).ToList());
 	}
 
 	private static List<TextRange> MergeRanges(List<TextRange> ranges)
 	{
-		List<TextRange> merged = new List<TextRange>();
+		List<TextRange> list = new List<TextRange>();
 		foreach (TextRange range in ranges)
 		{
-			if (merged.Count == 0 || range.Start > merged[merged.Count - 1].End)
+			if (list.Count == 0 || range.Start > list[list.Count - 1].End)
 			{
-				merged.Add(range);
+				list.Add(range);
 				continue;
 			}
-			TextRange previous = merged[merged.Count - 1];
-			merged[merged.Count - 1] = new TextRange(previous.Start, Math.Max(previous.End, range.End) - previous.Start);
+			TextRange textRange = list[list.Count - 1];
+			list[list.Count - 1] = new TextRange(textRange.Start, Math.Max(textRange.End, range.End) - textRange.Start);
 		}
-		return merged;
+		return list;
 	}
 
-	private readonly struct TextRange
+	static SearchHighlightTextBlock()
 	{
-		public TextRange(int start, int length)
-		{
-			Start = start;
-			Length = length;
-		}
-
-		public int Start { get; }
-
-		public int Length { get; }
-
-		public int End => Start + Length;
+		//IL_0025: Unknown result type (might be due to invalid IL or missing references)
+		//IL_002f: Expected O, but got Unknown
+		//IL_002a: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0034: Expected O, but got Unknown
+		//IL_005e: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0068: Expected O, but got Unknown
+		//IL_0063: Unknown result type (might be due to invalid IL or missing references)
+		//IL_006d: Expected O, but got Unknown
+		HighlightTextProperty = DependencyProperty.Register("HighlightText", typeof(string), typeof(SearchHighlightTextBlock), new PropertyMetadata((object)string.Empty, new PropertyChangedCallback(OnDisplayTextChanged)));
+		SearchTextProperty = DependencyProperty.Register("SearchText", typeof(string), typeof(SearchHighlightTextBlock), new PropertyMetadata((object)string.Empty, new PropertyChangedCallback(OnDisplayTextChanged)));
 	}
 }

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -5,110 +7,98 @@ using ArcGIS.Desktop.Framework;
 
 namespace TemplateEditor;
 
-internal enum CandidateChoiceResult
-{
-	UseCandidate,
-	PreviousCandidate,
-	NextCandidate,
-	Skip
-}
-
 internal sealed class CandidateChoiceDialog : Window
 {
-	private static bool IsDarkTheme => FrameworkApplication.ApplicationTheme == ApplicationTheme.Dark;
-	private static Brush WindowBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243));
-	private static Brush SurfaceBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White;
-	private static Brush PrimaryTextBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(242, 242, 242)) : new SolidColorBrush(Color.FromRgb(32, 32, 32));
-	private static Brush ControlBorderBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(96, 96, 100)) : new SolidColorBrush(Color.FromRgb(150, 150, 150));
-	private static Brush ButtonBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(232, 232, 232));
-	private static Brush ButtonHoverBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 78)) : new SolidColorBrush(Color.FromRgb(225, 235, 245));
+	private static bool IsDarkTheme
+	{
+		get
+		{
+			//IL_0000: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0006: Invalid comparison between Unknown and I4
+			return (int)FrameworkApplication.ApplicationTheme == 1;
+		}
+	}
 
-	private readonly Button _nextButton;
-	private readonly Button _previousButton;
+	private static Brush WindowBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243));
+
+	private static Brush SurfaceBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White;
+
+	private static Brush PrimaryTextBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(242, 242, 242)) : new SolidColorBrush(Color.FromRgb(32, 32, 32));
+
+	private static Brush ControlBorderBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(96, 96, 100)) : new SolidColorBrush(Color.FromRgb(150, 150, 150));
+
+	private static Brush ButtonBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(232, 232, 232));
+
+	private static Brush ButtonHoverBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 78)) : new SolidColorBrush(Color.FromRgb(225, 235, 245));
 
 	public CandidateChoiceResult Result { get; private set; } = CandidateChoiceResult.Skip;
 
-	public CandidateChoiceDialog(string title, string prompt, string candidateLabel, bool canMovePrevious, bool canMoveNext)
+	public int SelectedIndex { get; private set; } = -1;
+
+	public CandidateChoiceDialog(string title, string prompt, IReadOnlyList<string> candidateLabels, Action<int> selectionChanged = null)
 	{
-		Title = title;
-		Width = 440.0;
-		SizeToContent = SizeToContent.Height;
-		WindowStartupLocation = WindowStartupLocation.Manual;
-		ResizeMode = ResizeMode.NoResize;
-		Topmost = true;
-		Background = WindowBackgroundBrush;
-		Foreground = PrimaryTextBrush;
-		FontFamily = new FontFamily("Segoe UI");
-		FontSize = 12.0;
-		_previousButton = new Button
+		base.Title = title;
+		base.Width = 560.0;
+		base.SizeToContent = SizeToContent.Height;
+		base.WindowStartupLocation = WindowStartupLocation.Manual;
+		base.ResizeMode = ResizeMode.NoResize;
+		base.Topmost = true;
+		base.Background = WindowBackgroundBrush;
+		base.Foreground = PrimaryTextBrush;
+		base.FontFamily = new FontFamily("Segoe UI");
+		base.FontSize = 12.0;
+		base.Content = DialogAppearance.WithChrome(this, title, BuildContent(prompt, candidateLabels, selectionChanged));
+		base.Loaded += delegate
 		{
-			Content = "Back",
-			MinWidth = 88.0,
-			Margin = new Thickness(8.0, 0.0, 0.0, 0.0),
-			IsEnabled = canMovePrevious,
-			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
-			Style = CreateButtonStyle()
+			WindowPlacementHelper.PositionAwayFromMapCenter(this);
 		};
-		_previousButton.Click += delegate
-		{
-			Result = CandidateChoiceResult.PreviousCandidate;
-			DialogResult = true;
-			Close();
-		};
-		_nextButton = new Button
-		{
-			Content = "Next",
-			MinWidth = 88.0,
-			Margin = new Thickness(8.0, 0.0, 0.0, 0.0),
-			IsEnabled = canMoveNext,
-			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
-			Style = CreateButtonStyle()
-		};
-		_nextButton.Click += delegate
-		{
-			Result = CandidateChoiceResult.NextCandidate;
-			DialogResult = true;
-			Close();
-		};
-		Content = BuildContent(prompt, candidateLabel);
-		Loaded += delegate { WindowPlacementHelper.PositionAwayFromMapCenter(this); };
 	}
 
-	private UIElement BuildContent(string prompt, string candidateLabel)
+	private UIElement BuildContent(string prompt, IReadOnlyList<string> candidateLabels, Action<int> selectionChanged)
 	{
-		StackPanel root = new StackPanel
+		StackPanel stackPanel = new StackPanel
 		{
 			Margin = new Thickness(16.0),
 			Background = WindowBackgroundBrush
 		};
-		root.Children.Add(new TextBlock
+		stackPanel.Children.Add(new TextBlock
 		{
 			Text = prompt,
 			TextWrapping = TextWrapping.Wrap,
 			Foreground = PrimaryTextBrush
 		});
-		root.Children.Add(new Border
+		ListBox candidates = new ListBox
 		{
-			BorderThickness = new Thickness(1.0),
 			BorderBrush = ControlBorderBrush,
 			Background = SurfaceBrush,
 			Margin = new Thickness(0.0, 12.0, 0.0, 0.0),
-			Padding = new Thickness(12.0),
-			Child = new TextBlock
+			MaxHeight = 260.0,
+			Foreground = PrimaryTextBrush
+		};
+		foreach (string item in candidateLabels ?? Array.Empty<string>())
+		{
+			candidates.Items.Add(item);
+		}
+		candidates.SelectionChanged += delegate
+		{
+			SelectedIndex = candidates.SelectedIndex;
+			if (SelectedIndex >= 0)
 			{
-				Text = candidateLabel,
-				TextWrapping = TextWrapping.Wrap,
-				Foreground = PrimaryTextBrush,
-				MaxWidth = 390.0
+				selectionChanged?.Invoke(SelectedIndex);
 			}
-		});
-		StackPanel buttons = new StackPanel
+		};
+		if (candidates.Items.Count > 0)
+		{
+			candidates.SelectedIndex = 0;
+		}
+		stackPanel.Children.Add(candidates);
+		StackPanel stackPanel2 = new StackPanel
 		{
 			Orientation = Orientation.Horizontal,
 			HorizontalAlignment = HorizontalAlignment.Right,
 			Margin = new Thickness(0.0, 16.0, 0.0, 0.0)
 		};
-		Button cancelButton = new Button
+		Button button = new Button
 		{
 			Content = "Cancel",
 			MinWidth = 88.0,
@@ -116,31 +106,32 @@ internal sealed class CandidateChoiceDialog : Window
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
 			Style = CreateButtonStyle()
 		};
-		cancelButton.Click += delegate
+		button.Click += delegate
 		{
 			Result = CandidateChoiceResult.Skip;
-			DialogResult = false;
+			base.DialogResult = false;
 			Close();
 		};
-		Button useButton = new Button
+		Button button2 = new Button
 		{
-			Content = "Use This",
+			Content = "Use Selected",
 			MinWidth = 88.0,
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
 			Style = CreateButtonStyle()
 		};
-		useButton.Click += delegate
+		button2.Click += delegate
 		{
-			Result = CandidateChoiceResult.UseCandidate;
-			DialogResult = true;
-			Close();
+			if (SelectedIndex >= 0)
+			{
+				Result = CandidateChoiceResult.UseCandidate;
+				base.DialogResult = true;
+				Close();
+			}
 		};
-		buttons.Children.Add(cancelButton);
-		buttons.Children.Add(_previousButton);
-		buttons.Children.Add(_nextButton);
-		buttons.Children.Add(useButton);
-		root.Children.Add(buttons);
-		return root;
+		stackPanel2.Children.Add(button);
+		stackPanel2.Children.Add(button2);
+		stackPanel.Children.Add(stackPanel2);
+		return stackPanel;
 	}
 
 	private static Style CreateButtonStyle()
@@ -151,15 +142,14 @@ internal sealed class CandidateChoiceDialog : Window
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		Trigger hoverTrigger = new Trigger
+		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true
 		};
-		hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, ButtonHoverBrush));
-		hoverTrigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Triggers.Add(hoverTrigger);
+		trigger.Setters.Add(new Setter(Control.BackgroundProperty, ButtonHoverBrush));
+		trigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
+		style.Triggers.Add(trigger);
 		return style;
 	}
-
 }

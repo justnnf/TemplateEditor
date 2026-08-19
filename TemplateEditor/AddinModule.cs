@@ -18,7 +18,7 @@ internal class AddinModule : Module
 			LogService.Write("AddinModule constructor starting.");
 			AddinConfiguration.Initialize();
 			LogService.Write("AddinConfiguration initialized successfully.");
-			ProjectOpenedEvent.Subscribe(OnProjectOpened);
+			ProjectOpenedEvent.Subscribe((Action<ProjectEventArgs>)OnProjectOpened, false);
 			LogService.Write("ProjectOpenedEvent subscribed.");
 		}
 		catch (Exception ex)
@@ -30,16 +30,16 @@ internal class AddinModule : Module
 
 	private void OnProjectOpened(ProjectEventArgs args)
 	{
-		DockPane nbrnPane = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane");
-		if (nbrnPane != null && nbrnPane.IsVisible)
+		DockPane val = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane");
+		if (val != null && val.IsVisible)
 		{
-			nbrnPane.Hide();
+			val.Hide();
 		}
 	}
 
 	protected override bool CanUnload()
 	{
-		ProjectOpenedEvent.Unsubscribe(OnProjectOpened);
+		ProjectOpenedEvent.Unsubscribe((Action<ProjectEventArgs>)OnProjectOpened);
 		return true;
 	}
 }

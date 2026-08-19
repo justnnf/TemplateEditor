@@ -37,21 +37,11 @@ internal sealed class TemplateEditorSettings
 
 	public double SplitSearchDistance { get; set; } = 0.25;
 
-	public List<string> SplitPointPlacementGroups { get; set; } = new List<string>
-	{
-		"ELECTRICDEVICE",
-		"ELECTRICJUNCTION"
-	};
+	public List<string> SplitPointPlacementGroups { get; set; } = new List<string> { "ELECTRICDEVICE", "ELECTRICJUNCTION" };
 
-	public List<string> SplitLinePlacementGroups { get; set; } = new List<string>
-	{
-		"ELECTRICLINE"
-	};
+	public List<string> SplitLinePlacementGroups { get; set; } = new List<string> { "ELECTRICLINE" };
 
-	public List<string> SplitTargetLineGroups { get; set; } = new List<string>
-	{
-		"ELECTRICLINE"
-	};
+	public List<string> SplitTargetLineGroups { get; set; } = new List<string> { "ELECTRICLINE" };
 
 	public List<string> SplitTargetLayerNames { get; set; } = new List<string>();
 
@@ -103,13 +93,7 @@ internal sealed class TemplateEditorSettings
 
 	public bool EnableContinuousPlacementMode { get; set; }
 
-	public List<string> SymbolRotationFieldNames { get; set; } = new List<string>
-	{
-		"ROTATION",
-		"SYMBOLROTATION",
-		"SYMBOL_ROTATION",
-		"ANGLE"
-	};
+	public List<string> SymbolRotationFieldNames { get; set; } = new List<string> { "ROTATION", "SYMBOLROTATION", "SYMBOL_ROTATION", "ANGLE" };
 
 	public double DefaultSymbolRotationWhenMissing { get; set; } = 90.0;
 
@@ -139,58 +123,29 @@ internal sealed class TemplateEditorSettings
 
 	public double ContainmentBoundarySearchDistance { get; set; } = 1.0;
 
-	public List<string> AssociationPlacementGroups { get; set; } = new List<string>
-	{
-		"ELECTRICDEVICE",
-		"ELECTRICJUNCTION",
-		"ELECTRICLINE"
-	};
+	public List<string> AssociationPlacementGroups { get; set; } = new List<string> { "ELECTRICDEVICE", "ELECTRICJUNCTION", "ELECTRICLINE" };
 
-	public List<string> StructuralAttachmentTargetGroups { get; set; } = new List<string>
-	{
-		"STRUCTUREJUNCTION"
-	};
+	public List<string> StructuralAttachmentTargetGroups { get; set; } = new List<string> { "STRUCTUREJUNCTION" };
 
-	public List<string> StructuralAttachmentTargetLayerNames { get; set; } = new List<string>
-	{
-		"POLE"
-	};
+	public List<string> StructuralAttachmentTargetLayerNames { get; set; } = new List<string> { "POLE" };
 
-	public List<string> JunctionJunctionConnectivityTargetGroups { get; set; } = new List<string>
-	{
-		"ELECTRICDEVICE",
-		"ELECTRICJUNCTION"
-	};
+	public List<string> JunctionJunctionConnectivityTargetGroups { get; set; } = new List<string> { "ELECTRICDEVICE", "ELECTRICJUNCTION" };
 
 	public List<string> JunctionJunctionConnectivityTargetLayerNames { get; set; } = new List<string>();
 
-	public List<string> ContainmentPointTargetGroups { get; set; } = new List<string>
-	{
-		"STRUCTUREJUNCTION"
-	};
+	public List<string> ContainmentPointTargetGroups { get; set; } = new List<string> { "STRUCTUREJUNCTION" };
 
 	public List<string> ContainmentPointTargetLayerNames { get; set; } = new List<string>();
 
-	public List<string> ContainmentBoundaryTargetGroups { get; set; } = new List<string>
-	{
-		"STRUCTUREBOUNDARY",
-		"STRUCTURELINE"
-	};
+	public List<string> ContainmentBoundaryTargetGroups { get; set; } = new List<string> { "STRUCTUREBOUNDARY", "STRUCTURELINE" };
 
-	public List<string> ContainmentBoundaryTargetLayerNames { get; set; } = new List<string>
-	{
-		"CUBICLE",
-		"FACILITY BOUNDARY",
-		"FOUNDATION BOUNDARY",
-		"TRENCH",
-		"CONDUIT"
-	};
+	public List<string> ContainmentBoundaryTargetLayerNames { get; set; } = new List<string> { "CUBICLE", "FACILITY BOUNDARY", "FOUNDATION BOUNDARY", "TRENCH", "CONDUIT" };
 
 	public TemplateEditorSettings Clone()
 	{
-		TemplateEditorSettings clone = JsonSerializer.Deserialize<TemplateEditorSettings>(JsonSerializer.Serialize(this)) ?? new TemplateEditorSettings();
-		clone.Normalize();
-		return clone;
+		TemplateEditorSettings templateEditorSettings = JsonSerializer.Deserialize<TemplateEditorSettings>(JsonSerializer.Serialize(this)) ?? new TemplateEditorSettings();
+		templateEditorSettings.Normalize();
+		return templateEditorSettings;
 	}
 
 	public void Normalize()
@@ -204,7 +159,7 @@ internal sealed class TemplateEditorSettings
 		ParallelCopyEndpointMatchTolerance = Math.Max(0.0, ParallelCopyEndpointMatchTolerance);
 		DefaultParallelCopyOffsetDistance = Math.Max(0.001, DefaultParallelCopyOffsetDistance);
 		MaxSplitCandidatesToReview = Math.Max(1, MaxSplitCandidatesToReview);
-		AssociationRulesJsonPath = string.IsNullOrWhiteSpace(AssociationRulesJsonPath) ? null : AssociationRulesJsonPath.Trim();
+		AssociationRulesJsonPath = (string.IsNullOrWhiteSpace(AssociationRulesJsonPath) ? null : AssociationRulesJsonPath.Trim());
 		SplitPromptMode = NormalizeChoice(SplitPromptMode, "AlwaysAsk", "AutoWhenOne", "Never");
 		AssociationPromptMode = NormalizeChoice(AssociationPromptMode, "AlwaysAsk", "AutoWhenOne", "ReviewMultipleOnly", "Never");
 		ConfiguredAssociationPlacementMode = NormalizeChoice(ConfiguredAssociationPlacementMode, "Fast", "Fast", "Debug");
@@ -227,8 +182,14 @@ internal sealed class TemplateEditorSettings
 		SymbolRotationFieldNames = NormalizeGroupNames(SymbolRotationFieldNames);
 		DefaultSymbolRotationWhenMissing = NormalizeRotationDegrees(DefaultSymbolRotationWhenMissing);
 		MaxRecentTemplates = Math.Max(1, Math.Min(50, MaxRecentTemplates));
-		FavouriteTemplateKeys ??= new List<string>();
-		RecentTemplateKeys ??= new List<string>();
+		if (FavouriteTemplateKeys == null)
+		{
+			List<string> list = (FavouriteTemplateKeys = new List<string>());
+		}
+		if (RecentTemplateKeys == null)
+		{
+			List<string> list = (RecentTemplateKeys = new List<string>());
+		}
 		SessionAttributeOverrides = PlacementAttributeOverrideService.NormalizeOverrides(SessionAttributeOverrides);
 	}
 
@@ -244,35 +205,34 @@ internal sealed class TemplateEditorSettings
 
 	private static List<string> NormalizeGroupNames(IEnumerable<string> groupNames)
 	{
-		return (groupNames ?? Enumerable.Empty<string>()).Select((string name) => (name ?? string.Empty).Trim())
-			.Where((string name) => !string.IsNullOrWhiteSpace(name))
-			.Select((string name) => name.ToUpperInvariant())
-			.Distinct()
-			.ToList();
+		return (from name in groupNames ?? Enumerable.Empty<string>()
+			select (name ?? string.Empty).Trim() into name
+			where !string.IsNullOrWhiteSpace(name)
+			select name.ToUpperInvariant()).Distinct().ToList();
 	}
 
 	private static string NormalizeChoice(string value, string defaultValue, params string[] validValues)
 	{
-		return validValues.Contains(value, StringComparer.OrdinalIgnoreCase) ? validValues.First((string validValue) => string.Equals(validValue, value, StringComparison.OrdinalIgnoreCase)) : defaultValue;
+		return validValues.Contains<string>(value, StringComparer.OrdinalIgnoreCase) ? validValues.First((string validValue) => string.Equals(validValue, value, StringComparison.OrdinalIgnoreCase)) : defaultValue;
 	}
 
 	private static string NormalizeHexColor(string value, string fallback)
 	{
-		string normalized = (value ?? string.Empty).Trim();
-		if (normalized.StartsWith("#", StringComparison.Ordinal))
+		string text = (value ?? string.Empty).Trim();
+		if (text.StartsWith("#", StringComparison.Ordinal))
 		{
-			normalized = normalized.Substring(1);
+			text = text.Substring(1);
 		}
-		if (normalized.Length != 6 || normalized.Any((char c) => !Uri.IsHexDigit(c)))
+		if (text.Length != 6 || text.Any((char c) => !Uri.IsHexDigit(c)))
 		{
 			return fallback;
 		}
-		return "#" + normalized.ToUpperInvariant();
+		return "#" + text.ToUpperInvariant();
 	}
 
 	private static double NormalizeRotationDegrees(double degrees)
 	{
 		degrees %= 360.0;
-		return degrees < 0.0 ? degrees + 360.0 : degrees;
+		return (degrees < 0.0) ? (degrees + 360.0) : degrees;
 	}
 }

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Framework.Contracts;
@@ -9,11 +11,11 @@ internal class SketchPolygonTool : PreviewSketchTool
 {
 	public SketchPolygonTool()
 	{
-		IsSketchTool = true;
-		SketchType = (SketchGeometryType)4;
-		SketchOutputMode = (SketchOutputMode)1;
-		UseSnapping = true;
-		Cursor = ToolCursorLoader.Load("cursor_polygon.cur");
+		base.IsSketchTool = true;
+		base.SketchType = (SketchGeometryType)4;
+		base.SketchOutputMode = (SketchOutputMode)1;
+		base.UseSnapping = true;
+		base.Cursor = ToolCursorLoader.Load("cursor_polygon.cur");
 	}
 
 	protected override Task OnToolActivateAsync(bool active)
@@ -24,18 +26,33 @@ internal class SketchPolygonTool : PreviewSketchTool
 	protected override async Task<bool> OnSketchCompleteAsync(Geometry geometry)
 	{
 		await RefreshPlacementRotationAsync();
-		Geometry placementGeometry = (Geometry)(object)PlacementAnchorOverride ?? geometry;
+		Geometry val = (Geometry)base.PlacementAnchorOverride;
+		object obj = (object)val;
+		if (val == null)
+		{
+			obj = geometry;
+		}
+		Geometry placementGeometry = (Geometry)obj;
 		SuspendPreview();
 		bool placementSucceeded = false;
-		await RunWithPlacementCursorAsync(async () => placementSucceeded = await CommonFunctions.CreateFeatures(placementGeometry, RotationDegrees));
-		if (EditorDockpaneViewModel.ShouldReturnToSelectAfterPlacement(placementSucceeded))
+		await RunWithPlacementCursorAsync(async delegate
+		{
+			placementSucceeded = await CommonFunctions.CreateFeatures(placementGeometry, base.RotationDegrees);
+		});
+		bool returnToSelect = EditorDockpaneViewModel.ShouldReturnToSelectAfterPlacement(placementSucceeded);
+		if (returnToSelect)
 		{
 			ToolReactivationService.ActivateSelectTool();
 		}
-		else
-		{
-			ResumePreviewAfterPlacement();
-		}
-		return await base.OnSketchCompleteAsync(geometry);
+		bool completed = await _003C_003En__0(geometry);
+		ResetAfterPlacement(!returnToSelect);
+		return completed;
+	}
+
+	[CompilerGenerated]
+	[DebuggerHidden]
+	private Task<bool> _003C_003En__0(Geometry geometry)
+	{
+		return base.OnSketchCompleteAsync(geometry);
 	}
 }

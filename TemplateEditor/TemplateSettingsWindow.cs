@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -14,29 +15,53 @@ namespace TemplateEditor;
 
 internal sealed class TemplateSettingsWindow : Window
 {
-	private static readonly bool IsDarkTheme = FrameworkApplication.ApplicationTheme == ApplicationTheme.Dark;
+	private sealed class PlacementOverrideEditorRow
+	{
+		public PlacementAttributeOverrideEditorState State { get; }
 
-	private static readonly Brush WindowBackgroundBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243));
+		public Border Container { get; }
 
-	private static readonly Brush SurfaceBackgroundBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White;
+		public CheckBox EnabledCheckBox { get; }
 
-	private static readonly Brush SectionBorderBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 72)) : new SolidColorBrush(Color.FromRgb(208, 208, 208));
+		public ComboBox ValueComboBox { get; }
 
-	private static readonly Brush ControlBorderBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(104, 104, 104)) : new SolidColorBrush(Color.FromRgb(150, 150, 150));
+		public TextBox ValueTextBox { get; }
 
-	private static readonly Brush TabBackgroundBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(52, 52, 56)) : new SolidColorBrush(Color.FromRgb(232, 232, 232));
+		public bool UseDropDown => ValueComboBox != null;
 
-	private static readonly Brush TabHoverBackgroundBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(238, 244, 250));
+		public PlacementOverrideEditorRow(PlacementAttributeOverrideEditorState state, Border container, CheckBox enabledCheckBox, ComboBox valueComboBox, TextBox valueTextBox)
+		{
+			State = state;
+			Container = container;
+			EnabledCheckBox = enabledCheckBox;
+			ValueComboBox = valueComboBox;
+			ValueTextBox = valueTextBox;
+		}
+	}
 
-	private static readonly Brush TabSelectedBackgroundBrush = SurfaceBackgroundBrush;
+	private static readonly bool IsDarkTheme;
 
-	private static readonly Brush PrimaryTextBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(238, 238, 238)) : new SolidColorBrush(Color.FromRgb(32, 32, 32));
+	private static readonly Brush WindowBackgroundBrush;
 
-	private static readonly Brush SecondaryTextBrush = IsDarkTheme ? new SolidColorBrush(Color.FromRgb(178, 178, 178)) : new SolidColorBrush(Color.FromRgb(96, 96, 96));
+	private static readonly Brush SurfaceBackgroundBrush;
 
-	private static readonly Brush AccentBorderBrush = new SolidColorBrush(Color.FromRgb(51, 153, 255));
+	private static readonly Brush SectionBorderBrush;
 
-	private static readonly Brush AccentButtonHoverBrush = new SolidColorBrush(Color.FromRgb(32, 128, 224));
+	private static readonly Brush ControlBorderBrush;
+
+	private static readonly Brush TabBackgroundBrush;
+
+	private static readonly Brush TabHoverBackgroundBrush;
+
+	private static readonly Brush TabSelectedBackgroundBrush;
+
+	private static readonly Brush PrimaryTextBrush;
+
+	private static readonly Brush SecondaryTextBrush;
+
+	private static readonly Brush AccentBorderBrush;
+
+	private static readonly Brush AccentButtonHoverBrush;
 
 	private readonly TextBox _templateConfigPathTextBox;
 
@@ -167,26 +192,26 @@ internal sealed class TemplateSettingsWindow : Window
 	public TemplateSettingsWindow(TemplateEditorSettings settings)
 	{
 		Settings = settings.Clone();
-		Title = "Template Settings";
-		Width = 900.0;
-		Height = 680.0;
-		MinWidth = 760.0;
-		MinHeight = 560.0;
-		WindowStartupLocation = WindowStartupLocation.CenterOwner;
-		ResizeMode = ResizeMode.CanResize;
-		Background = WindowBackgroundBrush;
-		Foreground = PrimaryTextBrush;
-		FontFamily = new FontFamily("Segoe UI");
-		FontSize = 12.0;
-		Resources[SystemColors.ControlTextBrushKey] = PrimaryTextBrush;
-		Resources[SystemColors.WindowTextBrushKey] = PrimaryTextBrush;
-		Resources[SystemColors.GrayTextBrushKey] = SecondaryTextBrush;
-		Resources[SystemColors.ControlBrushKey] = WindowBackgroundBrush;
-		Resources[SystemColors.WindowBrushKey] = SurfaceBackgroundBrush;
-		Resources[SystemColors.HighlightBrushKey] = TabHoverBackgroundBrush;
-		Resources[SystemColors.HighlightTextBrushKey] = PrimaryTextBrush;
-		Resources[SystemColors.ControlLightBrushKey] = SurfaceBackgroundBrush;
-		Resources[SystemColors.ControlDarkBrushKey] = SectionBorderBrush;
+		base.Title = "Template Settings";
+		base.Width = 900.0;
+		base.Height = 680.0;
+		base.MinWidth = 760.0;
+		base.MinHeight = 560.0;
+		base.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+		base.ResizeMode = ResizeMode.CanResize;
+		base.Background = WindowBackgroundBrush;
+		base.Foreground = PrimaryTextBrush;
+		base.FontFamily = new FontFamily("Segoe UI");
+		base.FontSize = 12.0;
+		base.Resources[SystemColors.ControlTextBrushKey] = PrimaryTextBrush;
+		base.Resources[SystemColors.WindowTextBrushKey] = PrimaryTextBrush;
+		base.Resources[SystemColors.GrayTextBrushKey] = SecondaryTextBrush;
+		base.Resources[SystemColors.ControlBrushKey] = WindowBackgroundBrush;
+		base.Resources[SystemColors.WindowBrushKey] = SurfaceBackgroundBrush;
+		base.Resources[SystemColors.HighlightBrushKey] = TabHoverBackgroundBrush;
+		base.Resources[SystemColors.HighlightTextBrushKey] = PrimaryTextBrush;
+		base.Resources[SystemColors.ControlLightBrushKey] = SurfaceBackgroundBrush;
+		base.Resources[SystemColors.ControlDarkBrushKey] = SectionBorderBrush;
 		_templateConfigPathTextBox = CreateTextBox(Settings.TemplateConfigFilePath ?? string.Empty);
 		_validateConfigCheckBox = CreateCheckBox("Validate template configuration before opening the editor", Settings.ValidateConfig);
 		_preventDefaultVersionPlacementCheckBox = CreateCheckBox("Prevent template placement into DEFAULT versions", Settings.PreventDefaultVersionPlacement);
@@ -258,16 +283,16 @@ internal sealed class TemplateSettingsWindow : Window
 		};
 		_regenerateAssociationRulesButton.Click += RegenerateAssociationRulesButton_Click;
 		ApplyControlToolTips();
-		Content = BuildContent();
+		base.Content = DialogAppearance.WithChrome(this, "Template Settings", BuildContent());
 	}
 
 	private UIElement BuildContent()
 	{
-		DockPanel root = new DockPanel
+		DockPanel dockPanel = new DockPanel
 		{
 			LastChildFill = true
 		};
-		Border header = new Border
+		Border element = new Border
 		{
 			Background = WindowBackgroundBrush,
 			BorderBrush = SectionBorderBrush,
@@ -279,9 +304,9 @@ internal sealed class TemplateSettingsWindow : Window
 				Foreground = PrimaryTextBrush
 			}
 		};
-		DockPanel.SetDock(header, Dock.Top);
-		root.Children.Add(header);
-		Border footer = new Border
+		DockPanel.SetDock(element, Dock.Top);
+		dockPanel.Children.Add(element);
+		Border element2 = new Border
 		{
 			Background = WindowBackgroundBrush,
 			BorderBrush = SectionBorderBrush,
@@ -289,15 +314,15 @@ internal sealed class TemplateSettingsWindow : Window
 			Padding = new Thickness(12.0),
 			Child = BuildButtonsRow()
 		};
-		DockPanel.SetDock(footer, Dock.Bottom);
-		root.Children.Add(footer);
-		root.Children.Add(BuildSettingsTabs());
-		return root;
+		DockPanel.SetDock(element2, Dock.Bottom);
+		dockPanel.Children.Add(element2);
+		dockPanel.Children.Add(BuildSettingsTabs());
+		return dockPanel;
 	}
 
 	private UIElement BuildSettingsTabs()
 	{
-		DockPanel container = new DockPanel
+		DockPanel dockPanel = new DockPanel
 		{
 			LastChildFill = true,
 			Margin = new Thickness(12.0)
@@ -310,15 +335,14 @@ internal sealed class TemplateSettingsWindow : Window
 			CornerRadius = new CornerRadius(0.0, 0.0, 4.0, 4.0),
 			MinHeight = 360.0
 		};
-		StackPanel tabRow = new StackPanel
+		StackPanel stackPanel = new StackPanel
 		{
 			Orientation = Orientation.Horizontal,
 			Margin = new Thickness(0.0, 0.0, 0.0, -1.0)
 		};
-		DockPanel.SetDock(tabRow, Dock.Top);
-		container.Children.Add(tabRow);
-		container.Children.Add(contentFrame);
-
+		DockPanel.SetDock(stackPanel, Dock.Top);
+		dockPanel.Children.Add(stackPanel);
+		dockPanel.Children.Add(contentFrame);
 		List<Button> buttons = new List<Button>();
 		Button selectedTabButton = null;
 		UIElement generalContent = BuildGeneralTab();
@@ -327,25 +351,6 @@ internal sealed class TemplateSettingsWindow : Window
 		UIElement associationsContent = BuildAssociationTab();
 		UIElement attributeOverridesContent = BuildAttributeOverridesTab();
 		UIElement interfaceContent = BuildInterfaceTab();
-		void SelectTab(Button selectedButton, UIElement content)
-		{
-			if (ReferenceEquals(selectedTabButton, selectedButton))
-			{
-				return;
-			}
-			contentFrame.Child = null;
-			foreach (Button button in buttons)
-			{
-				button.Background = TabBackgroundBrush;
-				button.BorderBrush = SectionBorderBrush;
-				button.FontWeight = FontWeights.Normal;
-			}
-			selectedButton.Background = SurfaceBackgroundBrush;
-			selectedButton.BorderBrush = SectionBorderBrush;
-			selectedButton.FontWeight = FontWeights.SemiBold;
-			selectedTabButton = selectedButton;
-			contentFrame.Child = content;
-		}
 		Button generalButton = CreateSettingsTabButton("General");
 		Button lineSplitButton = CreateSettingsTabButton("Line Split");
 		Button parallelCopyButton = CreateSettingsTabButton("Parallel Copy");
@@ -358,18 +363,54 @@ internal sealed class TemplateSettingsWindow : Window
 		buttons.Add(associationsButton);
 		buttons.Add(attributeOverridesButton);
 		buttons.Add(interfaceButton);
-		generalButton.Click += delegate { SelectTab(generalButton, generalContent); };
-		lineSplitButton.Click += delegate { SelectTab(lineSplitButton, lineSplitContent); };
-		parallelCopyButton.Click += delegate { SelectTab(parallelCopyButton, parallelCopyContent); };
-		associationsButton.Click += delegate { SelectTab(associationsButton, associationsContent); };
-		attributeOverridesButton.Click += delegate { SelectTab(attributeOverridesButton, attributeOverridesContent); };
-		interfaceButton.Click += delegate { SelectTab(interfaceButton, interfaceContent); };
-		foreach (Button button in buttons)
+		generalButton.Click += delegate
 		{
-			tabRow.Children.Add(button);
+			SelectTab(generalButton, generalContent);
+		};
+		lineSplitButton.Click += delegate
+		{
+			SelectTab(lineSplitButton, lineSplitContent);
+		};
+		parallelCopyButton.Click += delegate
+		{
+			SelectTab(parallelCopyButton, parallelCopyContent);
+		};
+		associationsButton.Click += delegate
+		{
+			SelectTab(associationsButton, associationsContent);
+		};
+		attributeOverridesButton.Click += delegate
+		{
+			SelectTab(attributeOverridesButton, attributeOverridesContent);
+		};
+		interfaceButton.Click += delegate
+		{
+			SelectTab(interfaceButton, interfaceContent);
+		};
+		foreach (Button item in buttons)
+		{
+			stackPanel.Children.Add(item);
 		}
 		SelectTab(generalButton, generalContent);
-		return container;
+		return dockPanel;
+		void SelectTab(Button selectedButton, UIElement content)
+		{
+			if (selectedTabButton != selectedButton)
+			{
+				contentFrame.Child = null;
+				foreach (Button item2 in buttons)
+				{
+					item2.Background = TabBackgroundBrush;
+					item2.BorderBrush = SectionBorderBrush;
+					item2.FontWeight = FontWeights.Normal;
+				}
+				selectedButton.Background = SurfaceBackgroundBrush;
+				selectedButton.BorderBrush = SectionBorderBrush;
+				selectedButton.FontWeight = FontWeights.SemiBold;
+				selectedTabButton = selectedButton;
+				contentFrame.Child = content;
+			}
+		}
 	}
 
 	private static Button CreateSettingsTabButton(string text)
@@ -390,69 +431,69 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private UIElement BuildGeneralTab()
 	{
-		StackPanel panel = CreateTabPanel();
-		panel.Children.Add(CreateGroupBox("Template Configuration", BuildTemplateConfigSection()));
-		panel.Children.Add(CreateGroupBox("Placement Safety", CreateCheckBoxPanel(_preventDefaultVersionPlacementCheckBox)));
-		return WrapTab(panel);
+		StackPanel stackPanel = CreateTabPanel();
+		stackPanel.Children.Add(CreateGroupBox("Template Configuration", BuildTemplateConfigSection()));
+		stackPanel.Children.Add(CreateGroupBox("Placement Safety", CreateCheckBoxPanel(_preventDefaultVersionPlacementCheckBox)));
+		return WrapTab(stackPanel);
 	}
 
 	private UIElement BuildLineSplitTab()
 	{
-		StackPanel panel = CreateTabPanel();
-		panel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableLineSplitPromptsCheckBox, _enablePointPlacementSplitPromptCheckBox, _enableLineEndpointSplitPromptCheckBox, _enableSplitAtLineStartPointCheckBox, _enableSplitAtLineEndPointCheckBox, _enableConfiguredLinePartSplitsCheckBox, _suppressDuplicateSplitPromptsCheckBox, _splitOnlyInteriorCandidatesCheckBox)));
-		panel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("Split prompt mode", _splitPromptModeComboBox), ("Maximum split candidates to review", _maxSplitCandidatesToReviewTextBox))));
-		panel.Children.Add(CreateGroupBox("Eligible Groups", CreateFormGrid(("Split search distance (map units)", _splitSearchDistanceTextBox), ("Eligible point placement groups", _splitPointPlacementGroupsTextBox), ("Eligible line placement groups", _splitLinePlacementGroupsTextBox), ("Underlying target line groups", _splitTargetLineGroupsTextBox), ("Underlying target subtype/layer names", _splitTargetLayerNamesTextBox))));
-		return WrapTab(panel);
+		StackPanel stackPanel = CreateTabPanel();
+		stackPanel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableLineSplitPromptsCheckBox, _enablePointPlacementSplitPromptCheckBox, _enableLineEndpointSplitPromptCheckBox, _enableSplitAtLineStartPointCheckBox, _enableSplitAtLineEndPointCheckBox, _enableConfiguredLinePartSplitsCheckBox, _suppressDuplicateSplitPromptsCheckBox, _splitOnlyInteriorCandidatesCheckBox)));
+		stackPanel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("Split prompt mode", _splitPromptModeComboBox), ("Maximum split candidates to review", _maxSplitCandidatesToReviewTextBox))));
+		stackPanel.Children.Add(CreateGroupBox("Eligible Groups", CreateFormGrid(("Split search distance (map units)", _splitSearchDistanceTextBox), ("Eligible point placement groups", _splitPointPlacementGroupsTextBox), ("Eligible line placement groups", _splitLinePlacementGroupsTextBox), ("Underlying target line groups", _splitTargetLineGroupsTextBox), ("Underlying target subtype/layer names", _splitTargetLayerNamesTextBox))));
+		return WrapTab(stackPanel);
 	}
 
 	private UIElement BuildParallelCopyTab()
 	{
-		StackPanel panel = CreateTabPanel();
-		panel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableParallelCopyPromptCheckBox, _enableMultiSegmentParallelCopyCheckBox, _requireConnectedParallelCopySpanCheckBox, _defaultParallelCopyLeftSideCheckBox, _rememberLastParallelCopyOptionsCheckBox, _autoCreateParallelCopyWhenSelectedLineExistsCheckBox)));
-		panel.Children.Add(CreateGroupBox("Defaults", CreateFormGrid(("Endpoint match tolerance (map units)", _parallelCopyEndpointMatchToleranceTextBox), ("Default offset distance", _defaultParallelCopyOffsetDistanceTextBox))));
-		return WrapTab(panel);
+		StackPanel stackPanel = CreateTabPanel();
+		stackPanel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableParallelCopyPromptCheckBox, _enableMultiSegmentParallelCopyCheckBox, _requireConnectedParallelCopySpanCheckBox, _defaultParallelCopyLeftSideCheckBox, _rememberLastParallelCopyOptionsCheckBox, _autoCreateParallelCopyWhenSelectedLineExistsCheckBox)));
+		stackPanel.Children.Add(CreateGroupBox("Defaults", CreateFormGrid(("Endpoint match tolerance (map units)", _parallelCopyEndpointMatchToleranceTextBox), ("Default offset distance", _defaultParallelCopyOffsetDistanceTextBox))));
+		return WrapTab(stackPanel);
 	}
 
 	private UIElement BuildAssociationTab()
 	{
-		StackPanel panel = CreateTabPanel();
-		panel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableAssociationPromptsCheckBox, _enableStructuralAttachmentPromptsCheckBox, _enableJunctionJunctionConnectivityPromptsCheckBox, _enableContainmentPointPromptsCheckBox, _enableContainmentBoundaryPromptsCheckBox, _enableLineAssociationPromptsCheckBox, _enableLineStructuralAttachmentPromptsCheckBox, _enableLineContainmentPointPromptsCheckBox, _enableLineContainmentBoundaryPromptsCheckBox, _stopAfterFirstSuccessfulAssociationCheckBox)));
-		panel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("Association prompt mode", _associationPromptModeComboBox), ("Configured association mode", _configuredAssociationPlacementModeComboBox))));
-		panel.Children.Add(CreateGroupBox("Search Distances", CreateFormGrid(("Structural attachment search distance", _structuralAttachmentSearchDistanceTextBox), ("Junction-junction connectivity search distance", _junctionJunctionConnectivitySearchDistanceTextBox), ("Containment point search distance", _containmentPointSearchDistanceTextBox), ("Structure container search distance", _containmentBoundarySearchDistanceTextBox))));
-		panel.Children.Add(CreateGroupBox("Fallback Eligible Groups", CreateFormGrid(("Eligible placement groups", _associationPlacementGroupsTextBox), ("Structural attachment target groups", _structuralAttachmentTargetGroupsTextBox), ("Structural attachment subtype/layer names", _structuralAttachmentTargetLayerNamesTextBox), ("Junction-junction connectivity target groups", _junctionJunctionConnectivityTargetGroupsTextBox), ("Junction-junction connectivity subtype/layer names", _junctionJunctionConnectivityTargetLayerNamesTextBox), ("Containment target point groups", _containmentPointTargetGroupsTextBox), ("Containment target point subtype/layer names", _containmentPointTargetLayerNamesTextBox), ("Structure container target groups", _containmentBoundaryTargetGroupsTextBox), ("Structure container subtype/layer names", _containmentBoundaryTargetLayerNamesTextBox))));
-		panel.Children.Add(CreateGroupBox("Rule Catalog", BuildAssociationRuleCatalogSection()));
-		return WrapTab(panel);
+		StackPanel stackPanel = CreateTabPanel();
+		stackPanel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableAssociationPromptsCheckBox, _enableStructuralAttachmentPromptsCheckBox, _enableJunctionJunctionConnectivityPromptsCheckBox, _enableContainmentPointPromptsCheckBox, _enableContainmentBoundaryPromptsCheckBox, _enableLineAssociationPromptsCheckBox, _enableLineStructuralAttachmentPromptsCheckBox, _enableLineContainmentPointPromptsCheckBox, _enableLineContainmentBoundaryPromptsCheckBox, _stopAfterFirstSuccessfulAssociationCheckBox)));
+		stackPanel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("Association prompt mode", _associationPromptModeComboBox), ("Configured association mode", _configuredAssociationPlacementModeComboBox))));
+		stackPanel.Children.Add(CreateGroupBox("Search Distances", CreateFormGrid(("Structural attachment search distance", _structuralAttachmentSearchDistanceTextBox), ("Junction-junction connectivity search distance", _junctionJunctionConnectivitySearchDistanceTextBox), ("Containment point search distance", _containmentPointSearchDistanceTextBox), ("Structure container search distance", _containmentBoundarySearchDistanceTextBox))));
+		stackPanel.Children.Add(CreateGroupBox("Fallback Eligible Groups", CreateFormGrid(("Eligible placement groups", _associationPlacementGroupsTextBox), ("Structural attachment target groups", _structuralAttachmentTargetGroupsTextBox), ("Structural attachment subtype/layer names", _structuralAttachmentTargetLayerNamesTextBox), ("Junction-junction connectivity target groups", _junctionJunctionConnectivityTargetGroupsTextBox), ("Junction-junction connectivity subtype/layer names", _junctionJunctionConnectivityTargetLayerNamesTextBox), ("Containment target point groups", _containmentPointTargetGroupsTextBox), ("Containment target point subtype/layer names", _containmentPointTargetLayerNamesTextBox), ("Structure container target groups", _containmentBoundaryTargetGroupsTextBox), ("Structure container subtype/layer names", _containmentBoundaryTargetLayerNamesTextBox))));
+		stackPanel.Children.Add(CreateGroupBox("Rule Catalog", BuildAssociationRuleCatalogSection()));
+		return WrapTab(stackPanel);
 	}
 
 	private UIElement BuildAssociationRuleCatalogSection()
 	{
-		StackPanel panel = new StackPanel();
-		Grid pathGrid = new Grid
+		StackPanel stackPanel = new StackPanel();
+		Grid grid = new Grid
 		{
 			Margin = new Thickness(0.0, 4.0, 0.0, 8.0)
 		};
-		pathGrid.ColumnDefinitions.Add(new ColumnDefinition
+		grid.ColumnDefinitions.Add(new ColumnDefinition
 		{
 			Width = new GridLength(1.0, GridUnitType.Star)
 		});
-		pathGrid.ColumnDefinitions.Add(new ColumnDefinition
+		grid.ColumnDefinitions.Add(new ColumnDefinition
 		{
 			Width = GridLength.Auto
 		});
-		pathGrid.RowDefinitions.Add(new RowDefinition
+		grid.RowDefinitions.Add(new RowDefinition
 		{
 			Height = GridLength.Auto
 		});
-		pathGrid.RowDefinitions.Add(new RowDefinition
+		grid.RowDefinitions.Add(new RowDefinition
 		{
 			Height = GridLength.Auto
 		});
-		TextBlock label = CreateLabel("Association rules JSON path");
-		Grid.SetColumnSpan(label, 2);
-		pathGrid.Children.Add(label);
+		TextBlock element = CreateLabel("Association rules JSON path");
+		Grid.SetColumnSpan(element, 2);
+		grid.Children.Add(element);
 		Grid.SetRow(_associationRulesJsonPathTextBox, 1);
-		pathGrid.Children.Add(_associationRulesJsonPathTextBox);
-		Button browseButton = new Button
+		grid.Children.Add(_associationRulesJsonPathTextBox);
+		Button button = new Button
 		{
 			Content = "Browse...",
 			MinWidth = 90.0,
@@ -460,35 +501,35 @@ internal sealed class TemplateSettingsWindow : Window
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
 			Style = CreateButtonStyle()
 		};
-		browseButton.Click += BrowseAssociationRulesJsonPath_Click;
-		Grid.SetRow(browseButton, 1);
-		Grid.SetColumn(browseButton, 1);
-		pathGrid.Children.Add(browseButton);
-		panel.Children.Add(pathGrid);
-		panel.Children.Add(_regenerateAssociationRulesButton);
-		return panel;
+		button.Click += BrowseAssociationRulesJsonPath_Click;
+		Grid.SetRow(button, 1);
+		Grid.SetColumn(button, 1);
+		grid.Children.Add(button);
+		stackPanel.Children.Add(grid);
+		stackPanel.Children.Add(_regenerateAssociationRulesButton);
+		return stackPanel;
 	}
 
 	private UIElement BuildInterfaceTab()
 	{
-		StackPanel panel = CreateTabPanel();
-		panel.Children.Add(CreateGroupBox("Dockpane Layout", CreateFormGrid(("Use compact dockpane layout", _useCompactDockpaneLayoutCheckBox), ("Maximum recent templates", _maxRecentTemplatesTextBox))));
-		panel.Children.Add(CreateGroupBox("Map Feedback", CreateCheckBoxPanel(_highlightSplitCandidatesCheckBox, _highlightAssociationCandidatesCheckBox, _showAutomaticStepDiagnosticsCheckBox)));
-		panel.Children.Add(CreateGroupBox("Hint Colors", CreateFormGrid(("Placed/source feature color (HEX)", _hintSourceColorHexTextBox), ("Association target color (HEX)", _hintAssociationTargetColorHexTextBox), ("Split candidate color (HEX)", _hintSplitCandidateColorHexTextBox))));
-		return WrapTab(panel);
+		StackPanel stackPanel = CreateTabPanel();
+		stackPanel.Children.Add(CreateGroupBox("Dockpane Layout", CreateFormGrid(("Use compact dockpane layout", _useCompactDockpaneLayoutCheckBox), ("Maximum recent templates", _maxRecentTemplatesTextBox))));
+		stackPanel.Children.Add(CreateGroupBox("Map Feedback", CreateCheckBoxPanel(_highlightSplitCandidatesCheckBox, _highlightAssociationCandidatesCheckBox, _showAutomaticStepDiagnosticsCheckBox)));
+		stackPanel.Children.Add(CreateGroupBox("Hint Colors", CreateFormGrid(("Placed/source feature color (HEX)", _hintSourceColorHexTextBox), ("Association target color (HEX)", _hintAssociationTargetColorHexTextBox), ("Split candidate color (HEX)", _hintSplitCandidateColorHexTextBox))));
+		return WrapTab(stackPanel);
 	}
 
 	private UIElement BuildAttributeOverridesTab()
 	{
-		StackPanel panel = CreateTabPanel();
-		panel.Children.Add(CreateGroupBox("Session Overrides", BuildAttributeOverrideSection()));
-		return WrapTab(panel);
+		StackPanel stackPanel = CreateTabPanel();
+		stackPanel.Children.Add(CreateGroupBox("Session Overrides", BuildAttributeOverrideSection()));
+		return WrapTab(stackPanel);
 	}
 
 	private UIElement BuildAttributeOverrideSection()
 	{
-		StackPanel panel = new StackPanel();
-		panel.Children.Add(new TextBlock
+		StackPanel stackPanel = new StackPanel();
+		stackPanel.Children.Add(new TextBlock
 		{
 			Text = "Choose workflow-wide attribute overrides. These apply only to configured fields and can be superseded by the next-placement override dialog from the template right-click menu.",
 			Foreground = SecondaryTextBrush,
@@ -496,26 +537,25 @@ internal sealed class TemplateSettingsWindow : Window
 			Margin = new Thickness(0.0, 0.0, 0.0, 12.0)
 		});
 		_sessionOverrideRows.Clear();
-		IReadOnlyList<PlacementAttributeOverrideEditorState> states = PlacementAttributeOverrideService.BuildSessionEditorStates(Settings.SessionAttributeOverrides);
-		if (states.Count == 0)
+		IReadOnlyList<PlacementAttributeOverrideEditorState> readOnlyList = PlacementAttributeOverrideService.BuildSessionEditorStates(Settings.SessionAttributeOverrides);
+		if (readOnlyList.Count == 0)
 		{
-			panel.Children.Add(new TextBlock
+			stackPanel.Children.Add(new TextBlock
 			{
 				Text = "No packaged placement override fields are currently available.",
 				Foreground = SecondaryTextBrush,
 				TextWrapping = TextWrapping.Wrap
 			});
-			return panel;
+			return stackPanel;
 		}
-		foreach (PlacementAttributeOverrideEditorState state in states)
+		foreach (PlacementAttributeOverrideEditorState item in readOnlyList)
 		{
-			PlacementOverrideEditorRow row = CreatePlacementOverrideEditorRow(state);
-			_sessionOverrideRows.Add(row);
-			panel.Children.Add(row.Container);
+			PlacementOverrideEditorRow placementOverrideEditorRow = CreatePlacementOverrideEditorRow(item);
+			_sessionOverrideRows.Add(placementOverrideEditorRow);
+			stackPanel.Children.Add(placementOverrideEditorRow.Container);
 		}
-		return panel;
+		return stackPanel;
 	}
-
 
 	private UIElement BuildTemplateConfigSection()
 	{
@@ -539,12 +579,12 @@ internal sealed class TemplateSettingsWindow : Window
 		{
 			Height = GridLength.Auto
 		});
-		TextBlock label = CreateLabel("Template config file");
-		Grid.SetColumnSpan(label, 2);
-		grid.Children.Add(label);
+		TextBlock element = CreateLabel("Template config file");
+		Grid.SetColumnSpan(element, 2);
+		grid.Children.Add(element);
 		Grid.SetRow(_templateConfigPathTextBox, 1);
 		grid.Children.Add(_templateConfigPathTextBox);
-		Button browseButton = new Button
+		Button button = new Button
 		{
 			Content = "Browse...",
 			MinWidth = 90.0,
@@ -552,34 +592,34 @@ internal sealed class TemplateSettingsWindow : Window
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
 			Style = CreateButtonStyle()
 		};
-		browseButton.Click += delegate
+		button.Click += delegate
 		{
-			string selectedPath = AddinConfiguration.PromptForTemplateConfigFilePath(_templateConfigPathTextBox.Text);
-			if (!string.IsNullOrWhiteSpace(selectedPath))
+			string text = AddinConfiguration.PromptForTemplateConfigFilePath(_templateConfigPathTextBox.Text);
+			if (!string.IsNullOrWhiteSpace(text))
 			{
-				_templateConfigPathTextBox.Text = selectedPath;
+				_templateConfigPathTextBox.Text = text;
 			}
 		};
-		Grid.SetRow(browseButton, 1);
-		Grid.SetColumn(browseButton, 1);
-		grid.Children.Add(browseButton);
-		StackPanel section = new StackPanel();
-		section.Children.Add(grid);
-		section.Children.Add(_validateConfigCheckBox);
-		return section;
+		Grid.SetRow(button, 1);
+		Grid.SetColumn(button, 1);
+		grid.Children.Add(button);
+		StackPanel stackPanel = new StackPanel();
+		stackPanel.Children.Add(grid);
+		stackPanel.Children.Add(_validateConfigCheckBox);
+		return stackPanel;
 	}
 
 	private static StackPanel CreateCheckBoxPanel(params CheckBox[] checkBoxes)
 	{
-		StackPanel panel = new StackPanel
+		StackPanel stackPanel = new StackPanel
 		{
 			Margin = new Thickness(0.0, 4.0, 0.0, 0.0)
 		};
-		foreach (CheckBox checkBox in checkBoxes)
+		foreach (CheckBox element in checkBoxes)
 		{
-			panel.Children.Add(checkBox);
+			stackPanel.Children.Add(element);
 		}
-		return panel;
+		return stackPanel;
 	}
 
 	private static Grid CreateFormGrid(params (string Label, Control Control)[] rows)
@@ -602,46 +642,39 @@ internal sealed class TemplateSettingsWindow : Window
 			{
 				Height = GridLength.Auto
 			});
-			TextBlock label = CreateLabel(rows[i].Label);
-			label.VerticalAlignment = VerticalAlignment.Center;
-			label.Margin = new Thickness(0.0, 0.0, 12.0, 8.0);
-			label.TextWrapping = TextWrapping.Wrap;
-			label.TextTrimming = TextTrimming.None;
-			Grid.SetRow(label, i);
-			grid.Children.Add(label);
-			Control control = rows[i].Control;
-			control.Margin = new Thickness(0.0, 0.0, 0.0, 8.0);
-			ApplyControlSizing(rows[i].Label, control);
-			Grid.SetRow(control, i);
-			Grid.SetColumn(control, 1);
-			grid.Children.Add(control);
+			TextBlock textBlock = CreateLabel(rows[i].Label);
+			textBlock.VerticalAlignment = VerticalAlignment.Center;
+			textBlock.Margin = new Thickness(0.0, 0.0, 12.0, 8.0);
+			textBlock.TextWrapping = TextWrapping.Wrap;
+			textBlock.TextTrimming = TextTrimming.None;
+			Grid.SetRow(textBlock, i);
+			grid.Children.Add(textBlock);
+			Control item = rows[i].Control;
+			item.Margin = new Thickness(0.0, 0.0, 0.0, 8.0);
+			ApplyControlSizing(rows[i].Label, item);
+			Grid.SetRow(item, i);
+			Grid.SetColumn(item, 1);
+			grid.Children.Add(item);
 		}
 		return grid;
 	}
 
 	private static void ApplyControlSizing(string label, Control control)
 	{
-		string normalizedLabel = label?.ToUpperInvariant() ?? string.Empty;
-		if (control is TextBox textBox &&
-			(normalizedLabel.Contains("GROUP") || normalizedLabel.Contains("LAYER") || normalizedLabel.Contains("SUBTYPE")))
+		string text = label?.ToUpperInvariant() ?? string.Empty;
+		if (control is TextBox textBox && (text.Contains("GROUP") || text.Contains("LAYER") || text.Contains("SUBTYPE")))
 		{
 			textBox.AcceptsReturn = true;
 			textBox.TextWrapping = TextWrapping.Wrap;
 			textBox.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
 			textBox.MinHeight = 56.0;
-			return;
 		}
-		if (normalizedLabel.Contains("DISTANCE") ||
-			normalizedLabel.Contains("TOLERANCE") ||
-			normalizedLabel.Contains("MAXIMUM") ||
-			normalizedLabel.Contains("OFFSET") ||
-			normalizedLabel.Contains("HEX"))
+		else if (text.Contains("DISTANCE") || text.Contains("TOLERANCE") || text.Contains("MAXIMUM") || text.Contains("OFFSET") || text.Contains("HEX"))
 		{
 			control.Width = 180.0;
 			control.HorizontalAlignment = HorizontalAlignment.Left;
-			return;
 		}
-		if (control is ComboBox)
+		else if (control is ComboBox)
 		{
 			control.Width = 280.0;
 			control.HorizontalAlignment = HorizontalAlignment.Left;
@@ -650,21 +683,21 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private static Border CreateGroupBox(string header, UIElement content)
 	{
-		StackPanel panel = new StackPanel();
-		panel.Children.Add(new TextBlock
+		StackPanel stackPanel = new StackPanel();
+		stackPanel.Children.Add(new TextBlock
 		{
 			Text = header,
 			Foreground = PrimaryTextBrush,
 			FontWeight = FontWeights.SemiBold,
 			Margin = new Thickness(0.0, 0.0, 0.0, 8.0)
 		});
-		panel.Children.Add(new Border
+		stackPanel.Children.Add(new Border
 		{
 			Height = 1.0,
 			Background = SectionBorderBrush,
 			Margin = new Thickness(0.0, 0.0, 0.0, 10.0)
 		});
-		panel.Children.Add(content);
+		stackPanel.Children.Add(content);
 		return new Border
 		{
 			Margin = new Thickness(0.0, 0.0, 0.0, 12.0),
@@ -673,7 +706,7 @@ internal sealed class TemplateSettingsWindow : Window
 			BorderBrush = SectionBorderBrush,
 			BorderThickness = new Thickness(1.0),
 			CornerRadius = new CornerRadius(4.0),
-			Child = panel
+			Child = stackPanel
 		};
 	}
 
@@ -698,12 +731,12 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private UIElement BuildButtonsRow()
 	{
-		StackPanel buttons = new StackPanel
+		StackPanel stackPanel = new StackPanel
 		{
 			Orientation = Orientation.Horizontal,
 			HorizontalAlignment = HorizontalAlignment.Right
 		};
-		Button cancelButton = new Button
+		Button button = new Button
 		{
 			Content = "Cancel",
 			MinWidth = 88.0,
@@ -712,12 +745,12 @@ internal sealed class TemplateSettingsWindow : Window
 			IsCancel = true,
 			Style = CreateButtonStyle()
 		};
-		cancelButton.Click += delegate
+		button.Click += delegate
 		{
-			DialogResult = false;
+			base.DialogResult = false;
 			Close();
 		};
-		Button saveButton = new Button
+		Button button2 = new Button
 		{
 			Content = "OK",
 			MinWidth = 88.0,
@@ -725,18 +758,18 @@ internal sealed class TemplateSettingsWindow : Window
 			IsDefault = true,
 			Style = CreatePrimaryButtonStyle()
 		};
-		saveButton.Click += SaveButton_Click;
-		buttons.Children.Add(cancelButton);
-		buttons.Children.Add(saveButton);
-		return buttons;
+		button2.Click += SaveButton_Click;
+		stackPanel.Children.Add(button);
+		stackPanel.Children.Add(button2);
+		return stackPanel;
 	}
 
 	private void SaveButton_Click(object sender, RoutedEventArgs e)
 	{
 		try
 		{
-			Settings.TemplateConfigFilePath = string.IsNullOrWhiteSpace(_templateConfigPathTextBox.Text) ? null : _templateConfigPathTextBox.Text.Trim();
-			if (!string.IsNullOrWhiteSpace(Settings.TemplateConfigFilePath) && !System.IO.File.Exists(Settings.TemplateConfigFilePath))
+			Settings.TemplateConfigFilePath = (string.IsNullOrWhiteSpace(_templateConfigPathTextBox.Text) ? null : _templateConfigPathTextBox.Text.Trim());
+			if (!string.IsNullOrWhiteSpace(Settings.TemplateConfigFilePath) && !File.Exists(Settings.TemplateConfigFilePath))
 			{
 				throw new InvalidOperationException("The selected template configuration file could not be found.");
 			}
@@ -798,15 +831,15 @@ internal sealed class TemplateSettingsWindow : Window
 			Settings.ContainmentPointTargetLayerNames = TemplateEditorSettings.ParseGroupNames(_containmentPointTargetLayerNamesTextBox.Text);
 			Settings.ContainmentBoundaryTargetGroups = TemplateEditorSettings.ParseGroupNames(_containmentBoundaryTargetGroupsTextBox.Text);
 			Settings.ContainmentBoundaryTargetLayerNames = TemplateEditorSettings.ParseGroupNames(_containmentBoundaryTargetLayerNamesTextBox.Text);
-			Settings.AssociationRulesJsonPath = string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? null : _associationRulesJsonPathTextBox.Text.Trim();
-			Settings.SessionAttributeOverrides = _sessionOverrideRows.Select(row => new PlacementAttributeOverrideValue
+			Settings.AssociationRulesJsonPath = (string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? null : AtomicFileService.NormalizeJsonFilePath(_associationRulesJsonPathTextBox.Text));
+			Settings.SessionAttributeOverrides = _sessionOverrideRows.Select((PlacementOverrideEditorRow row) => new PlacementAttributeOverrideValue
 			{
 				FieldName = row.State.Definition.FieldName,
-				Enabled = row.EnabledCheckBox.IsChecked == true,
-				Value = row.UseDropDown ? row.ValueComboBox.SelectedItem as string : row.ValueTextBox.Text
+				Enabled = (row.EnabledCheckBox.IsChecked == true),
+				Value = (row.UseDropDown ? (row.ValueComboBox.SelectedItem as string) : row.ValueTextBox.Text)
 			}).ToList();
 			Settings.Normalize();
-			DialogResult = true;
+			base.DialogResult = true;
 			Close();
 		}
 		catch (Exception ex)
@@ -824,15 +857,15 @@ internal sealed class TemplateSettingsWindow : Window
 			OverwritePrompt = false,
 			FileName = "AllowedAssociationRules.json"
 		};
-		string currentPath = string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? AssociationRuleCatalog.RuleFilePath : _associationRulesJsonPathTextBox.Text.Trim();
-		if (!string.IsNullOrWhiteSpace(currentPath))
+		string text = (string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? AssociationRuleCatalog.RuleFilePath : _associationRulesJsonPathTextBox.Text.Trim());
+		if (!string.IsNullOrWhiteSpace(text))
 		{
-			string directoryName = Path.GetDirectoryName(currentPath);
+			string directoryName = Path.GetDirectoryName(text);
 			if (!string.IsNullOrWhiteSpace(directoryName) && Directory.Exists(directoryName))
 			{
 				saveFileDialog.InitialDirectory = directoryName;
 			}
-			string fileName = Path.GetFileName(currentPath);
+			string fileName = Path.GetFileName(text);
 			if (!string.IsNullOrWhiteSpace(fileName))
 			{
 				saveFileDialog.FileName = fileName;
@@ -846,28 +879,35 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private async void RegenerateAssociationRulesButton_Click(object sender, RoutedEventArgs e)
 	{
-		if (DialogService.Show(
-			"Regenerate the association rule JSON from the utility network in the active map?",
-			"Template Editor",
-			new DialogButtonChoice("Regenerate", MessageBoxResult.Yes, isPrimary: true),
-			new DialogButtonChoice("Cancel", MessageBoxResult.No, isCancel: true)) != MessageBoxResult.Yes)
+		string requestedPath = (string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? AssociationRuleCatalog.RuleFilePath : _associationRulesJsonPathTextBox.Text.Trim());
+		string outputPath;
+		try
+		{
+			outputPath = AtomicFileService.NormalizeJsonFilePath(requestedPath);
+		}
+		catch (Exception ex)
+		{
+			DialogService.Show(ex.Message, "Template Editor");
+			return;
+		}
+		if (DialogService.Show("Regenerate the association rule JSON from the utility network in the active map?\n\nThe following file will be replaced:\n" + outputPath, "Template Editor", new DialogButtonChoice("Regenerate", MessageBoxResult.Yes, isPrimary: true), new DialogButtonChoice("Cancel", MessageBoxResult.No, isPrimary: false, isCancel: true)) != MessageBoxResult.Yes)
 		{
 			return;
 		}
-		string jsonPath = string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? null : _associationRulesJsonPathTextBox.Text.Trim();
 		_regenerateAssociationRulesButton.IsEnabled = false;
 		object originalContent = _regenerateAssociationRulesButton.Content;
 		_regenerateAssociationRulesButton.Content = "Regenerating...";
 		try
 		{
-			AssociationRuleGenerationResult result = await AssociationRuleJsonRegenerator.RegenerateFromActiveMapAsync(jsonPath);
+			AssociationRuleGenerationResult result = await AssociationRuleJsonRegenerator.RegenerateFromActiveMapAsync(outputPath);
 			Settings.AssociationRulesJsonPath = result.OutputPath;
 			_associationRulesJsonPathTextBox.Text = result.OutputPath;
 			DialogService.Show($"Regenerated association rules JSON.\n\nRules written: {result.RuleCount}\nFile: {result.OutputPath}", "Template Editor");
 		}
-		catch (Exception ex)
+		catch (Exception ex2)
 		{
-			DialogService.Show("The association rules JSON could not be regenerated.\n\n" + ex.Message, "Template Editor");
+			Exception ex3 = ex2;
+			DialogService.Show("The association rules JSON could not be regenerated.\n\n" + ex3.Message, "Template Editor");
 		}
 		finally
 		{
@@ -878,7 +918,7 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private static double ParseDistance(string text, string label)
 	{
-		if (!double.TryParse(text, out double result) || result < 0.0)
+		if (!double.TryParse(text, out var result) || result < 0.0)
 		{
 			throw new InvalidOperationException("Enter a valid non-negative number for " + label + ".");
 		}
@@ -887,7 +927,7 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private static double ParsePositiveDistance(string text, string label)
 	{
-		if (!double.TryParse(text, out double result) || result <= 0.0)
+		if (!double.TryParse(text, out var result) || result <= 0.0)
 		{
 			throw new InvalidOperationException("Enter a valid positive number for " + label + ".");
 		}
@@ -896,7 +936,7 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private static int ParsePositiveInteger(string text, string label)
 	{
-		if (!int.TryParse(text, out int result) || result <= 0)
+		if (!int.TryParse(text, out var result) || result <= 0)
 		{
 			throw new InvalidOperationException("Enter a valid positive whole number for " + label + ".");
 		}
@@ -905,62 +945,67 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private PlacementOverrideEditorRow CreatePlacementOverrideEditorRow(PlacementAttributeOverrideEditorState state)
 	{
-		CheckBox enabledCheckBox = new CheckBox
+		CheckBox checkBox = new CheckBox
 		{
 			IsChecked = state.IsEnabled,
 			VerticalAlignment = VerticalAlignment.Top,
 			Margin = new Thickness(0.0, 2.0, 10.0, 0.0)
 		};
-		TextBlock label = new TextBlock
+		TextBlock element = new TextBlock
 		{
 			Text = state.Definition.Label,
 			FontWeight = FontWeights.SemiBold,
 			Foreground = PrimaryTextBrush
 		};
-		TextBlock description = new TextBlock
+		TextBlock element2 = new TextBlock
 		{
-			Text = string.IsNullOrWhiteSpace(state.Definition.Description) ? state.ConfiguredValueSummary : state.Definition.Description + "\n" + state.ConfiguredValueSummary,
+			Text = (string.IsNullOrWhiteSpace(state.Definition.Description) ? state.ConfiguredValueSummary : (state.Definition.Description + "\n" + state.ConfiguredValueSummary)),
 			Foreground = SecondaryTextBrush,
 			TextWrapping = TextWrapping.Wrap,
 			Margin = new Thickness(0.0, 2.0, 0.0, 0.0)
 		};
-		Control valueEditor;
 		ComboBox valueComboBox = null;
-		TextBox valueTextBox = null;
+		TextBox textBox = null;
+		Control valueEditor;
 		if (state.UseDropDown)
 		{
-			valueComboBox = new ComboBox
+			valueComboBox = (ComboBox)(valueEditor = new ComboBox
 			{
 				ItemsSource = state.AvailableValues,
-				SelectedItem = state.AvailableValues.FirstOrDefault(value => string.Equals(value, state.Value, StringComparison.OrdinalIgnoreCase)) ?? state.AvailableValues.FirstOrDefault(),
+				SelectedItem = (state.AvailableValues.FirstOrDefault((string value) => string.Equals(value, state.Value, StringComparison.OrdinalIgnoreCase)) ?? state.AvailableValues.FirstOrDefault()),
 				MinWidth = 220.0,
 				Margin = new Thickness(0.0, 6.0, 0.0, 0.0),
 				Style = CreateComboBoxStyle(),
 				ItemContainerStyle = CreateComboBoxItemStyle()
-			};
-			valueEditor = valueComboBox;
+			});
 		}
 		else
 		{
-			valueTextBox = CreateTextBox(state.Value ?? string.Empty);
-			valueTextBox.MinWidth = 220.0;
-			valueTextBox.Margin = new Thickness(0.0, 6.0, 0.0, 0.0);
-			valueEditor = valueTextBox;
+			textBox = CreateTextBox(state.Value ?? string.Empty);
+			textBox.MinWidth = 220.0;
+			textBox.Margin = new Thickness(0.0, 6.0, 0.0, 0.0);
+			valueEditor = textBox;
 		}
 		valueEditor.IsEnabled = state.IsEnabled;
-		enabledCheckBox.Checked += delegate { valueEditor.IsEnabled = true; };
-		enabledCheckBox.Unchecked += delegate { valueEditor.IsEnabled = false; };
-		StackPanel details = new StackPanel();
-		details.Children.Add(label);
-		details.Children.Add(description);
-		details.Children.Add(valueEditor);
-		DockPanel content = new DockPanel
+		checkBox.Checked += delegate
+		{
+			valueEditor.IsEnabled = true;
+		};
+		checkBox.Unchecked += delegate
+		{
+			valueEditor.IsEnabled = false;
+		};
+		StackPanel stackPanel = new StackPanel();
+		stackPanel.Children.Add(element);
+		stackPanel.Children.Add(element2);
+		stackPanel.Children.Add(valueEditor);
+		DockPanel dockPanel = new DockPanel
 		{
 			LastChildFill = true
 		};
-		DockPanel.SetDock(enabledCheckBox, Dock.Left);
-		content.Children.Add(enabledCheckBox);
-		content.Children.Add(details);
+		DockPanel.SetDock(checkBox, Dock.Left);
+		dockPanel.Children.Add(checkBox);
+		dockPanel.Children.Add(stackPanel);
 		Border container = new Border
 		{
 			Background = SurfaceBackgroundBrush,
@@ -968,16 +1013,16 @@ internal sealed class TemplateSettingsWindow : Window
 			BorderThickness = new Thickness(1.0),
 			Padding = new Thickness(10.0),
 			Margin = new Thickness(0.0, 0.0, 0.0, 8.0),
-			Child = content
+			Child = dockPanel
 		};
-		return new PlacementOverrideEditorRow(state, container, enabledCheckBox, valueComboBox, valueTextBox);
+		return new PlacementOverrideEditorRow(state, container, checkBox, valueComboBox, textBox);
 	}
 
 	private static TextBox CreateTextBox(string text)
 	{
 		return new TextBox
 		{
-			Text = text ?? string.Empty,
+			Text = (text ?? string.Empty),
 			MinWidth = 180.0,
 			Padding = new Thickness(6.0, 4.0, 6.0, 4.0),
 			Background = SurfaceBackgroundBrush,
@@ -1001,15 +1046,16 @@ internal sealed class TemplateSettingsWindow : Window
 			Style = CreateComboBoxStyle(),
 			ItemContainerStyle = CreateComboBoxItemStyle()
 		};
-		foreach ((string label, string value) in items)
+		for (int i = 0; i < items.Length; i++)
 		{
+			var (content, tag) = items[i];
 			comboBox.Items.Add(new ComboBoxItem
 			{
-				Content = label,
-				Tag = value
+				Content = content,
+				Tag = tag
 			});
 		}
-		foreach (ComboBoxItem item in comboBox.Items)
+		foreach (ComboBoxItem item in (IEnumerable)comboBox.Items)
 		{
 			if (string.Equals(Convert.ToString(item.Tag), selectedValue, StringComparison.OrdinalIgnoreCase))
 			{
@@ -1017,7 +1063,7 @@ internal sealed class TemplateSettingsWindow : Window
 				break;
 			}
 		}
-		comboBox.SelectedIndex = comboBox.SelectedIndex < 0 && comboBox.Items.Count > 0 ? 0 : comboBox.SelectedIndex;
+		comboBox.SelectedIndex = ((comboBox.SelectedIndex >= 0 || comboBox.Items.Count <= 0) ? comboBox.SelectedIndex : 0);
 		return comboBox;
 	}
 
@@ -1131,27 +1177,38 @@ internal sealed class TemplateSettingsWindow : Window
 		Style style = new Style(typeof(Button));
 		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		ControlTemplate template = new ControlTemplate(typeof(Button));
-		FrameworkElementFactory border = new FrameworkElementFactory(typeof(Border));
-		border.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = RelativeSource.TemplatedParent });
-		border.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = RelativeSource.TemplatedParent });
-		border.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = RelativeSource.TemplatedParent });
-		border.SetValue(Border.CornerRadiusProperty, new CornerRadius(3.0, 3.0, 0.0, 0.0));
-		FrameworkElementFactory presenter = new FrameworkElementFactory(typeof(ContentPresenter));
-		presenter.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-		presenter.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-		presenter.SetBinding(ContentPresenter.MarginProperty, new Binding("Padding") { RelativeSource = RelativeSource.TemplatedParent });
-		border.AppendChild(presenter);
-		template.VisualTree = border;
-		style.Setters.Add(new Setter(Control.TemplateProperty, template));
-
-		Trigger hoverTrigger = new Trigger
+		ControlTemplate controlTemplate = new ControlTemplate(typeof(Button));
+		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Border));
+		frameworkElementFactory.SetBinding(Border.BackgroundProperty, new Binding("Background")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(3.0, 3.0, 0.0, 0.0));
+		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(ContentPresenter));
+		frameworkElementFactory2.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+		frameworkElementFactory2.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		frameworkElementFactory2.SetBinding(FrameworkElement.MarginProperty, new Binding("Padding")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory.AppendChild(frameworkElementFactory2);
+		controlTemplate.VisualTree = frameworkElementFactory;
+		style.Setters.Add(new Setter(Control.TemplateProperty, controlTemplate));
+		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true
 		};
-		hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
-		style.Triggers.Add(hoverTrigger);
+		trigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
+		style.Triggers.Add(trigger);
 		return style;
 	}
 
@@ -1167,22 +1224,22 @@ internal sealed class TemplateSettingsWindow : Window
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true,
-			Setters =
+			Setters = 
 			{
-				new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush),
-				new Setter(Control.ForegroundProperty, PrimaryTextBrush),
-				new Setter(Control.BorderBrushProperty, AccentBorderBrush)
+				(SetterBase)new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush),
+				(SetterBase)new Setter(Control.ForegroundProperty, PrimaryTextBrush),
+				(SetterBase)new Setter(Control.BorderBrushProperty, AccentBorderBrush)
 			}
 		});
 		style.Triggers.Add(new Trigger
 		{
 			Property = UIElement.IsKeyboardFocusedProperty,
 			Value = true,
-			Setters =
+			Setters = 
 			{
-				new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush),
-				new Setter(Control.ForegroundProperty, PrimaryTextBrush),
-				new Setter(Control.BorderBrushProperty, AccentBorderBrush)
+				(SetterBase)new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush),
+				(SetterBase)new Setter(Control.ForegroundProperty, PrimaryTextBrush),
+				(SetterBase)new Setter(Control.BorderBrushProperty, AccentBorderBrush)
 			}
 		});
 		return style;
@@ -1203,97 +1260,109 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private static ControlTemplate CreateComboBoxTemplate()
 	{
-		ControlTemplate comboTemplate = new ControlTemplate(typeof(ComboBox));
-		FrameworkElementFactory root = new FrameworkElementFactory(typeof(Grid));
-
-		FrameworkElementFactory toggle = new FrameworkElementFactory(typeof(ToggleButton));
-		toggle.SetValue(FrameworkElement.FocusVisualStyleProperty, null);
-		toggle.SetValue(ButtonBase.ClickModeProperty, ClickMode.Press);
-		toggle.SetBinding(Control.BackgroundProperty, new Binding("Background")
+		ControlTemplate controlTemplate = new ControlTemplate(typeof(ComboBox));
+		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Grid));
+		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(ToggleButton));
+		frameworkElementFactory2.SetValue(FrameworkElement.FocusVisualStyleProperty, null);
+		frameworkElementFactory2.SetValue(ButtonBase.ClickModeProperty, ClickMode.Press);
+		frameworkElementFactory2.SetBinding(Control.BackgroundProperty, new Binding("Background")
 		{
 			RelativeSource = RelativeSource.TemplatedParent
 		});
-		toggle.SetBinding(Control.BorderBrushProperty, new Binding("BorderBrush")
+		frameworkElementFactory2.SetBinding(Control.BorderBrushProperty, new Binding("BorderBrush")
 		{
 			RelativeSource = RelativeSource.TemplatedParent
 		});
-		toggle.SetBinding(Control.BorderThicknessProperty, new Binding("BorderThickness")
+		frameworkElementFactory2.SetBinding(Control.BorderThicknessProperty, new Binding("BorderThickness")
 		{
 			RelativeSource = RelativeSource.TemplatedParent
 		});
-		toggle.SetBinding(ToggleButton.IsCheckedProperty, new Binding("IsDropDownOpen")
+		frameworkElementFactory2.SetBinding(ToggleButton.IsCheckedProperty, new Binding("IsDropDownOpen")
 		{
 			RelativeSource = RelativeSource.TemplatedParent,
 			Mode = BindingMode.TwoWay
 		});
-		toggle.SetBinding(ContentControl.ContentProperty, new Binding("SelectionBoxItem")
+		frameworkElementFactory2.SetBinding(ContentControl.ContentProperty, new Binding("SelectionBoxItem")
 		{
 			RelativeSource = RelativeSource.TemplatedParent
 		});
-		toggle.SetBinding(Control.PaddingProperty, new Binding("Padding")
+		frameworkElementFactory2.SetBinding(Control.PaddingProperty, new Binding("Padding")
 		{
 			RelativeSource = RelativeSource.TemplatedParent
 		});
-		toggle.SetValue(Control.TemplateProperty, CreateComboBoxToggleTemplate());
-		root.AppendChild(toggle);
-
-		FrameworkElementFactory popup = new FrameworkElementFactory(typeof(Popup));
-		popup.Name = "PART_Popup";
-		popup.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
-		popup.SetValue(Popup.AllowsTransparencyProperty, true);
-		popup.SetValue(Popup.FocusableProperty, false);
-		popup.SetBinding(Popup.IsOpenProperty, new Binding("IsDropDownOpen")
+		frameworkElementFactory2.SetValue(Control.TemplateProperty, CreateComboBoxToggleTemplate());
+		frameworkElementFactory.AppendChild(frameworkElementFactory2);
+		FrameworkElementFactory frameworkElementFactory3 = new FrameworkElementFactory(typeof(Popup));
+		frameworkElementFactory3.Name = "PART_Popup";
+		frameworkElementFactory3.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
+		frameworkElementFactory3.SetValue(Popup.AllowsTransparencyProperty, true);
+		frameworkElementFactory3.SetValue(UIElement.FocusableProperty, false);
+		frameworkElementFactory3.SetBinding(Popup.IsOpenProperty, new Binding("IsDropDownOpen")
 		{
 			RelativeSource = RelativeSource.TemplatedParent
 		});
-		FrameworkElementFactory popupBorder = new FrameworkElementFactory(typeof(Border));
-		popupBorder.SetValue(Border.BackgroundProperty, SurfaceBackgroundBrush);
-		popupBorder.SetValue(Border.BorderBrushProperty, ControlBorderBrush);
-		popupBorder.SetValue(Border.BorderThicknessProperty, new Thickness(1.0));
-		popupBorder.SetBinding(FrameworkElement.MinWidthProperty, new Binding("ActualWidth")
+		FrameworkElementFactory frameworkElementFactory4 = new FrameworkElementFactory(typeof(Border));
+		frameworkElementFactory4.SetValue(Border.BackgroundProperty, SurfaceBackgroundBrush);
+		frameworkElementFactory4.SetValue(Border.BorderBrushProperty, ControlBorderBrush);
+		frameworkElementFactory4.SetValue(Border.BorderThicknessProperty, new Thickness(1.0));
+		frameworkElementFactory4.SetBinding(FrameworkElement.MinWidthProperty, new Binding("ActualWidth")
 		{
 			RelativeSource = RelativeSource.TemplatedParent
 		});
-		FrameworkElementFactory scrollViewer = new FrameworkElementFactory(typeof(ScrollViewer));
-		scrollViewer.SetValue(ScrollViewer.CanContentScrollProperty, true);
-		scrollViewer.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
-		FrameworkElementFactory itemsPresenter = new FrameworkElementFactory(typeof(ItemsPresenter));
-		scrollViewer.AppendChild(itemsPresenter);
-		popupBorder.AppendChild(scrollViewer);
-		popup.AppendChild(popupBorder);
-		root.AppendChild(popup);
-
-		comboTemplate.VisualTree = root;
-		return comboTemplate;
+		FrameworkElementFactory frameworkElementFactory5 = new FrameworkElementFactory(typeof(ScrollViewer));
+		frameworkElementFactory5.SetValue(ScrollViewer.CanContentScrollProperty, true);
+		frameworkElementFactory5.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
+		FrameworkElementFactory child = new FrameworkElementFactory(typeof(ItemsPresenter));
+		frameworkElementFactory5.AppendChild(child);
+		frameworkElementFactory4.AppendChild(frameworkElementFactory5);
+		frameworkElementFactory3.AppendChild(frameworkElementFactory4);
+		frameworkElementFactory.AppendChild(frameworkElementFactory3);
+		controlTemplate.VisualTree = frameworkElementFactory;
+		return controlTemplate;
 	}
 
 	private static ControlTemplate CreateComboBoxToggleTemplate()
 	{
-		ControlTemplate toggleTemplate = new ControlTemplate(typeof(ToggleButton));
-		FrameworkElementFactory border = new FrameworkElementFactory(typeof(Border));
-		border.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = RelativeSource.TemplatedParent });
-		border.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = RelativeSource.TemplatedParent });
-		border.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = RelativeSource.TemplatedParent });
-		FrameworkElementFactory grid = new FrameworkElementFactory(typeof(Grid));
-		grid.SetValue(FrameworkElement.MinHeightProperty, 28.0);
-		grid.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0));
-		grid.SetValue(Grid.ColumnProperty, 0);
-		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
-		content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-		content.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Left);
-		content.SetBinding(ContentPresenter.ContentProperty, new Binding("Content") { RelativeSource = RelativeSource.TemplatedParent });
-		content.SetBinding(ContentPresenter.MarginProperty, new Binding("Padding") { RelativeSource = RelativeSource.TemplatedParent });
-		grid.AppendChild(content);
-		FrameworkElementFactory arrow = new FrameworkElementFactory(typeof(TextBlock));
-		arrow.SetValue(TextBlock.TextProperty, "v");
-		arrow.SetValue(TextBlock.ForegroundProperty, SecondaryTextBrush);
-		arrow.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 8.0, 0.0));
-		arrow.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Right);
-		arrow.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		grid.AppendChild(arrow);
-		border.AppendChild(grid);
-		toggleTemplate.VisualTree = border;
-		return toggleTemplate;
+		ControlTemplate controlTemplate = new ControlTemplate(typeof(ToggleButton));
+		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Border));
+		frameworkElementFactory.SetBinding(Border.BackgroundProperty, new Binding("Background")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(Grid));
+		frameworkElementFactory2.SetValue(FrameworkElement.MinHeightProperty, 28.0);
+		frameworkElementFactory2.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0));
+		frameworkElementFactory2.SetValue(Grid.ColumnProperty, 0);
+		FrameworkElementFactory frameworkElementFactory3 = new FrameworkElementFactory(typeof(ContentPresenter));
+		frameworkElementFactory3.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		frameworkElementFactory3.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+		frameworkElementFactory3.SetBinding(ContentPresenter.ContentProperty, new Binding("Content")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory3.SetBinding(FrameworkElement.MarginProperty, new Binding("Padding")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory2.AppendChild(frameworkElementFactory3);
+		FrameworkElementFactory frameworkElementFactory4 = new FrameworkElementFactory(typeof(TextBlock));
+		frameworkElementFactory4.SetValue(TextBlock.TextProperty, "v");
+		frameworkElementFactory4.SetValue(TextBlock.ForegroundProperty, SecondaryTextBrush);
+		frameworkElementFactory4.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 8.0, 0.0));
+		frameworkElementFactory4.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Right);
+		frameworkElementFactory4.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		frameworkElementFactory2.AppendChild(frameworkElementFactory4);
+		frameworkElementFactory.AppendChild(frameworkElementFactory2);
+		controlTemplate.VisualTree = frameworkElementFactory;
+		return controlTemplate;
 	}
 
 	private static Style CreateComboBoxItemStyle()
@@ -1302,22 +1371,22 @@ internal sealed class TemplateSettingsWindow : Window
 		style.Setters.Add(new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush));
 		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
 		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8.0, 4.0, 8.0, 4.0)));
-		Trigger selectedTrigger = new Trigger
+		Trigger trigger = new Trigger
 		{
-			Property = ComboBoxItem.IsSelectedProperty,
+			Property = ListBoxItem.IsSelectedProperty,
 			Value = true
 		};
-		selectedTrigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
-		selectedTrigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Triggers.Add(selectedTrigger);
-		Trigger hoverTrigger = new Trigger
+		trigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
+		trigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
+		style.Triggers.Add(trigger);
+		Trigger trigger2 = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true
 		};
-		hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
-		hoverTrigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Triggers.Add(hoverTrigger);
+		trigger2.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
+		trigger2.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
+		style.Triggers.Add(trigger2);
 		return style;
 	}
 
@@ -1329,52 +1398,64 @@ internal sealed class TemplateSettingsWindow : Window
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		ControlTemplate template = new ControlTemplate(typeof(CheckBox));
-		FrameworkElementFactory panel = new FrameworkElementFactory(typeof(StackPanel));
-		panel.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
-		FrameworkElementFactory box = new FrameworkElementFactory(typeof(Border));
-		box.Name = "CheckBoxGlyph";
-		box.SetValue(FrameworkElement.WidthProperty, 16.0);
-		box.SetValue(FrameworkElement.HeightProperty, 16.0);
-		box.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 8.0, 0.0));
-		box.SetBinding(Border.BackgroundProperty, new Binding("Background") { RelativeSource = RelativeSource.TemplatedParent });
-		box.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush") { RelativeSource = RelativeSource.TemplatedParent });
-		box.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness") { RelativeSource = RelativeSource.TemplatedParent });
-		FrameworkElementFactory check = new FrameworkElementFactory(typeof(TextBlock));
-		check.Name = "CheckMark";
-		check.SetValue(TextBlock.TextProperty, "✓");
-		check.SetValue(TextBlock.ForegroundProperty, IsDarkTheme ? Brushes.White : Brushes.Black);
-		check.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
-		check.SetValue(TextBlock.FontSizeProperty, 15.0);
-		check.SetValue(TextBlock.LineHeightProperty, 16.0);
-		check.SetValue(TextBlock.TextAlignmentProperty, TextAlignment.Center);
-		check.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-		check.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		check.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
-		box.AppendChild(check);
-		panel.AppendChild(box);
-		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
-		content.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
-		content.SetBinding(ContentPresenter.ContentProperty, new Binding("Content") { RelativeSource = RelativeSource.TemplatedParent });
-		panel.AppendChild(content);
-		template.VisualTree = panel;
-		Trigger checkedTrigger = new Trigger
+		ControlTemplate controlTemplate = new ControlTemplate(typeof(CheckBox));
+		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(StackPanel));
+		frameworkElementFactory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
+		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(Border));
+		frameworkElementFactory2.Name = "CheckBoxGlyph";
+		frameworkElementFactory2.SetValue(FrameworkElement.WidthProperty, 16.0);
+		frameworkElementFactory2.SetValue(FrameworkElement.HeightProperty, 16.0);
+		frameworkElementFactory2.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 8.0, 0.0));
+		frameworkElementFactory2.SetBinding(Border.BackgroundProperty, new Binding("Background")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory2.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory2.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		FrameworkElementFactory frameworkElementFactory3 = new FrameworkElementFactory(typeof(TextBlock));
+		frameworkElementFactory3.Name = "CheckMark";
+		frameworkElementFactory3.SetValue(TextBlock.TextProperty, "✓");
+		frameworkElementFactory3.SetValue(TextBlock.ForegroundProperty, IsDarkTheme ? Brushes.White : Brushes.Black);
+		frameworkElementFactory3.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
+		frameworkElementFactory3.SetValue(TextBlock.FontSizeProperty, 15.0);
+		frameworkElementFactory3.SetValue(TextBlock.LineHeightProperty, 16.0);
+		frameworkElementFactory3.SetValue(TextBlock.TextAlignmentProperty, TextAlignment.Center);
+		frameworkElementFactory3.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+		frameworkElementFactory3.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		frameworkElementFactory3.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
+		frameworkElementFactory2.AppendChild(frameworkElementFactory3);
+		frameworkElementFactory.AppendChild(frameworkElementFactory2);
+		FrameworkElementFactory frameworkElementFactory4 = new FrameworkElementFactory(typeof(ContentPresenter));
+		frameworkElementFactory4.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		frameworkElementFactory4.SetBinding(ContentPresenter.ContentProperty, new Binding("Content")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory.AppendChild(frameworkElementFactory4);
+		controlTemplate.VisualTree = frameworkElementFactory;
+		Trigger trigger = new Trigger
 		{
 			Property = ToggleButton.IsCheckedProperty,
 			Value = true
 		};
-		checkedTrigger.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "CheckMark"));
-		checkedTrigger.Setters.Add(new Setter(Border.BorderBrushProperty, AccentBorderBrush, "CheckBoxGlyph"));
-		template.Triggers.Add(checkedTrigger);
-		style.Setters.Add(new Setter(Control.TemplateProperty, template));
+		trigger.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "CheckMark"));
+		trigger.Setters.Add(new Setter(Border.BorderBrushProperty, AccentBorderBrush, "CheckBoxGlyph"));
+		controlTemplate.Triggers.Add(trigger);
+		style.Setters.Add(new Setter(Control.TemplateProperty, controlTemplate));
 		style.Triggers.Add(new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true,
-			Setters =
+			Setters = 
 			{
-				new Setter(Control.ForegroundProperty, PrimaryTextBrush),
-				new Setter(Control.BorderBrushProperty, AccentBorderBrush)
+				(SetterBase)new Setter(Control.ForegroundProperty, PrimaryTextBrush),
+				(SetterBase)new Setter(Control.BorderBrushProperty, AccentBorderBrush)
 			}
 		});
 		return style;
@@ -1388,22 +1469,22 @@ internal sealed class TemplateSettingsWindow : Window
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		Trigger hoverTrigger = new Trigger
+		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true
 		};
-		hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
-		hoverTrigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		hoverTrigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBorderBrush));
-		style.Triggers.Add(hoverTrigger);
-		Trigger disabledTrigger = new Trigger
+		trigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
+		trigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
+		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBorderBrush));
+		style.Triggers.Add(trigger);
+		Trigger trigger2 = new Trigger
 		{
 			Property = UIElement.IsEnabledProperty,
 			Value = false
 		};
-		disabledTrigger.Setters.Add(new Setter(Control.ForegroundProperty, SystemColors.GrayTextBrush));
-		style.Triggers.Add(disabledTrigger);
+		trigger2.Setters.Add(new Setter(Control.ForegroundProperty, SystemColors.GrayTextBrush));
+		style.Triggers.Add(trigger2);
 		return style;
 	}
 
@@ -1413,44 +1494,33 @@ internal sealed class TemplateSettingsWindow : Window
 		style.Setters.Add(new Setter(Control.BackgroundProperty, AccentBorderBrush));
 		style.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBorderBrush));
-		Trigger hoverTrigger = new Trigger
+		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true
 		};
-		hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, AccentButtonHoverBrush));
-		hoverTrigger.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
-		hoverTrigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentButtonHoverBrush));
-		style.Triggers.Add(hoverTrigger);
+		trigger.Setters.Add(new Setter(Control.BackgroundProperty, AccentButtonHoverBrush));
+		trigger.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentButtonHoverBrush));
+		style.Triggers.Add(trigger);
 		return style;
 	}
 
-	private sealed class PlacementOverrideEditorRow
+	static TemplateSettingsWindow()
 	{
-		public PlacementOverrideEditorRow(
-			PlacementAttributeOverrideEditorState state,
-			Border container,
-			CheckBox enabledCheckBox,
-			ComboBox valueComboBox,
-			TextBox valueTextBox)
-		{
-			State = state;
-			Container = container;
-			EnabledCheckBox = enabledCheckBox;
-			ValueComboBox = valueComboBox;
-			ValueTextBox = valueTextBox;
-		}
-
-		public PlacementAttributeOverrideEditorState State { get; }
-
-		public Border Container { get; }
-
-		public CheckBox EnabledCheckBox { get; }
-
-		public ComboBox ValueComboBox { get; }
-
-		public TextBox ValueTextBox { get; }
-
-		public bool UseDropDown => ValueComboBox != null;
+		//IL_0000: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0006: Invalid comparison between Unknown and I4
+		IsDarkTheme = (int)FrameworkApplication.ApplicationTheme == 1;
+		WindowBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243)));
+		SurfaceBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White);
+		SectionBorderBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 72)) : new SolidColorBrush(Color.FromRgb(208, 208, 208)));
+		ControlBorderBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(104, 104, 104)) : new SolidColorBrush(Color.FromRgb(150, 150, 150)));
+		TabBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(52, 52, 56)) : new SolidColorBrush(Color.FromRgb(232, 232, 232)));
+		TabHoverBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(238, 244, 250)));
+		TabSelectedBackgroundBrush = SurfaceBackgroundBrush;
+		PrimaryTextBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(238, 238, 238)) : new SolidColorBrush(Color.FromRgb(32, 32, 32)));
+		SecondaryTextBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(178, 178, 178)) : new SolidColorBrush(Color.FromRgb(96, 96, 96)));
+		AccentBorderBrush = new SolidColorBrush(Color.FromRgb(51, 153, byte.MaxValue));
+		AccentButtonHoverBrush = new SolidColorBrush(Color.FromRgb(32, 128, 224));
 	}
 }

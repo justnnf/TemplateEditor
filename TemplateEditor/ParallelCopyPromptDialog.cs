@@ -10,19 +10,37 @@ namespace TemplateEditor;
 
 internal sealed class ParallelCopyPromptDialog : Window
 {
-	private static bool IsDarkTheme => FrameworkApplication.ApplicationTheme == ApplicationTheme.Dark;
-	private static Brush WindowBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243));
-	private static Brush SurfaceBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White;
-	private static Brush PrimaryTextBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(242, 242, 242)) : new SolidColorBrush(Color.FromRgb(32, 32, 32));
-	private static Brush ControlBorderBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(96, 96, 100)) : new SolidColorBrush(Color.FromRgb(150, 150, 150));
-	private static Brush ButtonBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(232, 232, 232));
-	private static Brush ButtonHoverBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 78)) : new SolidColorBrush(Color.FromRgb(225, 235, 245));
-
 	private readonly TextBox _offsetTextBox;
+
 	private readonly RadioButton _leftRadioButton;
+
 	private readonly RadioButton _rightRadioButton;
+
 	private IDisposable _previewOverlay;
+
 	private int _previewVersion;
+
+	private static bool IsDarkTheme
+	{
+		get
+		{
+			//IL_0000: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0006: Invalid comparison between Unknown and I4
+			return (int)FrameworkApplication.ApplicationTheme == 1;
+		}
+	}
+
+	private static Brush WindowBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243));
+
+	private static Brush SurfaceBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White;
+
+	private static Brush PrimaryTextBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(242, 242, 242)) : new SolidColorBrush(Color.FromRgb(32, 32, 32));
+
+	private static Brush ControlBorderBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(96, 96, 100)) : new SolidColorBrush(Color.FromRgb(150, 150, 150));
+
+	private static Brush ButtonBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(232, 232, 232));
+
+	private static Brush ButtonHoverBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 78)) : new SolidColorBrush(Color.FromRgb(225, 235, 245));
 
 	public double OffsetDistance { get; private set; }
 
@@ -30,46 +48,62 @@ internal sealed class ParallelCopyPromptDialog : Window
 
 	private ParallelCopyPromptDialog(double defaultOffsetDistance, bool defaultLeftSide)
 	{
-		Title = "Create Parallel Copy";
-		Width = 360.0;
-		Height = 195.0;
-		MinHeight = 195.0;
-		ResizeMode = ResizeMode.NoResize;
-		WindowStartupLocation = WindowStartupLocation.CenterOwner;
-		Background = WindowBackgroundBrush;
-		Foreground = PrimaryTextBrush;
-
-		Grid panel = new Grid
+		base.Title = "Create Parallel Copy";
+		base.Width = 360.0;
+		base.Height = 195.0;
+		base.MinHeight = 195.0;
+		base.ResizeMode = ResizeMode.NoResize;
+		base.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+		base.Background = WindowBackgroundBrush;
+		base.Foreground = PrimaryTextBrush;
+		Grid grid = new Grid
 		{
 			Margin = new Thickness(16.0),
 			Background = WindowBackgroundBrush
 		};
-		panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-		panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-		panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-		panel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-		panel.Children.Add(new TextBlock
+		grid.RowDefinitions.Add(new RowDefinition
+		{
+			Height = GridLength.Auto
+		});
+		grid.RowDefinitions.Add(new RowDefinition
+		{
+			Height = GridLength.Auto
+		});
+		grid.RowDefinitions.Add(new RowDefinition
+		{
+			Height = GridLength.Auto
+		});
+		grid.RowDefinitions.Add(new RowDefinition
+		{
+			Height = GridLength.Auto
+		});
+		grid.Children.Add(new TextBlock
 		{
 			Text = "Create parallel copy from selected line?",
 			FontWeight = FontWeights.SemiBold,
 			Foreground = PrimaryTextBrush,
 			Margin = new Thickness(0.0, 0.0, 0.0, 8.0)
 		});
-
-		Grid inputGrid = new Grid
+		Grid grid2 = new Grid
 		{
 			Margin = new Thickness(0.0, 0.0, 0.0, 8.0)
 		};
-		inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-		inputGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
-		TextBlock label = new TextBlock
+		grid2.ColumnDefinitions.Add(new ColumnDefinition
+		{
+			Width = GridLength.Auto
+		});
+		grid2.ColumnDefinitions.Add(new ColumnDefinition
+		{
+			Width = new GridLength(1.0, GridUnitType.Star)
+		});
+		TextBlock element = new TextBlock
 		{
 			Text = "Offset (m)",
 			VerticalAlignment = VerticalAlignment.Center,
 			Foreground = PrimaryTextBrush,
 			Margin = new Thickness(0.0, 0.0, 8.0, 0.0)
 		};
-		inputGrid.Children.Add(label);
+		grid2.Children.Add(element);
 		_offsetTextBox = new TextBox
 		{
 			Text = defaultOffsetDistance.ToString("0.###", CultureInfo.CurrentCulture),
@@ -84,12 +118,14 @@ internal sealed class ParallelCopyPromptDialog : Window
 			Style = CreateTextBoxStyle()
 		};
 		Grid.SetColumn(_offsetTextBox, 1);
-		inputGrid.Children.Add(_offsetTextBox);
-		_offsetTextBox.TextChanged += delegate { QueuePreviewRefresh(); };
-		Grid.SetRow(inputGrid, 1);
-		panel.Children.Add(inputGrid);
-
-		StackPanel sidePanel = new StackPanel
+		grid2.Children.Add(_offsetTextBox);
+		_offsetTextBox.TextChanged += delegate
+		{
+			QueuePreviewRefresh();
+		};
+		Grid.SetRow(grid2, 1);
+		grid.Children.Add(grid2);
+		StackPanel stackPanel = new StackPanel
 		{
 			Orientation = Orientation.Horizontal,
 			Margin = new Thickness(0.0, 0.0, 0.0, 12.0)
@@ -101,26 +137,31 @@ internal sealed class ParallelCopyPromptDialog : Window
 			Foreground = PrimaryTextBrush,
 			Margin = new Thickness(0.0, 0.0, 18.0, 0.0)
 		};
-		_leftRadioButton.Checked += delegate { QueuePreviewRefresh(); };
-		sidePanel.Children.Add(_leftRadioButton);
+		_leftRadioButton.Checked += delegate
+		{
+			QueuePreviewRefresh();
+		};
+		stackPanel.Children.Add(_leftRadioButton);
 		_rightRadioButton = new RadioButton
 		{
 			Content = "Right",
 			IsChecked = !defaultLeftSide,
 			Foreground = PrimaryTextBrush
 		};
-		_rightRadioButton.Checked += delegate { QueuePreviewRefresh(); };
-		sidePanel.Children.Add(_rightRadioButton);
-		Grid.SetRow(sidePanel, 2);
-		panel.Children.Add(sidePanel);
-
-		StackPanel buttons = new StackPanel
+		_rightRadioButton.Checked += delegate
+		{
+			QueuePreviewRefresh();
+		};
+		stackPanel.Children.Add(_rightRadioButton);
+		Grid.SetRow(stackPanel, 2);
+		grid.Children.Add(stackPanel);
+		StackPanel stackPanel2 = new StackPanel
 		{
 			Orientation = Orientation.Horizontal,
 			HorizontalAlignment = HorizontalAlignment.Right,
 			Margin = new Thickness(0.0, 4.0, 0.0, 0.0)
 		};
-		Button createButton = new Button
+		Button button = new Button
 		{
 			Content = "Create",
 			MinWidth = 72.0,
@@ -128,33 +169,42 @@ internal sealed class ParallelCopyPromptDialog : Window
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
 			Style = CreateButtonStyle()
 		};
-		createButton.Click += OnCreateClicked;
-		buttons.Children.Add(createButton);
-		Button drawButton = new Button
+		button.Click += OnCreateClicked;
+		stackPanel2.Children.Add(button);
+		Button button2 = new Button
 		{
 			Content = "Draw instead",
 			MinWidth = 96.0,
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
 			Style = CreateButtonStyle()
 		};
-		drawButton.Click += delegate { DialogResult = false; };
-		buttons.Children.Add(drawButton);
-		Grid.SetRow(buttons, 3);
-		panel.Children.Add(buttons);
-		Content = panel;
-		Loaded += delegate { QueuePreviewRefresh(); };
-		Closed += delegate { ClearPreviewOverlay(); };
+		button2.Click += delegate
+		{
+			base.DialogResult = false;
+		};
+		stackPanel2.Children.Add(button2);
+		Grid.SetRow(stackPanel2, 3);
+		grid.Children.Add(stackPanel2);
+		base.Content = DialogAppearance.WithChrome(this, "Create Parallel Copy", grid);
+		base.Loaded += delegate
+		{
+			QueuePreviewRefresh();
+		};
+		base.Closed += delegate
+		{
+			ClearPreviewOverlay();
+		};
 	}
 
 	public static ParallelCopyPromptDialog ShowPrompt(double defaultOffsetDistance, bool defaultLeftSide)
 	{
-		ParallelCopyPromptDialog dialog = new ParallelCopyPromptDialog(defaultOffsetDistance, defaultLeftSide);
-		Window mainWindow = Application.Current?.MainWindow;
-		if (mainWindow != null)
+		ParallelCopyPromptDialog parallelCopyPromptDialog = new ParallelCopyPromptDialog(defaultOffsetDistance, defaultLeftSide);
+		Window window = Application.Current?.MainWindow;
+		if (window != null)
 		{
-			dialog.Owner = mainWindow;
+			parallelCopyPromptDialog.Owner = window;
 		}
-		return dialog.ShowDialog() == true ? dialog : null;
+		return (parallelCopyPromptDialog.ShowDialog() == true) ? parallelCopyPromptDialog : null;
 	}
 
 	private static Style CreateTextBoxStyle()
@@ -177,38 +227,37 @@ internal sealed class ParallelCopyPromptDialog : Window
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		Trigger hoverTrigger = new Trigger
+		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true
 		};
-		hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, ButtonHoverBrush));
-		hoverTrigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Triggers.Add(hoverTrigger);
+		trigger.Setters.Add(new Setter(Control.BackgroundProperty, ButtonHoverBrush));
+		trigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
+		style.Triggers.Add(trigger);
 		return style;
 	}
 
 	private void OnCreateClicked(object sender, RoutedEventArgs e)
 	{
-		if (!TryParsePositiveDistance(_offsetTextBox.Text, out double offsetDistance))
+		if (!TryParsePositiveDistance(_offsetTextBox.Text, out var distance))
 		{
 			DialogService.Show("Enter a positive offset distance.", "Template Editor");
 			return;
 		}
-		OffsetDistance = offsetDistance;
+		OffsetDistance = distance;
 		ClearPreviewOverlay();
-		DialogResult = true;
+		base.DialogResult = true;
 	}
 
 	private void QueuePreviewRefresh()
 	{
-		int previewVersion = ++_previewVersion;
-		_ = RefreshPreviewAsync(previewVersion);
+		RefreshPreviewAsync(++_previewVersion);
 	}
 
 	private async Task RefreshPreviewAsync(int previewVersion)
 	{
-		if (!TryParsePositiveDistance(_offsetTextBox?.Text, out double offsetDistance))
+		if (!TryParsePositiveDistance(_offsetTextBox?.Text, out var offsetDistance))
 		{
 			ClearPreviewOverlay();
 			return;
@@ -224,9 +273,9 @@ internal sealed class ParallelCopyPromptDialog : Window
 			ClearPreviewOverlay();
 			_previewOverlay = previewOverlay;
 		}
-		catch (Exception ex)
+		catch (Exception exception)
 		{
-			LogService.LogException("Parallel copy preview overlay update failed.", ex);
+			LogService.LogException("Parallel copy preview overlay update failed.", exception);
 			if (previewVersion == _previewVersion)
 			{
 				ClearPreviewOverlay();
@@ -242,8 +291,6 @@ internal sealed class ParallelCopyPromptDialog : Window
 
 	private static bool TryParsePositiveDistance(string text, out double distance)
 	{
-		bool parsed = double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out distance) ||
-			double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out distance);
-		return parsed && distance > 0.0;
+		return (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out distance) || double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out distance)) && distance > 0.0;
 	}
 }

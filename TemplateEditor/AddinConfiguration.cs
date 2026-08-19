@@ -11,7 +11,12 @@ namespace TemplateEditor;
 
 internal static class AddinConfiguration
 {
-	public static event Action SettingsChanged;
+	private sealed class UserSettingsEnvelope
+	{
+		public string TemplateConfigFilePath { get; set; }
+
+		public TemplateEditorSettings Settings { get; set; }
+	}
 
 	private const string TemplateConfigFilePathKey = "TemplateConfigFilePath";
 
@@ -50,17 +55,20 @@ internal static class AddinConfiguration
 
 	public static bool ValidateConfig => Settings != null && Settings.ValidateConfig;
 
+	public static event Action SettingsChanged;
+
 	public static TemplateConfig ReloadTemplates()
 	{
-		TemplateConfig templates = LoadTemplateConfig();
-		SetTemplates(templates);
-		return templates;
+		TemplateConfig templateConfig = LoadTemplateConfig();
+		SetTemplates(templateConfig);
+		return templateConfig;
 	}
 
 	public static void SetTemplates(TemplateConfig templates)
 	{
 		Templates = templates;
 		TemplateCache.Initialize(templates);
+		CommonFunctions.ClearPreviewGeometryCache();
 	}
 
 	public static void SetSelectedTemplate(DisplayTemplate template)
@@ -87,8 +95,14 @@ internal static class AddinConfiguration
 		LoadPackagedDefaults();
 		PlacementAttributeOverrideService.Initialize();
 		LoadUserSettings();
-		GroupFeatureLayerNames ??= new List<string>();
-		Settings ??= new TemplateEditorSettings();
+		if (GroupFeatureLayerNames == null)
+		{
+			GroupFeatureLayerNames = new List<string>();
+		}
+		if (Settings == null)
+		{
+			Settings = new TemplateEditorSettings();
+		}
 		Settings.Normalize();
 	}
 
@@ -111,15 +125,15 @@ internal static class AddinConfiguration
 			CheckFileExists = true,
 			Multiselect = false
 		};
-		string preferredPath = !string.IsNullOrWhiteSpace(initialPath) ? initialPath : TemplateConfigFilePath;
-		if (!string.IsNullOrWhiteSpace(preferredPath))
+		string text = ((!string.IsNullOrWhiteSpace(initialPath)) ? initialPath : TemplateConfigFilePath);
+		if (!string.IsNullOrWhiteSpace(text))
 		{
-			string directoryName = Path.GetDirectoryName(preferredPath);
+			string directoryName = Path.GetDirectoryName(text);
 			if (!string.IsNullOrWhiteSpace(directoryName) && Directory.Exists(directoryName))
 			{
 				openFileDialog.InitialDirectory = directoryName;
 			}
-			openFileDialog.FileName = Path.GetFileName(preferredPath);
+			openFileDialog.FileName = Path.GetFileName(text);
 		}
 		else if (!string.IsNullOrWhiteSpace(DefaultTemplateConfigFilePath))
 		{
@@ -130,7 +144,7 @@ internal static class AddinConfiguration
 			}
 			openFileDialog.FileName = Path.GetFileName(DefaultTemplateConfigFilePath);
 		}
-		return openFileDialog.ShowDialog() == true ? openFileDialog.FileName : null;
+		return (openFileDialog.ShowDialog() == true) ? openFileDialog.FileName : null;
 	}
 
 	public static bool ShowSettingsWindow()
@@ -168,113 +182,129 @@ internal static class AddinConfiguration
 		{
 			return false;
 		}
-		Settings.FavouriteTemplateKeys ??= new List<string>();
-		bool removed = Settings.FavouriteTemplateKeys.RemoveAll(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)) > 0;
-		if (!removed)
+		TemplateEditorSettings settings = Settings;
+		if (settings.FavouriteTemplateKeys == null)
+		{
+			List<string> list = (settings.FavouriteTemplateKeys = new List<string>());
+		}
+		bool flag = Settings.FavouriteTemplateKeys.RemoveAll((string k) => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)) > 0;
+		if (!flag)
 		{
 			Settings.FavouriteTemplateKeys.Add(key);
 		}
 		SaveUserSettings();
-		return !removed;
+		return !flag;
 	}
 
 	public static void RecordRecentTemplate(string key)
 	{
-		if (string.IsNullOrWhiteSpace(key) || Settings == null)
+		if (!string.IsNullOrWhiteSpace(key) && Settings != null)
 		{
-			return;
+			TemplateEditorSettings settings = Settings;
+			if (settings.RecentTemplateKeys == null)
+			{
+				List<string> list = (settings.RecentTemplateKeys = new List<string>());
+			}
+			Settings.RecentTemplateKeys.RemoveAll((string k) => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
+			Settings.RecentTemplateKeys.Insert(0, key);
+			int num = Math.Max(1, Settings.MaxRecentTemplates);
+			if (Settings.RecentTemplateKeys.Count > num)
+			{
+				Settings.RecentTemplateKeys.RemoveRange(num, Settings.RecentTemplateKeys.Count - num);
+			}
+			SaveUserSettings();
 		}
-		Settings.RecentTemplateKeys ??= new List<string>();
-		Settings.RecentTemplateKeys.RemoveAll(k => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
-		Settings.RecentTemplateKeys.Insert(0, key);
-		int max = Math.Max(1, Settings.MaxRecentTemplates);
-		if (Settings.RecentTemplateKeys.Count > max)
-		{
-			Settings.RecentTemplateKeys.RemoveRange(max, Settings.RecentTemplateKeys.Count - max);
-		}
-		SaveUserSettings();
 	}
 
 	private static void LoadPackagedDefaults()
 	{
-		string appConfigPath = Assembly.GetExecutingAssembly().Location + ".config";
+		string text = Assembly.GetExecutingAssembly().Location + ".config";
 		GroupFeatureLayerNames = new List<string>();
 		Settings = new TemplateEditorSettings();
-		if (!File.Exists(appConfigPath))
+		if (!File.Exists(text))
 		{
 			return;
 		}
-		ExeConfigurationFileMap configFileMap = new ExeConfigurationFileMap
+		ExeConfigurationFileMap fileMap = new ExeConfigurationFileMap
 		{
-			ExeConfigFilename = appConfigPath
+			ExeConfigFilename = text
 		};
-		Configuration configuration = ConfigurationManager.OpenMappedExeConfiguration(configFileMap, ConfigurationUserLevel.None);
-		DefaultTemplateConfigFilePath = GetAppSetting(configuration, TemplateConfigFilePathKey) ?? GetAppSetting(configuration, LegacyTemplateConfigFilePathKey);
+		Configuration configuration = ConfigurationManager.OpenMappedExeConfiguration(fileMap, ConfigurationUserLevel.None);
+		DefaultTemplateConfigFilePath = GetAppSetting(configuration, "TemplateConfigFilePath") ?? GetAppSetting(configuration, "FramingConfigFilePath");
 		Settings.TemplateConfigFilePath = DefaultTemplateConfigFilePath;
-		Settings.ValidateConfig = bool.TryParse(GetAppSetting(configuration, ValidateConfigKey), out bool result) && result;
-		string appSetting = GetAppSetting(configuration, FeatureLayerGroupNamesKey);
+		Settings.ValidateConfig = bool.TryParse(GetAppSetting(configuration, "ValidateConfig"), out var result) & result;
+		string appSetting = GetAppSetting(configuration, "FeatureLayerGroupNames");
 		if (!string.IsNullOrWhiteSpace(appSetting))
 		{
-			GroupFeatureLayerNames = appSetting.Split(',').Select((string name) => name.Trim()).Where((string name) => !string.IsNullOrWhiteSpace(name)).ToList();
+			GroupFeatureLayerNames = (from name in appSetting.Split(',')
+				select name.Trim() into name
+				where !string.IsNullOrWhiteSpace(name)
+				select name).ToList();
 		}
 		Settings.Normalize();
 	}
 
 	private static void LoadUserSettings()
 	{
-		string settingsPath = File.Exists(UserSettingsFilePath) ? UserSettingsFilePath : LegacyUserSettingsFilePath;
-		if (!File.Exists(settingsPath))
+		string text = (File.Exists(UserSettingsFilePath) ? UserSettingsFilePath : LegacyUserSettingsFilePath);
+		if (File.Exists(text))
 		{
-			return;
+			UserSettingsEnvelope userSettingsEnvelope;
+			try
+			{
+				userSettingsEnvelope = JsonSerializer.Deserialize<UserSettingsEnvelope>(File.ReadAllText(text));
+			}
+			catch (Exception exception)
+			{
+				LogService.LogException("User settings could not be loaded from '" + text + "'. Falling back to packaged/default settings.", exception);
+				TryMoveCorruptSettingsFile(text);
+				return;
+			}
+			if (userSettingsEnvelope?.Settings != null)
+			{
+				Settings = userSettingsEnvelope.Settings;
+			}
+			if (Settings == null)
+			{
+				Settings = new TemplateEditorSettings();
+			}
+			if (!string.IsNullOrWhiteSpace(userSettingsEnvelope?.TemplateConfigFilePath))
+			{
+				Settings.TemplateConfigFilePath = userSettingsEnvelope.TemplateConfigFilePath;
+			}
+			Settings.Normalize();
 		}
-		UserSettingsEnvelope userSettingsEnvelope;
-		try
-		{
-			userSettingsEnvelope = JsonSerializer.Deserialize<UserSettingsEnvelope>(File.ReadAllText(settingsPath));
-		}
-		catch (Exception ex)
-		{
-			LogService.LogException($"User settings could not be loaded from '{settingsPath}'. Falling back to packaged/default settings.", ex);
-			TryMoveCorruptSettingsFile(settingsPath);
-			return;
-		}
-		if (userSettingsEnvelope?.Settings != null)
-		{
-			Settings = userSettingsEnvelope.Settings;
-		}
-		if (Settings == null)
-		{
-			Settings = new TemplateEditorSettings();
-		}
-		if (!string.IsNullOrWhiteSpace(userSettingsEnvelope?.TemplateConfigFilePath))
-		{
-			Settings.TemplateConfigFilePath = userSettingsEnvelope.TemplateConfigFilePath;
-		}
-		Settings.Normalize();
 	}
 
 	private static void TryMoveCorruptSettingsFile(string settingsPath)
 	{
 		try
 		{
-			string backupPath = settingsPath + ".corrupt-" + DateTime.Now.ToString("yyyyMMddHHmmss");
-			File.Move(settingsPath, backupPath);
+			string destFileName = settingsPath + ".corrupt-" + DateTime.Now.ToString("yyyyMMddHHmmss");
+			File.Move(settingsPath, destFileName);
 		}
-		catch (Exception ex)
+		catch (Exception exception)
 		{
-			LogService.LogException($"Could not move corrupt settings file '{settingsPath}' to a backup path.", ex);
+			LogService.LogException("Could not move corrupt settings file '" + settingsPath + "' to a backup path.", exception);
 		}
 	}
 
 	private static void SaveUserSettings()
 	{
-		Directory.CreateDirectory(UserSettingsDirectoryPath);
-		UserSettingsEnvelope value = new UserSettingsEnvelope
+		try
 		{
-			TemplateConfigFilePath = Settings.TemplateConfigFilePath,
-			Settings = Settings
-		};
-		File.WriteAllText(UserSettingsFilePath, JsonSerializer.Serialize(value, _settingsJsonOptions));
+			Directory.CreateDirectory(UserSettingsDirectoryPath);
+			UserSettingsEnvelope value = new UserSettingsEnvelope
+			{
+				TemplateConfigFilePath = Settings.TemplateConfigFilePath,
+				Settings = Settings
+			};
+			AtomicFileService.WriteAllText(UserSettingsFilePath, JsonSerializer.Serialize(value, _settingsJsonOptions));
+		}
+		catch (Exception exception)
+		{
+			LogService.LogException("User settings could not be saved; the current session will continue without persisting this change.", exception);
+		}
 	}
 
 	private static TemplateConfig LoadTemplateConfig(string configFilePath)
@@ -292,20 +322,21 @@ internal static class AddinConfiguration
 		{
 			throw new InvalidOperationException("The selected template configuration file is empty or invalid.");
 		}
-		templateConfig.SimpleTemplates ??= new List<SimpleTemplate>();
-		templateConfig.GroupTemplates ??= new List<GroupTemplate>();
+		TemplateConfig templateConfig2 = templateConfig;
+		if (templateConfig2.SimpleTemplates == null)
+		{
+			List<SimpleTemplate> list = (templateConfig2.SimpleTemplates = new List<SimpleTemplate>());
+		}
+		templateConfig2 = templateConfig;
+		if (templateConfig2.GroupTemplates == null)
+		{
+			List<GroupTemplate> list3 = (templateConfig2.GroupTemplates = new List<GroupTemplate>());
+		}
 		return templateConfig;
 	}
 
 	private static string GetAppSetting(Configuration configuration, string key)
 	{
 		return configuration.AppSettings.Settings[key]?.Value;
-	}
-
-	private sealed class UserSettingsEnvelope
-	{
-		public string TemplateConfigFilePath { get; set; }
-
-		public TemplateEditorSettings Settings { get; set; }
 	}
 }

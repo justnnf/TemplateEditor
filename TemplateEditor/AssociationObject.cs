@@ -12,4 +12,3 @@ public class AssociationObject
 
 	public int ToTerminal { get; set; }
 }
-

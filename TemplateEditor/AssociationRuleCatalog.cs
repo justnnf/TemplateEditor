@@ -14,16 +14,21 @@ internal sealed class AssociationRuleCatalog
 
 	private readonly List<AssociationRule> _rules;
 
-	private AssociationRuleCatalog(List<AssociationRule> rules)
-	{
-		_rules = rules ?? new List<AssociationRule>();
-	}
+	private readonly bool _isAvailable;
 
-	public static AssociationRuleCatalog Current => _current ??= Load();
+	public static AssociationRuleCatalog Current => _current ?? (_current = Load());
 
 	public bool HasRules => _rules.Count > 0;
 
+	public bool IsAvailable => _isAvailable;
+
 	public static string RuleFilePath => ResolveRuleFilePath(preferExisting: true);
+
+	private AssociationRuleCatalog(List<AssociationRule> rules, bool isAvailable = true)
+	{
+		_rules = rules ?? new List<AssociationRule>();
+		_isAvailable = isAvailable;
+	}
 
 	public static void Reload()
 	{
@@ -32,6 +37,11 @@ internal sealed class AssociationRuleCatalog
 
 	public bool Allows(AssociationType associationType, FeatureLayerInfo containerOrTarget, FeatureLayerInfo contentOrCreated)
 	{
+		//IL_004d: Unknown result type (might be due to invalid IL or missing references)
+		if (!_isAvailable)
+		{
+			return false;
+		}
 		if (!HasRules || containerOrTarget == null || contentOrCreated == null)
 		{
 			return true;
@@ -41,64 +51,61 @@ internal sealed class AssociationRuleCatalog
 		{
 			return true;
 		}
-		return _rules.Any((AssociationRule rule) =>
-			string.Equals(rule.AssociationType, normalizedType, StringComparison.OrdinalIgnoreCase) &&
-			Matches(rule.FromTable, containerOrTarget.TableName) &&
-			Matches(rule.FromAssetGroup, containerOrTarget.AssetGroup) &&
-			Matches(rule.FromAssetType, containerOrTarget.AssetType) &&
-			Matches(rule.ToTable, contentOrCreated.TableName) &&
-			Matches(rule.ToAssetGroup, contentOrCreated.AssetGroup) &&
-			Matches(rule.ToAssetType, contentOrCreated.AssetType));
+		return _rules.Any((AssociationRule rule) => string.Equals(rule.AssociationType, normalizedType, StringComparison.OrdinalIgnoreCase) && Matches(rule.FromTable, containerOrTarget.TableName) && Matches(rule.FromAssetGroup, containerOrTarget.AssetGroup) && Matches(rule.FromAssetType, containerOrTarget.AssetType) && Matches(rule.ToTable, contentOrCreated.TableName) && Matches(rule.ToAssetGroup, contentOrCreated.AssetGroup) && Matches(rule.ToAssetType, contentOrCreated.AssetType));
 	}
 
 	public HashSet<string> GetAllowedCounterpartTables(AssociationType associationType, FeatureLayerInfo knownSide, bool knownSideIsFrom)
 	{
+		//IL_001c: Unknown result type (might be due to invalid IL or missing references)
 		if (!HasRules || knownSide == null)
 		{
 			return null;
 		}
-		string normalizedType = GetRuleAssociationTypeName(associationType);
-		if (normalizedType == null)
+		string ruleAssociationTypeName = GetRuleAssociationTypeName(associationType);
+		if (ruleAssociationTypeName == null)
 		{
 			return null;
 		}
-		HashSet<string> allowedTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		foreach (AssociationRule rule in _rules)
 		{
-			if (!string.Equals(rule.AssociationType, normalizedType, StringComparison.OrdinalIgnoreCase))
+			if (!string.Equals(rule.AssociationType, ruleAssociationTypeName, StringComparison.OrdinalIgnoreCase))
 			{
 				continue;
 			}
-			string knownTableRuleValue = knownSideIsFrom ? rule.FromTable : rule.ToTable;
-			string knownAssetGroupRuleValue = knownSideIsFrom ? rule.FromAssetGroup : rule.ToAssetGroup;
-			string knownAssetTypeRuleValue = knownSideIsFrom ? rule.FromAssetType : rule.ToAssetType;
-			if (!Matches(knownTableRuleValue, knownSide.TableName) ||
-				!Matches(knownAssetGroupRuleValue, knownSide.AssetGroup) ||
-				!Matches(knownAssetTypeRuleValue, knownSide.AssetType))
+			string ruleValue = (knownSideIsFrom ? rule.FromTable : rule.ToTable);
+			string ruleValue2 = (knownSideIsFrom ? rule.FromAssetGroup : rule.ToAssetGroup);
+			string ruleValue3 = (knownSideIsFrom ? rule.FromAssetType : rule.ToAssetType);
+			if (Matches(ruleValue, knownSide.TableName) && Matches(ruleValue2, knownSide.AssetGroup) && Matches(ruleValue3, knownSide.AssetType))
 			{
-				continue;
+				string value = (knownSideIsFrom ? rule.ToTable : rule.FromTable);
+				if (string.IsNullOrWhiteSpace(value))
+				{
+					return null;
+				}
+				hashSet.Add(Normalize(value));
 			}
-			string counterpartTable = knownSideIsFrom ? rule.ToTable : rule.FromTable;
-			if (string.IsNullOrWhiteSpace(counterpartTable))
-			{
-				return null;
-			}
-			allowedTables.Add(Normalize(counterpartTable));
 		}
-		return allowedTables;
+		return hashSet;
 	}
 
 	private static string GetRuleAssociationTypeName(AssociationType associationType)
 	{
-		if (associationType == AssociationType.Attachment)
+		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0003: Invalid comparison between Unknown and I4
+		//IL_0012: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0014: Invalid comparison between Unknown and I4
+		//IL_0023: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0025: Invalid comparison between Unknown and I4
+		if ((int)associationType == 3)
 		{
 			return "Attachment";
 		}
-		if (associationType == AssociationType.Containment)
+		if ((int)associationType == 2)
 		{
 			return "Containment";
 		}
-		if (associationType == UtilityNetworkAssociationTypes.JunctionJunctionConnectivity)
+		if ((int)associationType == 1)
 		{
 			return "JunctionJunctionConnectivity";
 		}
@@ -107,8 +114,7 @@ internal sealed class AssociationRuleCatalog
 
 	private static bool Matches(string ruleValue, string actualValue)
 	{
-		return string.IsNullOrWhiteSpace(ruleValue) ||
-			string.Equals(Normalize(ruleValue), Normalize(actualValue), StringComparison.OrdinalIgnoreCase);
+		return string.IsNullOrWhiteSpace(ruleValue) || string.Equals(Normalize(ruleValue), Normalize(actualValue), StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static string Normalize(string value)
@@ -117,91 +123,45 @@ internal sealed class AssociationRuleCatalog
 		{
 			return string.Empty;
 		}
-		return value.Replace(" ", string.Empty).Replace("-", string.Empty).Replace("_", string.Empty).ToUpperInvariant();
+		return value.Replace(" ", string.Empty).Replace("-", string.Empty).Replace("_", string.Empty)
+			.ToUpperInvariant();
 	}
 
 	private static AssociationRuleCatalog Load()
 	{
-		string path = ResolveRuleFilePath(preferExisting: true);
 		try
 		{
+			string path = ResolveRuleFilePath(preferExisting: true);
 			if (!File.Exists(path))
 			{
 				return new AssociationRuleCatalog(new List<AssociationRule>());
 			}
-			AssociationRuleEnvelope envelope = JsonSerializer.Deserialize<AssociationRuleEnvelope>(File.ReadAllText(path), new JsonSerializerOptions
+			return new AssociationRuleCatalog(JsonSerializer.Deserialize<AssociationRuleEnvelope>(File.ReadAllText(path), new JsonSerializerOptions
 			{
 				PropertyNameCaseInsensitive = true
-			});
-			return new AssociationRuleCatalog(envelope?.Rules ?? new List<AssociationRule>());
+			})?.Rules ?? new List<AssociationRule>());
 		}
 		catch (Exception ex)
 		{
-			if (File.Exists(path))
-			{
-				DialogService.ShowAsync(
-					$"The association rules file could not be loaded and will be ignored.\n\nPath: {path}\n\nError: {ex.Message}",
-					"Template Editor");
-			}
-			return new AssociationRuleCatalog(new List<AssociationRule>());
+			DialogService.ShowAsync("The association rules file could not be loaded. Automatic association filtering is disabled until the rules file is repaired.\n\nError: " + ex.Message, "Template Editor");
+			return new AssociationRuleCatalog(new List<AssociationRule>(), isAvailable: false);
 		}
 	}
 
 	private static string ResolveRuleFilePath(bool preferExisting)
 	{
-		string configuredPath = AddinConfiguration.Settings?.AssociationRulesJsonPath;
-		if (!string.IsNullOrWhiteSpace(configuredPath))
+		string text = AddinConfiguration.Settings?.AssociationRulesJsonPath;
+		if (!string.IsNullOrWhiteSpace(text))
 		{
-			string configuredDirectory = Path.GetDirectoryName(configuredPath);
-			if (!string.IsNullOrWhiteSpace(configuredDirectory))
-			{
-				Directory.CreateDirectory(configuredDirectory);
-			}
-			return configuredPath;
+			return AtomicFileService.NormalizeJsonFilePath(text);
 		}
-		string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-		string packagedPath = Path.Combine(assemblyDirectory, "TemplateEditor", "AllowedAssociationRules.json");
-		string rootPath = Path.Combine(assemblyDirectory, "AllowedAssociationRules.json");
-		if (!preferExisting || File.Exists(packagedPath))
+		string directoryName = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+		string text2 = Path.Combine(directoryName, "TemplateEditor", "AllowedAssociationRules.json");
+		string text3 = Path.Combine(directoryName, "AllowedAssociationRules.json");
+		if (!preferExisting || File.Exists(text2))
 		{
-			Directory.CreateDirectory(Path.GetDirectoryName(packagedPath));
-			return packagedPath;
+			return text2;
 		}
-		return File.Exists(rootPath) ? rootPath : packagedPath;
+		return File.Exists(text3) ? text3 : text2;
 	}
-}
-
-internal sealed class FeatureLayerInfo
-{
-	public string TableName { get; set; }
-
-	public string AssetGroup { get; set; }
-
-	public string AssetType { get; set; }
-}
-
-internal sealed class AssociationRuleEnvelope
-{
-	public string Source { get; set; }
-
-	public string GeneratedUtc { get; set; }
-
-	public List<AssociationRule> Rules { get; set; }
-}
-
-internal sealed class AssociationRule
-{
-	public string AssociationType { get; set; }
-
-	public string FromTable { get; set; }
-
-	public string FromAssetGroup { get; set; }
-
-	public string FromAssetType { get; set; }
-
-	public string ToTable { get; set; }
-
-	public string ToAssetGroup { get; set; }
-
-	public string ToAssetType { get; set; }
 }

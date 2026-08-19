@@ -8,13 +8,12 @@ internal static class ToolCursorLoader
 {
 	public static Cursor Load(string fileName)
 	{
-		string cursorPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Images", fileName);
-		if (!File.Exists(cursorPath))
+		string path = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Images", fileName);
+		if (!File.Exists(path))
 		{
 			return Cursors.Cross;
 		}
-		byte[] cursorBytes = File.ReadAllBytes(cursorPath);
-		// Cursor takes ownership of the stream.
-		return new Cursor(new MemoryStream(cursorBytes));
+		byte[] buffer = File.ReadAllBytes(path);
+		return new Cursor(new MemoryStream(buffer));
 	}
 }

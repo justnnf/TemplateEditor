@@ -1,7 +1,6 @@
 using System;
 using System.Threading.Tasks;
 using ArcGIS.Desktop.Framework.Contracts;
-using ArcGIS.Desktop.Framework.Dialogs;
 
 namespace TemplateEditor;
 
@@ -48,8 +47,9 @@ internal class EditorDockpane_ShowButton : Button
 		}
 		catch (Exception ex)
 		{
-			LogService.LogException("Template editor button failed.", ex);
-			DialogService.Show(ex.Message, "Template Editor");
+			Exception ex2 = ex;
+			LogService.LogException("Template editor button failed.", ex2);
+			DialogService.Show(ex2.Message, "Template Editor");
 		}
 	}
 
@@ -60,14 +60,14 @@ internal class EditorDockpane_ShowButton : Button
 			return true;
 		}
 		DialogService.Show("The selected template configuration file could not be found. Choose a template configuration JSON file to open the editor.", "Template Editor");
-		string selectedPath = AddinConfiguration.PromptForTemplateConfigFilePath(AddinConfiguration.TemplateConfigFilePath);
-		if (string.IsNullOrWhiteSpace(selectedPath))
+		string text = AddinConfiguration.PromptForTemplateConfigFilePath(AddinConfiguration.TemplateConfigFilePath);
+		if (string.IsNullOrWhiteSpace(text))
 		{
 			return false;
 		}
-		TemplateEditorSettings settings = AddinConfiguration.Settings?.Clone() ?? new TemplateEditorSettings();
-		settings.TemplateConfigFilePath = selectedPath;
-		AddinConfiguration.ApplySettings(settings);
+		TemplateEditorSettings templateEditorSettings = AddinConfiguration.Settings?.Clone() ?? new TemplateEditorSettings();
+		templateEditorSettings.TemplateConfigFilePath = text;
+		AddinConfiguration.ApplySettings(templateEditorSettings);
 		return AddinConfiguration.HasValidTemplateConfigPath();
 	}
 }

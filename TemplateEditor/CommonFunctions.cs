@@ -1,7 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
@@ -10,125 +13,96 @@ using ArcGIS.Core.Data;
 using ArcGIS.Core.Data.UtilityNetwork;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Editing;
+using ArcGIS.Desktop.Editing.Attributes;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
-using DataDomain = ArcGIS.Core.Data.Domain;
-using DataSubtype = ArcGIS.Core.Data.Subtype;
+using Domain = ArcGIS.Core.Data.Domain;
+using Subtype = ArcGIS.Core.Data.Subtype;
+using CodedValueDomain = ArcGIS.Core.Data.CodedValueDomain;
+using RangeDomain = ArcGIS.Core.Data.RangeDomain;
 
 namespace TemplateEditor;
 
-/// <summary>
-/// Cache for template lookups (SimpleTemplate and GroupTemplate) to enable O(1) lookups instead of O(n) scans.
-/// Uses case-insensitive key comparison to match the StringComparison.OrdinalIgnoreCase used throughout the codebase.
-/// Thread-safe with lazy initialization on first access.
-/// </summary>
-internal static class TemplateCache
-{
-	private static Dictionary<string, SimpleTemplate> _simpleTemplatesByName;
-	private static Dictionary<string, GroupTemplate> _groupTemplatesByName;
-	private static readonly object LockObject = new();
-	private static bool _isInitialized = false;
-
-	/// <summary>
-	/// Initializes the template cache from the current TemplateConfig.
-	/// Call this when template configuration is loaded or reloaded.
-	/// </summary>
-	public static void Initialize(TemplateConfig config)
-	{
-		lock (LockObject)
-		{
-			_simpleTemplatesByName = config?.SimpleTemplates?
-				.GroupBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
-				.ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase)
-				?? new(StringComparer.OrdinalIgnoreCase);
-
-			_groupTemplatesByName = config?.GroupTemplates?
-				.GroupBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
-				.ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase)
-				?? new(StringComparer.OrdinalIgnoreCase);
-
-			_isInitialized = true;
-		}
-	}
-
-	/// <summary>
-	/// Gets a SimpleTemplate by name using case-insensitive lookup.
-	/// Returns null if not found or cache is not initialized.
-	/// </summary>
-	public static SimpleTemplate GetSimpleTemplate(string name)
-	{
-		if (string.IsNullOrWhiteSpace(name))
-		{
-			return null;
-		}
-
-		// Lazy initialization on first access if not already done
-		if (!_isInitialized)
-		{
-			lock (LockObject)
-			{
-				if (!_isInitialized)
-				{
-					Initialize(AddinConfiguration.Templates);
-				}
-			}
-		}
-
-		lock (LockObject)
-		{
-			return _simpleTemplatesByName?.TryGetValue(name, out var template) == true
-				? template
-				: null;
-		}
-	}
-
-	/// <summary>
-	/// Gets a GroupTemplate by name using case-insensitive lookup.
-	/// Returns null if not found or cache is not initialized.
-	/// </summary>
-	public static GroupTemplate GetGroupTemplate(string name)
-	{
-		if (string.IsNullOrWhiteSpace(name))
-		{
-			return null;
-		}
-
-		// Lazy initialization on first access if not already done
-		if (!_isInitialized)
-		{
-			lock (LockObject)
-			{
-				if (!_isInitialized)
-				{
-					Initialize(AddinConfiguration.Templates);
-				}
-			}
-		}
-
-		lock (LockObject)
-		{
-			return _groupTemplatesByName?.TryGetValue(name, out var template) == true
-				? template
-				: null;
-		}
-	}
-
-	/// <summary>
-	/// Clears the cache. Call this if template configuration is reloaded during the session.
-	/// </summary>
-	public static void Clear()
-	{
-		lock (LockObject)
-		{
-			_simpleTemplatesByName = null;
-			_groupTemplatesByName = null;
-			_isInitialized = false;
-		}
-	}
-}
-
 internal static class CommonFunctions
 {
+	private sealed class PlacementBuildResult
+	{
+		public EditOperation Operation { get; set; }
+
+		public List<PlacedFeatureContext> CreatedFeatures { get; set; }
+
+		public List<FeatureInfo> FeatureInfos { get; set; }
+
+		public List<AssociationObject> ConfiguredAssociations { get; set; }
+
+		public bool ApplyConfiguredAssociations { get; set; }
+	}
+
+	private sealed class ConfiguredAssociationResult
+	{
+		public static ConfiguredAssociationResult Empty => new ConfiguredAssociationResult();
+
+		public int AttemptedCount { get; set; }
+
+		public List<ExistingAssociationPair> CreatedPairs { get; } = new List<ExistingAssociationPair>();
+
+		public List<string> Failures { get; } = new List<string>();
+
+		public int CreatedCount => CreatedPairs.Count;
+
+		public int FailedCount => Math.Max(Failures.Count, AttemptedCount - CreatedCount);
+
+		public bool HasFailures => FailedCount > 0;
+	}
+
+	private sealed class PlacementOptions
+	{
+		public static PlacementOptions Full { get; } = new PlacementOptions
+		{
+			OperationName = "Create template features",
+			IncludeConfiguredAssociations = true,
+			IncludeDefaultAttributes = true
+		};
+
+		public static PlacementOptions WithoutAssociations { get; } = new PlacementOptions
+		{
+			OperationName = "Create template features without associations",
+			IncludeConfiguredAssociations = false,
+			IncludeDefaultAttributes = true
+		};
+
+		public static PlacementOptions MinimalAttributes { get; } = new PlacementOptions
+		{
+			OperationName = "Create template features with minimal attributes",
+			IncludeConfiguredAssociations = false,
+			IncludeDefaultAttributes = false
+		};
+
+		public string OperationName { get; private set; }
+
+		public bool IncludeConfiguredAssociations { get; private set; }
+
+		public bool IncludeDefaultAttributes { get; private set; }
+	}
+
+	private static readonly Dictionary<string, bool> _simplePointTemplateCache = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+	private static readonly object _simplePointTemplateCacheLock = new object();
+
+	private static CIMSymbolReference _cachedPreviewPointSymbol;
+
+	private static CIMSymbolReference _cachedPreviewLineSymbol;
+
+	private static CIMSymbolReference _cachedPreviewPolygonSymbol;
+
+	internal static void ClearPreviewGeometryCache()
+	{
+		lock (_simplePointTemplateCacheLock)
+		{
+			_simplePointTemplateCache.Clear();
+		}
+	}
+
 	private static TemplateConfig GetLoadedTemplateConfigOrThrow()
 	{
 		TemplateConfig templates = AddinConfiguration.Templates;
@@ -136,8 +110,16 @@ internal static class CommonFunctions
 		{
 			throw new InvalidOperationException("Template configuration is not loaded.");
 		}
-		templates.SimpleTemplates ??= new List<SimpleTemplate>();
-		templates.GroupTemplates ??= new List<GroupTemplate>();
+		TemplateConfig templateConfig = templates;
+		if (templateConfig.SimpleTemplates == null)
+		{
+			List<SimpleTemplate> list = (templateConfig.SimpleTemplates = new List<SimpleTemplate>());
+		}
+		templateConfig = templates;
+		if (templateConfig.GroupTemplates == null)
+		{
+			List<GroupTemplate> list3 = (templateConfig.GroupTemplates = new List<GroupTemplate>());
+		}
 		return templates;
 	}
 
@@ -147,18 +129,26 @@ internal static class CommonFunctions
 		{
 			return null;
 		}
-		if (obj is not JsonElement jsonElement)
+		if (!(obj is JsonElement jsonElement) || 1 == 0)
 		{
 			return obj;
 		}
-		return jsonElement.ValueKind switch
+		JsonValueKind valueKind = jsonElement.ValueKind;
+		if (1 == 0)
 		{
-			JsonValueKind.Number => jsonElement.TryGetInt64(out long longValue) ? longValue : jsonElement.GetDouble(),
-			JsonValueKind.True => true,
-			JsonValueKind.False => false,
-			JsonValueKind.Null => null,
-			_ => jsonElement.ToString()
+		}
+		object result = valueKind switch
+		{
+			JsonValueKind.Number => jsonElement.TryGetInt64(out var value) ? ((double)value) : jsonElement.GetDouble(), 
+			JsonValueKind.True => true, 
+			JsonValueKind.False => false, 
+			JsonValueKind.Null => null, 
+			_ => jsonElement.ToString(), 
 		};
+		if (1 == 0)
+		{
+		}
+		return result;
 	}
 
 	public static async Task<GeometryType> GetTemplateGeometryTypeAsync(DisplayTemplate template)
@@ -167,16 +157,15 @@ internal static class CommonFunctions
 		string templateName = template?.Name ?? AddinConfiguration.SelectedTemplate?.Name;
 		if (string.IsNullOrWhiteSpace(templateName))
 		{
-			return (GeometryType)GeometryTypeHelper.TableGeometryType;
+			return (GeometryType)0;
 		}
-		if (template?.IsGroupChild == true)
+		if (template?.IsGroupChild ?? false)
 		{
 			SimpleTemplateReference childTemplateRef = GetGroupChildReference(template);
-			SimpleTemplate childTemplate = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) =>
-				string.Equals(n.Name, childTemplateRef?.Name, StringComparison.OrdinalIgnoreCase));
+			SimpleTemplate childTemplate = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, childTemplateRef?.Name, StringComparison.OrdinalIgnoreCase));
 			if (childTemplateRef == null || childTemplate == null)
 			{
-				throw new InvalidOperationException($"Template part '{templateName}' was not found.");
+				throw new InvalidOperationException("Template part '" + templateName + "' was not found.");
 			}
 			GeometryType configuredChildSketchType = GetConfiguredSketchGeometryType(childTemplateRef);
 			if (childTemplateRef.SketchType != null)
@@ -185,22 +174,20 @@ internal static class CommonFunctions
 			}
 			if (HasConfiguredPlacementGeometry(childTemplateRef))
 			{
-				return (GeometryType)GeometryTypeHelper.PointGeometryType;
+				return (GeometryType)513;
 			}
 			return await GetSimpleTemplateGeometryTypeAsync(childTemplate);
 		}
-		SimpleTemplate simpleTemplate = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) =>
-			string.Equals(n.Name, templateName, StringComparison.OrdinalIgnoreCase));
+		SimpleTemplate simpleTemplate = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, templateName, StringComparison.OrdinalIgnoreCase));
 		if (simpleTemplate != null)
 		{
 			return await GetSimpleTemplateGeometryTypeAsync(simpleTemplate);
 		}
-		GroupTemplate groupTemplate = templates.GroupTemplates.FirstOrDefault((GroupTemplate n) =>
-			string.Equals(n.Name, templateName, StringComparison.OrdinalIgnoreCase));
+		GroupTemplate groupTemplate = templates.GroupTemplates.FirstOrDefault((GroupTemplate n) => string.Equals(n.Name, templateName, StringComparison.OrdinalIgnoreCase));
 		SimpleTemplateReference simpleTemplateRef = groupTemplate?.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference n) => n.FeatureId == 1);
 		if (simpleTemplateRef == null)
 		{
-			throw new InvalidOperationException($"Template '{templateName}' does not have a sketch feature.");
+			throw new InvalidOperationException("Template '" + templateName + "' does not have a sketch feature.");
 		}
 		GeometryType configuredSketchType = GetConfiguredSketchGeometryType(simpleTemplateRef);
 		if (simpleTemplateRef.SketchType != null)
@@ -209,21 +196,29 @@ internal static class CommonFunctions
 		}
 		if (HasConfiguredPlacementGeometry(groupTemplate))
 		{
-			return (GeometryType)GeometryTypeHelper.PointGeometryType;
+			return (GeometryType)513;
 		}
-		SimpleTemplate referencedTemplate = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) =>
-			string.Equals(n.Name, simpleTemplateRef.Name, StringComparison.OrdinalIgnoreCase));
-		return referencedTemplate == null ? configuredSketchType : await GetSimpleTemplateGeometryTypeAsync(referencedTemplate);
+		SimpleTemplate referencedTemplate = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, simpleTemplateRef.Name, StringComparison.OrdinalIgnoreCase));
+		return (referencedTemplate != null) ? (await GetSimpleTemplateGeometryTypeAsync(referencedTemplate)) : configuredSketchType;
 	}
 
 	private static GeometryType GetConfiguredSketchGeometryType(SimpleTemplateReference simpleTemplateRef)
 	{
-		return (GeometryType)(simpleTemplateRef?.SketchType?.ToUpperInvariant() switch
+		//IL_003f: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0047: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0056: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0057: Unknown result type (might be due to invalid IL or missing references)
+		//IL_004f: Unknown result type (might be due to invalid IL or missing references)
+		//IL_005a: Unknown result type (might be due to invalid IL or missing references)
+		string text = simpleTemplateRef?.SketchType?.ToUpperInvariant();
+		if (1 == 0)
 		{
-			"LINE" => GeometryTypeHelper.PolylineGeometryType,
-			"POLYGON" => GeometryTypeHelper.PolygonGeometryType,
-			_ => GeometryTypeHelper.PointGeometryType
-		});
+		}
+		GeometryType result = ((text == "LINE") ? ((GeometryType)25607) : ((!(text == "POLYGON")) ? ((GeometryType)513) : ((GeometryType)27656)));
+		if (1 == 0)
+		{
+		}
+		return result;
 	}
 
 	private static SimpleTemplateReference GetGroupChildReference(DisplayTemplate childTemplate)
@@ -232,16 +227,12 @@ internal static class CommonFunctions
 		{
 			return null;
 		}
-		GroupTemplate groupTemplate = AddinConfiguration.Templates?.GroupTemplates?.FirstOrDefault((GroupTemplate group) =>
-			string.Equals(group.Name, childTemplate.ParentTemplateName, StringComparison.OrdinalIgnoreCase));
-		return groupTemplate?.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference templateRef) =>
-			templateRef.FeatureId == childTemplate.FeatureId &&
-			string.Equals(templateRef.Name, childTemplate.Name, StringComparison.OrdinalIgnoreCase));
+		return (AddinConfiguration.Templates?.GroupTemplates?.FirstOrDefault((GroupTemplate group) => string.Equals(group.Name, childTemplate.ParentTemplateName, StringComparison.OrdinalIgnoreCase)))?.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference templateRef) => templateRef.FeatureId == childTemplate.FeatureId && string.Equals(templateRef.Name, childTemplate.Name, StringComparison.OrdinalIgnoreCase));
 	}
 
 	private static bool HasConfiguredPlacementGeometry(GroupTemplate groupTemplate)
 	{
-		return groupTemplate?.SimpleTemplates?.Any((SimpleTemplateReference n) => n.Location != null || n.Line != null || n.Polygon != null) == true;
+		return groupTemplate != null && groupTemplate.SimpleTemplates?.Any((SimpleTemplateReference n) => n.Location != null || n.Line != null || n.Polygon != null) == true;
 	}
 
 	private static bool HasConfiguredPlacementGeometry(SimpleTemplateReference templateRef)
@@ -253,21 +244,25 @@ internal static class CommonFunctions
 	{
 		if (simpleTemplate == null || !IsFeatureLayerTemplate(simpleTemplate))
 		{
-			return (GeometryType)GeometryTypeHelper.TableGeometryType;
+			return (GeometryType)0;
 		}
 		FeatureLayer layer = MapMemberLookupService.GetFeatureLayerByName(simpleTemplate.SubtypeLayer, simpleTemplate.GroupLayer);
 		if (layer == null)
 		{
 			throw new InvalidOperationException($"Layer '{simpleTemplate.GroupLayer}/{simpleTemplate.SubtypeLayer}' was not found for template '{simpleTemplate.Name}'.");
 		}
-		return await QueuedTask.Run(() => layer.GetFeatureClass().GetDefinition().GetShapeType());
+		return await QueuedTask.Run<GeometryType>((Func<GeometryType>)delegate
+		{
+			//IL_0010: Unknown result type (might be due to invalid IL or missing references)
+			return layer.GetFeatureClass().GetDefinition().GetShapeType();
+		}, TaskCreationOptions.None);
 	}
 
-	public static async Task<bool> CreateFeatures(Geometry sketchGeometry, double rotationDegrees = 0.0)
+	public static async Task<bool> CreateFeatures(Geometry sketchGeometry, double rotationDegrees = 0.0, MapPoint splitPointOverride = null)
 	{
 		if (sketchGeometry == null)
 		{
-			EditorDockpaneViewModel.SetPlacementStatus(EditorDockpaneViewModel.ReadyPlacementStatus);
+			EditorDockpaneViewModel.SetPlacementStatus("Ready. Please select a template to place.");
 			DialogService.Show("A placement geometry is required before placing features.", "Template Editor");
 			return false;
 		}
@@ -276,7 +271,7 @@ internal static class CommonFunctions
 		string templateName = selectedTemplate?.Name;
 		if (string.IsNullOrWhiteSpace(templateName))
 		{
-			EditorDockpaneViewModel.SetPlacementStatus(EditorDockpaneViewModel.ReadyPlacementStatus);
+			EditorDockpaneViewModel.SetPlacementStatus("Ready. Please select a template to place.");
 			DialogService.Show("Choose a template before placing features.", "Template Editor");
 			return false;
 		}
@@ -292,9 +287,9 @@ internal static class CommonFunctions
 				DialogService.Show(defaultVersionMessage, "Template Editor");
 				return false;
 			}
-			if (selectedTemplate?.IsGroupChild == true)
+			if (selectedTemplate?.IsGroupChild ?? false)
 			{
-				return await CreateGroupChildFeature(selectedTemplate, sketchGeometry, rotationDegrees);
+				return await CreateGroupChildFeature(selectedTemplate, sketchGeometry, rotationDegrees, splitPointOverride);
 			}
 			bool isSimpleTemplate = templates.SimpleTemplates.Any((SimpleTemplate n) => string.Equals(n.Name, templateName, StringComparison.OrdinalIgnoreCase));
 			if (isSimpleTemplate)
@@ -305,7 +300,7 @@ internal static class CommonFunctions
 					return false;
 				}
 			}
-			PlacementBuildResult placement = await BuildPlacementOperationAsync(templateName, sketchGeometry, isSimpleTemplate, PlacementOptions.Full, rotationDegrees);
+			PlacementBuildResult placement = await BuildPlacementOperationAsync(templateName, sketchGeometry, isSimpleTemplate, PlacementOptions.Full, rotationDegrees, splitPointOverride);
 			EditorDockpaneViewModel.SetPlacementStatus("Creating " + selectedTemplate.DisplayName + ": adding features, rows, and configured attributes...");
 			string errorMessage = await ExecutePlacementOperationAsync(placement.Operation);
 			if (errorMessage == null)
@@ -319,10 +314,7 @@ internal static class CommonFunctions
 				}
 				EditorDockpaneViewModel.SetPlacementStatus("Finishing " + selectedTemplate.DisplayName + ": checking split and containment options...");
 				await FinalizePlacementAsync(placement.CreatedFeatures, applyPostPlacementEnhancements: true, associationResult.CreatedPairs);
-				EditorDockpaneViewModel.PostPlacementSummary(
-					BuildPlacementSummary(placement, associationResult),
-					AppendPlacementWarnings(BuildPlacementSummaryDetails(associationResult)),
-					associationResult.HasFailures || PlacementAttributeOverrideService.HasPlacementWarnings());
+				EditorDockpaneViewModel.PostPlacementSummary(BuildPlacementSummary(placement, associationResult), AppendPlacementWarnings(BuildPlacementSummaryDetails(associationResult)), associationResult.HasFailures || PlacementAttributeOverrideService.HasPlacementWarnings());
 				return true;
 			}
 			EditorDockpaneViewModel.SetPlacementStatus("Placement failed. Choose a fallback option or cancel.");
@@ -330,14 +322,15 @@ internal static class CommonFunctions
 		}
 		catch (OperationCanceledException)
 		{
-			EditorDockpaneViewModel.SetPlacementStatus(EditorDockpaneViewModel.ReadyPlacementStatus);
+			EditorDockpaneViewModel.SetPlacementStatus("Ready. Please select a template to place.");
 			return false;
 		}
-		catch (Exception ex)
+		catch (Exception ex2)
 		{
+			Exception ex3 = ex2;
 			EditorDockpaneViewModel.SetPlacementStatus("Placement failed. See message for details.");
-			LogService.LogException("CreateFeatures failed.", ex);
-			DialogService.Show("Template placement failed.\n\n" + ex.Message + "\n\nDetails were written to the Template Editor log.", "Template Editor");
+			LogService.LogException("CreateFeatures failed.", ex3);
+			DialogService.Show("Template placement failed.\n\n" + ex3.Message + "\n\nDetails were written to the Template Editor log.", "Template Editor");
 			return false;
 		}
 		finally
@@ -350,26 +343,28 @@ internal static class CommonFunctions
 
 	private static async Task<string> GetDefaultVersionPlacementBlockMessageAsync(DisplayTemplate selectedTemplate)
 	{
-		if (AddinConfiguration.Settings?.PreventDefaultVersionPlacement != true || selectedTemplate == null)
+		TemplateEditorSettings settings = AddinConfiguration.Settings;
+		if (settings == null || !settings.PreventDefaultVersionPlacement || selectedTemplate == null)
 		{
 			return null;
 		}
-		List<string> defaultVersionTargets = await QueuedTask.Run(() => GetDefaultVersionPlacementTargets(selectedTemplate));
+		List<string> defaultVersionTargets = await QueuedTask.Run<List<string>>((Func<List<string>>)(() => GetDefaultVersionPlacementTargets(selectedTemplate)), TaskCreationOptions.None);
 		if (defaultVersionTargets.Count == 0)
 		{
 			return null;
 		}
-		string targets = string.Join("\n", defaultVersionTargets.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy((string target) => target, StringComparer.OrdinalIgnoreCase).Select((string target) => "- " + target));
+		string targets = string.Join("\n", from target in defaultVersionTargets.Distinct<string>(StringComparer.OrdinalIgnoreCase).OrderBy<string, string>((string target) => target, StringComparer.OrdinalIgnoreCase)
+			select "- " + target);
 		return "Template placement was blocked because one or more target feature service layers or tables are connected to DEFAULT.\n\nSwitch the map to a named version before placing templates.\n\nTarget(s):\n" + targets;
 	}
 
 	private static List<string> GetDefaultVersionPlacementTargets(DisplayTemplate selectedTemplate)
 	{
-		return GetPlacementTargetMapMembers(selectedTemplate)
-			.Where((MapMember mapMember) => IsDefaultVersionConnection(mapMember))
-			.Select((MapMember mapMember) => mapMember.Name)
-			.Where((string name) => !string.IsNullOrWhiteSpace(name))
-			.ToList();
+		return (from mapMember in GetPlacementTargetMapMembers(selectedTemplate)
+			where IsDefaultVersionConnection(mapMember)
+			select mapMember.Name into name
+			where !string.IsNullOrWhiteSpace(name)
+			select name).ToList();
 	}
 
 	private static IEnumerable<MapMember> GetPlacementTargetMapMembers(DisplayTemplate selectedTemplate)
@@ -386,29 +381,24 @@ internal static class CommonFunctions
 
 	private static IEnumerable<SimpleTemplate> GetPlacementTargetTemplates(DisplayTemplate selectedTemplate)
 	{
-		if (selectedTemplate?.IsGroupChild == true)
+		if (selectedTemplate?.IsGroupChild ?? false)
 		{
-			SimpleTemplateReference childTemplateRef = GetGroupChildReference(selectedTemplate);
-			// ✅ Use cache for O(1) lookup instead of O(n) FirstOrDefault
-			SimpleTemplate childTemplate = TemplateCache.GetSimpleTemplate(childTemplateRef?.Name);
+			SimpleTemplate childTemplate = TemplateCache.GetSimpleTemplate(GetGroupChildReference(selectedTemplate)?.Name);
 			if (childTemplate != null)
 			{
 				yield return childTemplate;
 			}
 			yield break;
 		}
-		// ✅ Use cache for O(1) lookup instead of O(n) FirstOrDefault
 		SimpleTemplate simpleTemplate = TemplateCache.GetSimpleTemplate(selectedTemplate?.Name);
 		if (simpleTemplate != null)
 		{
 			yield return simpleTemplate;
 			yield break;
 		}
-		// ✅ Use cache for O(1) lookup instead of O(n) FirstOrDefault
-		GroupTemplate groupTemplate = TemplateCache.GetGroupTemplate(selectedTemplate?.Name);
-		foreach (SimpleTemplateReference templateRef in groupTemplate?.SimpleTemplates ?? Enumerable.Empty<SimpleTemplateReference>())
+		IEnumerable<SimpleTemplateReference> enumerable = TemplateCache.GetGroupTemplate(selectedTemplate?.Name)?.SimpleTemplates;
+		foreach (SimpleTemplateReference templateRef in enumerable ?? Enumerable.Empty<SimpleTemplateReference>())
 		{
-			// ✅ Use cache for O(1) lookup instead of O(n) FirstOrDefault
 			SimpleTemplate template = TemplateCache.GetSimpleTemplate(templateRef.Name);
 			if (template != null)
 			{
@@ -427,9 +417,9 @@ internal static class CommonFunctions
 		{
 			return GetConnectionVersionNames(mapMember.GetDataConnection()).Any(IsDefaultVersionName);
 		}
-		catch (Exception ex)
+		catch (Exception exception)
 		{
-			LogService.LogException($"Could not inspect connection version information for map member '{mapMember.Name}'.", ex);
+			LogService.LogException("Could not inspect connection version information for map member '" + mapMember.Name + "'.", exception);
 			return false;
 		}
 	}
@@ -446,9 +436,10 @@ internal static class CommonFunctions
 			yield break;
 		}
 		Type type = value.GetType();
-		foreach (System.Reflection.PropertyInfo property in type.GetProperties())
+		PropertyInfo[] properties = type.GetProperties();
+		foreach (PropertyInfo property in properties)
 		{
-			if (!property.CanRead || property.GetIndexParameters().Length > 0)
+			if (!property.CanRead || property.GetIndexParameters().Length != 0)
 			{
 				continue;
 			}
@@ -459,7 +450,7 @@ internal static class CommonFunctions
 			}
 			catch (Exception ex)
 			{
-				LogService.LogException($"Could not inspect connection property '{property.Name}' on type '{type.FullName}'.", ex);
+				LogService.LogException(exception: ex, context: $"Could not inspect connection property '{property.Name}' on type '{type.FullName}'.");
 				continue;
 			}
 			if (propertyValue is string text)
@@ -478,22 +469,26 @@ internal static class CommonFunctions
 				}
 				continue;
 			}
-			if (propertyValue is System.Collections.IEnumerable enumerable && propertyValue is not string)
+			IEnumerable enumerable = propertyValue as IEnumerable;
+			if (enumerable != null && !(propertyValue is string))
 			{
 				foreach (object item in enumerable)
 				{
-					foreach (string version in GetConnectionVersionNames(item, visited))
+					foreach (string connectionVersionName in GetConnectionVersionNames(item, visited))
 					{
-						yield return version;
+						yield return connectionVersionName;
 					}
 				}
-				continue;
 			}
-			if (propertyValue != null && propertyValue.GetType().Namespace?.StartsWith("ArcGIS.Core.CIM", StringComparison.Ordinal) == true)
+			else
 			{
-				foreach (string version in GetConnectionVersionNames(propertyValue, visited))
+				if (propertyValue == null || !(propertyValue.GetType().Namespace?.StartsWith("ArcGIS.Core.CIM", StringComparison.Ordinal) ?? false))
 				{
-					yield return version;
+					continue;
+				}
+				foreach (string connectionVersionName2 in GetConnectionVersionNames(propertyValue, visited))
+				{
+					yield return connectionVersionName2;
 				}
 			}
 		}
@@ -505,12 +500,13 @@ internal static class CommonFunctions
 		{
 			return null;
 		}
-		foreach (string part in connectionString.Split(';'))
+		string[] array = connectionString.Split(';');
+		foreach (string text in array)
 		{
-			string[] pieces = part.Split(new[] { '=' }, 2);
-			if (pieces.Length == 2 && string.Equals(pieces[0].Trim(), "VERSION", StringComparison.OrdinalIgnoreCase))
+			string[] array2 = text.Split(new char[1] { '=' }, 2);
+			if (array2.Length == 2 && string.Equals(array2[0].Trim(), "VERSION", StringComparison.OrdinalIgnoreCase))
 			{
-				return pieces[1].Trim();
+				return array2[1].Trim();
 			}
 		}
 		return null;
@@ -522,21 +518,18 @@ internal static class CommonFunctions
 		{
 			return false;
 		}
-		string normalized = versionName.Trim();
-		return string.Equals(normalized, "DEFAULT", StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(normalized, "SDE.DEFAULT", StringComparison.OrdinalIgnoreCase) ||
-			normalized.EndsWith(".DEFAULT", StringComparison.OrdinalIgnoreCase);
+		string text = versionName.Trim();
+		return string.Equals(text, "DEFAULT", StringComparison.OrdinalIgnoreCase) || string.Equals(text, "SDE.DEFAULT", StringComparison.OrdinalIgnoreCase) || text.EndsWith(".DEFAULT", StringComparison.OrdinalIgnoreCase);
 	}
 
-	private static async Task<bool> CreateGroupChildFeature(DisplayTemplate childTemplate, Geometry sketchGeometry, double rotationDegrees)
+	private static async Task<bool> CreateGroupChildFeature(DisplayTemplate childTemplate, Geometry sketchGeometry, double rotationDegrees, MapPoint splitPointOverride = null)
 	{
-		TemplateConfig templates = GetLoadedTemplateConfigOrThrow();
+		GetLoadedTemplateConfigOrThrow();
 		SimpleTemplateReference childTemplateRef = GetGroupChildReference(childTemplate);
-		// ✅ Use cache for O(1) lookup instead of O(n) FirstOrDefault
 		SimpleTemplate template = TemplateCache.GetSimpleTemplate(childTemplateRef?.Name);
 		if (childTemplateRef == null || template == null)
 		{
-			throw new InvalidOperationException($"Template part '{childTemplate?.DisplayName}' was not found.");
+			throw new InvalidOperationException("Template part '" + childTemplate?.DisplayName + "' was not found.");
 		}
 		EditorDockpaneViewModel.SetPlacementStatus("Creating " + childTemplate.DisplayName + ": adding the selected template part...");
 		EditOperation operation = new EditOperation
@@ -552,14 +545,13 @@ internal static class CommonFunctions
 		{
 			await CreateSJOAttachmentsForPoles(template, featureGeometry, operation, PlacementOptions.Full);
 		}
-		else if (IsFeatureLayerTemplate(template))
+		else if (!IsFeatureLayerTemplate(template))
 		{
-			RowToken token = await CreateFeatureOrRowFromSimpleTemplate(template, featureGeometry, operation, includeDefaultAttributes: true, rotationDegrees, childTemplate.ParentTemplateName, childTemplate.FeatureId);
-			TryTrackPlacedFeature(createdFeatures, template, featureGeometry, token, IsPlacementEnhancementCandidate(childTemplateRef));
+			await CreateTableRowWithAutoAssociationAsync(template, featureGeometry, operation, PlacementOptions.Full, childTemplate.ParentTemplateName, childTemplate.FeatureId);
 		}
 		else
 		{
-			await CreateTableRowWithAutoAssociationAsync(template, featureGeometry, operation, PlacementOptions.Full, childTemplate.ParentTemplateName, childTemplate.FeatureId);
+			TryTrackPlacedFeature(createdFeatures, template, featureGeometry, await CreateFeatureOrRowFromSimpleTemplate(template, featureGeometry, operation, includeDefaultAttributes: true, rotationDegrees, childTemplate.ParentTemplateName, childTemplate.FeatureId), IsPlacementEnhancementCandidate(childTemplateRef), splitPointOverride);
 		}
 		string errorMessage = await ExecutePlacementOperationAsync(operation);
 		if (errorMessage != null)
@@ -570,20 +562,13 @@ internal static class CommonFunctions
 		}
 		EditorDockpaneViewModel.SetPlacementStatus("Finishing " + childTemplate.DisplayName + ": checking split and containment options...");
 		await FinalizePlacementAsync(createdFeatures, applyPostPlacementEnhancements: true);
-		EditorDockpaneViewModel.PostPlacementSummary(
-			$"Created template part '{childTemplate.DisplayName}'.",
-			AppendPlacementWarnings(null),
-			warning: PlacementAttributeOverrideService.HasPlacementWarnings());
+		EditorDockpaneViewModel.PostPlacementSummary("Created template part '" + childTemplate.DisplayName + "'.", AppendPlacementWarnings(null), PlacementAttributeOverrideService.HasPlacementWarnings());
 		return true;
 	}
 
 	private static async Task<bool> TryPlaceWithFallbacksAsync(string templateName, Geometry sketchGeometry, bool isSimpleTemplate, string originalErrorMessage, double rotationDegrees)
 	{
-		if (DialogService.Show(
-			"Template placement failed.\n\n" + CleanErrorMessage(originalErrorMessage) + "\n\nYou can retry without configured associations, or cancel placement.",
-			"Template Editor",
-			new DialogButtonChoice("Place Without Associations", MessageBoxResult.Yes, isPrimary: true),
-			new DialogButtonChoice("Cancel", MessageBoxResult.No, isCancel: true)) == MessageBoxResult.Yes)
+		if (DialogService.Show("Template placement failed.\n\n" + CleanErrorMessage(originalErrorMessage) + "\n\nYou can retry without configured associations, or cancel placement.", "Template Editor", new DialogButtonChoice("Place Without Associations", MessageBoxResult.Yes, isPrimary: true), new DialogButtonChoice("Cancel", MessageBoxResult.No, isPrimary: false, isCancel: true)) == MessageBoxResult.Yes)
 		{
 			EditorDockpaneViewModel.SetPlacementStatus("Retrying " + templateName + ": placing without configured associations...");
 			PlacementBuildResult placementWithoutAssociations = await BuildPlacementOperationAsync(templateName, sketchGeometry, isSimpleTemplate, PlacementOptions.WithoutAssociations, rotationDegrees);
@@ -592,19 +577,12 @@ internal static class CommonFunctions
 			{
 				await PopulateFeatureInfoDetailsAsync(placementWithoutAssociations.FeatureInfos);
 				await FinalizePlacementAsync(placementWithoutAssociations.CreatedFeatures, applyPostPlacementEnhancements: false);
-				EditorDockpaneViewModel.PostPlacementSummary(
-					BuildPlacementSummary(placementWithoutAssociations),
-					AppendPlacementWarnings("Template was placed without configured associations."),
-					warning: true);
+				EditorDockpaneViewModel.PostPlacementSummary(BuildPlacementSummary(placementWithoutAssociations), AppendPlacementWarnings("Template was placed without configured associations."), warning: true);
 				return true;
 			}
 			originalErrorMessage = associationFallbackError;
 		}
-		if (DialogService.Show(
-			"Template placement still failed.\n\n" + CleanErrorMessage(originalErrorMessage) + "\n\nYou can retry with only subtype and required attributes, or cancel placement.",
-			"Template Editor",
-			new DialogButtonChoice("Place Required Only", MessageBoxResult.Yes, isPrimary: true),
-			new DialogButtonChoice("Cancel", MessageBoxResult.No, isCancel: true)) == MessageBoxResult.Yes)
+		if (DialogService.Show("Template placement still failed.\n\n" + CleanErrorMessage(originalErrorMessage) + "\n\nYou can retry with only subtype and required attributes, or cancel placement.", "Template Editor", new DialogButtonChoice("Place Required Only", MessageBoxResult.Yes, isPrimary: true), new DialogButtonChoice("Cancel", MessageBoxResult.No, isPrimary: false, isCancel: true)) == MessageBoxResult.Yes)
 		{
 			EditorDockpaneViewModel.SetPlacementStatus("Retrying " + templateName + ": placing with only subtype and required attributes...");
 			PlacementBuildResult minimalPlacement = await BuildPlacementOperationAsync(templateName, sketchGeometry, isSimpleTemplate, PlacementOptions.MinimalAttributes, rotationDegrees);
@@ -613,10 +591,7 @@ internal static class CommonFunctions
 			{
 				await PopulateFeatureInfoDetailsAsync(minimalPlacement.FeatureInfos);
 				await FinalizePlacementAsync(minimalPlacement.CreatedFeatures, applyPostPlacementEnhancements: false);
-				EditorDockpaneViewModel.PostPlacementSummary(
-					BuildPlacementSummary(minimalPlacement),
-					AppendPlacementWarnings("Template was placed with only subtype/required attributes and without configured associations."),
-					warning: true);
+				EditorDockpaneViewModel.PostPlacementSummary(BuildPlacementSummary(minimalPlacement), AppendPlacementWarnings("Template was placed with only subtype/required attributes and without configured associations."), warning: true);
 				return true;
 			}
 			originalErrorMessage = minimalError;
@@ -628,28 +603,28 @@ internal static class CommonFunctions
 
 	private static string BuildPlacementSummary(PlacementBuildResult placement, ConfiguredAssociationResult associationResult = null)
 	{
-		int featureCount = placement?.CreatedFeatures?.Count ?? 0;
-		int featureInfoCount = placement?.FeatureInfos?.Count ?? 0;
-		int associationCount = associationResult?.CreatedCount ?? (placement?.ConfiguredAssociations?.Count ?? 0);
-		List<string> parts = new List<string>();
-		if (featureCount > 0)
+		int valueOrDefault = (placement?.CreatedFeatures?.Count).GetValueOrDefault();
+		int valueOrDefault2 = (placement?.FeatureInfos?.Count).GetValueOrDefault();
+		int num = associationResult?.CreatedCount ?? (placement?.ConfiguredAssociations?.Count).GetValueOrDefault();
+		List<string> list = new List<string>();
+		if (valueOrDefault > 0)
 		{
-			parts.Add($"{featureCount} feature(s)");
+			list.Add($"{valueOrDefault} feature(s)");
 		}
-		if (featureInfoCount > featureCount)
+		if (valueOrDefault2 > valueOrDefault)
 		{
-			parts.Add($"{featureInfoCount - featureCount} non-spatial row(s)");
+			list.Add($"{valueOrDefault2 - valueOrDefault} non-spatial row(s)");
 		}
-		if (associationCount > 0 && placement.ApplyConfiguredAssociations)
+		if (num > 0 && placement.ApplyConfiguredAssociations)
 		{
-			parts.Add($"{associationCount} configured association(s)");
+			list.Add($"{num} configured association(s)");
 		}
-		return parts.Count == 0 ? "Placement completed." : "Created " + string.Join(", ", parts) + ".";
+		return (list.Count == 0) ? "Placement completed." : ("Created " + string.Join(", ", list) + ".");
 	}
 
 	private static string BuildPlacementSummaryDetails(ConfiguredAssociationResult associationResult)
 	{
-		if (associationResult?.HasFailures != true)
+		if (associationResult == null || !associationResult.HasFailures)
 		{
 			return null;
 		}
@@ -658,15 +633,15 @@ internal static class CommonFunctions
 
 	private static string AppendPlacementWarnings(string details)
 	{
-		string warnings = PlacementAttributeOverrideService.ConsumePlacementWarnings();
-		if (string.IsNullOrWhiteSpace(warnings))
+		string text = PlacementAttributeOverrideService.ConsumePlacementWarnings();
+		if (string.IsNullOrWhiteSpace(text))
 		{
 			return details;
 		}
-		return string.IsNullOrWhiteSpace(details) ? warnings : details + "\n" + warnings;
+		return string.IsNullOrWhiteSpace(details) ? text : (details + "\n" + text);
 	}
 
-	private static async Task<PlacementBuildResult> BuildPlacementOperationAsync(string templateName, Geometry sketchGeometry, bool isSimpleTemplate, PlacementOptions options, double rotationDegrees)
+	private static async Task<PlacementBuildResult> BuildPlacementOperationAsync(string templateName, Geometry sketchGeometry, bool isSimpleTemplate, PlacementOptions options, double rotationDegrees, MapPoint splitPointOverride = null)
 	{
 		TemplateConfig templates = GetLoadedTemplateConfigOrThrow();
 		EditOperation operation = new EditOperation
@@ -679,30 +654,29 @@ internal static class CommonFunctions
 		List<PlacedFeatureContext> createdFeatures = new List<PlacedFeatureContext>();
 		List<FeatureInfo> featureInfos = new List<FeatureInfo>();
 		List<AssociationObject> configuredAssociations = new List<AssociationObject>();
-		if (isSimpleTemplate)
+		if (!isSimpleTemplate)
+		{
+			await BuildGroupPlacementOperationAsync(templateName, sketchGeometry, operation, createdFeatures, featureInfos, configuredAssociations, options, rotationDegrees, splitPointOverride);
+		}
+		else
 		{
 			SimpleTemplate template = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, templateName, StringComparison.OrdinalIgnoreCase));
 			if (template == null)
 			{
-				throw new InvalidOperationException($"Simple template '{templateName}' was not found.");
+				throw new InvalidOperationException("Simple template '" + templateName + "' was not found.");
 			}
 			if (IsStructureJunctionObjectTemplate(template))
 			{
 				await CreateSJOAttachmentsForPoles(template, sketchGeometry, operation, options);
 			}
-			else if (IsFeatureLayerTemplate(template))
-			{
-				RowToken token = await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, rotationDegrees);
-				TryTrackPlacedFeature(createdFeatures, template, sketchGeometry, token);
-			}
-			else
+			else if (!IsFeatureLayerTemplate(template))
 			{
 				await CreateTableRowWithAutoAssociationAsync(template, sketchGeometry, operation, options);
 			}
-		}
-		else
-		{
-			await BuildGroupPlacementOperationAsync(templateName, sketchGeometry, operation, createdFeatures, featureInfos, configuredAssociations, options, rotationDegrees);
+			else
+			{
+				TryTrackPlacedFeature(createdFeatures, template, sketchGeometry, await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, rotationDegrees), allowPlacementEnhancements: true, splitPointOverride);
+			}
 		}
 		return new PlacementBuildResult
 		{
@@ -710,17 +684,17 @@ internal static class CommonFunctions
 			CreatedFeatures = createdFeatures,
 			FeatureInfos = featureInfos,
 			ConfiguredAssociations = configuredAssociations,
-			ApplyConfiguredAssociations = !isSimpleTemplate && options.IncludeConfiguredAssociations
+			ApplyConfiguredAssociations = (!isSimpleTemplate && options.IncludeConfiguredAssociations)
 		};
 	}
 
-	private static async Task BuildGroupPlacementOperationAsync(string templateName, Geometry sketchGeometry, EditOperation operation, List<PlacedFeatureContext> createdFeatures, List<FeatureInfo> featureTokens, List<AssociationObject> configuredAssociations, PlacementOptions options, double rotationDegrees)
+	private static async Task BuildGroupPlacementOperationAsync(string templateName, Geometry sketchGeometry, EditOperation operation, List<PlacedFeatureContext> createdFeatures, List<FeatureInfo> featureTokens, List<AssociationObject> configuredAssociations, PlacementOptions options, double rotationDegrees, MapPoint splitPointOverride)
 	{
 		TemplateConfig templates = GetLoadedTemplateConfigOrThrow();
 		GroupTemplate groupTemplate = templates.GroupTemplates.FirstOrDefault((GroupTemplate n) => string.Equals(n.Name, templateName, StringComparison.OrdinalIgnoreCase));
 		if (groupTemplate == null)
 		{
-			throw new InvalidOperationException($"Group template '{templateName}' was not found.");
+			throw new InvalidOperationException("Group template '" + templateName + "' was not found.");
 		}
 		foreach (SimpleTemplateReference simpleTemplateRef in groupTemplate.SimpleTemplates)
 		{
@@ -731,7 +705,7 @@ internal static class CommonFunctions
 			}
 			Geometry featureGeometry = CreateGeometryForTemplate(simpleTemplateRef, sketchGeometry, rotationDegrees);
 			RowToken token = await CreateFeatureOrRowFromSimpleTemplate(template, featureGeometry, operation, options.IncludeDefaultAttributes, rotationDegrees, groupTemplate.Name, simpleTemplateRef.FeatureId);
-			TryTrackPlacedFeature(createdFeatures, template, featureGeometry, token, IsPlacementEnhancementCandidate(simpleTemplateRef));
+			TryTrackPlacedFeature(createdFeatures, template, featureGeometry, token, IsPlacementEnhancementCandidate(simpleTemplateRef), splitPointOverride);
 			featureTokens.Add(new FeatureInfo
 			{
 				FeatureId = simpleTemplateRef.FeatureId,
@@ -745,16 +719,11 @@ internal static class CommonFunctions
 		{
 			configuredAssociations.AddRange(groupTemplate.Associations ?? new List<AssociationObject>());
 		}
-		return;
 	}
 
 	private static async Task<string> ExecutePlacementOperationAsync(EditOperation operation)
 	{
-		bool editSucceeded = await QueuedTask.Run(delegate
-		{
-			return operation.Execute();
-		});
-		return editSucceeded && operation.IsSucceeded ? null : operation.ErrorMessage;
+		return (await QueuedTask.Run<bool>((Func<bool>)(() => operation.Execute()), TaskCreationOptions.None) && operation.IsSucceeded) ? null : operation.ErrorMessage;
 	}
 
 	private static async Task FinalizePlacementAsync(List<PlacedFeatureContext> createdFeatures, bool applyPostPlacementEnhancements, IReadOnlyList<ExistingAssociationPair> configuredAssociationPairs = null)
@@ -768,23 +737,23 @@ internal static class CommonFunctions
 
 	private static bool TryBuildConfiguredAssociationPair(AssociationObject association, FeatureInfo fromInfo, FeatureInfo toInfo, out ExistingAssociationPair pair, out string failure)
 	{
+		//IL_010c: Unknown result type (might be due to invalid IL or missing references)
 		pair = null;
 		failure = null;
-		// Optimize: FeatureInfo objects now passed in directly instead of searching through list
 		if (fromInfo == null || toInfo == null)
 		{
 			failure = $"Feature {association.FromFeatureId} -> {association.ToFeatureId}: missing feature id.";
 			return false;
 		}
 		AssociationType? associationType = GetAssociationType(association.Type);
-		if (associationType == null)
+		if (!associationType.HasValue)
 		{
-			failure = $"{FormatAssociationLabel(association, fromInfo, toInfo)}: Unsupported association type '{association.Type}'.";
+			failure = FormatAssociationLabel(association, fromInfo, toInfo) + ": Unsupported association type '" + association.Type + "'.";
 			return false;
 		}
 		if (fromInfo.MapMember == null || toInfo.MapMember == null || fromInfo.ObjectID <= 0 || toInfo.ObjectID <= 0)
 		{
-			failure = $"{FormatAssociationLabel(association, fromInfo, toInfo)}: missing created feature or row identity.";
+			failure = FormatAssociationLabel(association, fromInfo, toInfo) + ": missing created feature or row identity.";
 			return false;
 		}
 		pair = new ExistingAssociationPair
@@ -804,16 +773,24 @@ internal static class CommonFunctions
 		{
 			return null;
 		}
-		return associationType.ToUpperInvariant() switch
+		string text = associationType.ToUpperInvariant();
+		if (1 == 0)
 		{
-			"CONTAINMENT" => AssociationType.Containment,
-			"ATTACHMENT" => AssociationType.Attachment,
-			"JUNCTIONJUNCTIONCONNECTIVITY" => UtilityNetworkAssociationTypes.JunctionJunctionConnectivity,
-			"JUNCTIONEDGEOBJECTCONNECTIVITYFROMSIDE" => UtilityNetworkAssociationTypes.JunctionEdgeObjectFromSide,
-			"JUNCTIONEDGEOBJECTCONNECTIVITYTOSIDE" => UtilityNetworkAssociationTypes.JunctionEdgeObjectToSide,
-			"JUNCTIONEDGEOBJECTCONNECTIVITYMIDSPAN" => UtilityNetworkAssociationTypes.JunctionEdgeObjectMidspan,
-			_ => null
+		}
+		AssociationType? result = text switch
+		{
+			"CONTAINMENT" => (AssociationType)2, 
+			"ATTACHMENT" => (AssociationType)3, 
+			"JUNCTIONJUNCTIONCONNECTIVITY" => (AssociationType)1, 
+			"JUNCTIONEDGEOBJECTCONNECTIVITYFROMSIDE" => (AssociationType)4, 
+			"JUNCTIONEDGEOBJECTCONNECTIVITYTOSIDE" => (AssociationType)6, 
+			"JUNCTIONEDGEOBJECTCONNECTIVITYMIDSPAN" => (AssociationType)5, 
+			_ => null, 
 		};
+		if (1 == 0)
+		{
+		}
+		return result;
 	}
 
 	private static Task PopulateFeatureInfoDetailsAsync(List<FeatureInfo> featureInfos)
@@ -838,16 +815,16 @@ internal static class CommonFunctions
 		}
 		if (IsFeatureLayerTemplate(template))
 		{
-			return MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
+			return (MapMember)(object)MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
 		}
-		return MapMemberLookupService.GetTableByName(template.SubtypeLayer, template.GroupLayer);
+		return (MapMember)(object)MapMemberLookupService.GetTableByName(template.SubtypeLayer, template.GroupLayer);
 	}
 
 	private static async Task<ConfiguredAssociationResult> ExecuteConfiguredAssociationsAsync(PlacementBuildResult placement)
 	{
 		ConfiguredAssociationResult result = new ConfiguredAssociationResult
 		{
-			AttemptedCount = placement?.ConfiguredAssociations?.Count ?? 0
+			AttemptedCount = (placement?.ConfiguredAssociations?.Count).GetValueOrDefault()
 		};
 		if (placement?.ConfiguredAssociations == null || placement.ConfiguredAssociations.Count == 0)
 		{
@@ -865,7 +842,6 @@ internal static class CommonFunctions
 	private static async Task ExecuteConfiguredAssociationsFastAsync(PlacementBuildResult placement, ConfiguredAssociationResult result)
 	{
 		List<ExistingAssociationPair> queuedPairs = new List<ExistingAssociationPair>();
-		// Optimize: Build a dictionary for O(1) lookups instead of O(n) FirstOrDefault per association
 		Dictionary<int, FeatureInfo> featureInfoById = new Dictionary<int, FeatureInfo>(placement.FeatureInfos.Count);
 		foreach (FeatureInfo info in placement.FeatureInfos)
 		{
@@ -874,35 +850,36 @@ internal static class CommonFunctions
 				featureInfoById[info.FeatureId] = info;
 			}
 		}
-
-		string errorMessage = await QueuedTask.Run(delegate
+		string errorMessage = await QueuedTask.Run<string>((Func<string>)delegate
 		{
-			EditOperation operation = new EditOperation
+			//IL_0001: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0006: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0012: Unknown result type (might be due to invalid IL or missing references)
+			//IL_001e: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0027: Expected O, but got Unknown
+			EditOperation val = new EditOperation
 			{
 				Name = "Create template associations",
 				ProgressMessage = "Creating template associations...",
 				ShowProgressor = true
 			};
-			foreach (AssociationObject association in placement.ConfiguredAssociations)
+			foreach (AssociationObject configuredAssociation in placement.ConfiguredAssociations)
 			{
-				// Optimize: Use dictionary lookup O(1) instead of FirstOrDefault O(n)
-				featureInfoById.TryGetValue(association.FromFeatureId, out FeatureInfo fromInfo);
-				featureInfoById.TryGetValue(association.ToFeatureId, out FeatureInfo toInfo);
-				if (!TryBuildConfiguredAssociationPair(association, fromInfo, toInfo, out ExistingAssociationPair pair, out string failure))
+				featureInfoById.TryGetValue(configuredAssociation.FromFeatureId, out var value);
+				featureInfoById.TryGetValue(configuredAssociation.ToFeatureId, out var value2);
+				if (!TryBuildConfiguredAssociationPair(configuredAssociation, value, value2, out var pair, out var failure))
 				{
 					result.Failures.Add(failure);
-					continue;
 				}
-				AssociationDescription assocDesc = CreateAssociationDescription(association, fromInfo, toInfo);
-				operation.Create(assocDesc);
-				queuedPairs.Add(pair);
+				else
+				{
+					AssociationDescription val2 = CreateAssociationDescription(configuredAssociation, value, value2);
+					val.Create(val2);
+					queuedPairs.Add(pair);
+				}
 			}
-			if (operation.IsEmpty)
-			{
-				return null;
-			}
-			return operation.Execute() && operation.IsSucceeded ? null : operation.ErrorMessage;
-		});
+			return val.IsEmpty ? null : ((val.Execute() && val.IsSucceeded) ? null : val.ErrorMessage);
+		}, TaskCreationOptions.None);
 		if (errorMessage != null)
 		{
 			result.Failures.Add("Batch association operation: " + CleanErrorMessage(errorMessage));
@@ -914,16 +891,13 @@ internal static class CommonFunctions
 		if (result.Failures.Count > 0)
 		{
 			string displayedFailures = string.Join("\n", result.Failures.Take(8));
-			string additionalFailureText = result.Failures.Count > 8 ? $"\n\n{result.Failures.Count - 8} more association failure(s) were not shown." : string.Empty;
-			DialogService.Show(
-				$"Template was placed, but one or more configured associations could not be created in Fast mode.\n\nSwitch Configured association mode to Debug for exact per-association diagnostics.\n\nIssue(s):\n{displayedFailures}{additionalFailureText}",
-				"Template Editor - Association Diagnostics");
+			string additionalFailureText = ((result.Failures.Count > 8) ? $"\n\n{result.Failures.Count - 8} more association failure(s) were not shown." : string.Empty);
+			DialogService.Show("Template was placed, but one or more configured associations could not be created in Fast mode.\n\nSwitch Configured association mode to Debug for exact per-association diagnostics.\n\nIssue(s):\n" + displayedFailures + additionalFailureText, "Template Editor - Association Diagnostics");
 		}
 	}
 
 	private static async Task ExecuteConfiguredAssociationsWithDiagnosticsAsync(PlacementBuildResult placement, ConfiguredAssociationResult result)
 	{
-		// Optimize: Build a dictionary for O(1) lookups instead of O(n) FirstOrDefault per association
 		Dictionary<int, FeatureInfo> featureInfoById = new Dictionary<int, FeatureInfo>(placement.FeatureInfos.Count);
 		foreach (FeatureInfo info in placement.FeatureInfos)
 		{
@@ -932,13 +906,11 @@ internal static class CommonFunctions
 				featureInfoById[info.FeatureId] = info;
 			}
 		}
-
 		foreach (AssociationObject association in placement.ConfiguredAssociations)
 		{
-			// Optimize: Use dictionary lookup O(1) instead of FirstOrDefault O(n)
-			featureInfoById.TryGetValue(association.FromFeatureId, out FeatureInfo fromInfo);
-			featureInfoById.TryGetValue(association.ToFeatureId, out FeatureInfo toInfo);
-			if (!TryBuildConfiguredAssociationPair(association, fromInfo, toInfo, out ExistingAssociationPair pair, out string failure))
+			featureInfoById.TryGetValue(association.FromFeatureId, out var fromInfo);
+			featureInfoById.TryGetValue(association.ToFeatureId, out var toInfo);
+			if (!TryBuildConfiguredAssociationPair(association, fromInfo, toInfo, out var pair, out var failure))
 			{
 				result.Failures.Add(failure);
 				continue;
@@ -946,41 +918,48 @@ internal static class CommonFunctions
 			string errorMessage = await ExecuteSingleConfiguredAssociationAsync(association, fromInfo, toInfo);
 			if (errorMessage != null)
 			{
-				result.Failures.Add($"{FormatAssociationLabel(association, fromInfo, toInfo)}: {CleanErrorMessage(errorMessage)}");
+				result.Failures.Add(FormatAssociationLabel(association, fromInfo, toInfo) + ": " + CleanErrorMessage(errorMessage));
 			}
 			else
 			{
 				result.CreatedPairs.Add(pair);
 			}
+			fromInfo = null;
+			toInfo = null;
+			pair = null;
+			failure = null;
 		}
 		if (result.Failures.Count > 0)
 		{
 			string displayedFailures = string.Join("\n", result.Failures.Take(8));
-			string additionalFailureText = result.Failures.Count > 8 ? $"\n\n{result.Failures.Count - 8} more association failure(s) were not shown." : string.Empty;
-			DialogService.Show(
-				$"Template was placed, but it is incomplete.\n\n{result.Failures.Count} configured association(s) could not be created. Inspect the newly placed features and verify their associations before continuing.\n\nFailed association(s):\n{displayedFailures}{additionalFailureText}",
-				"Template Editor - Association Diagnostics");
+			string additionalFailureText = ((result.Failures.Count > 8) ? $"\n\n{result.Failures.Count - 8} more association failure(s) were not shown." : string.Empty);
+			DialogService.Show($"Template was placed, but it is incomplete.\n\n{result.Failures.Count} configured association(s) could not be created. Inspect the newly placed features and verify their associations before continuing.\n\nFailed association(s):\n{displayedFailures}{additionalFailureText}", "Template Editor - Association Diagnostics");
 		}
 	}
 
 	private static async Task<string> ExecuteSingleConfiguredAssociationAsync(AssociationObject association, FeatureInfo fromInfo, FeatureInfo toInfo)
 	{
-		return await QueuedTask.Run(delegate
+		return await QueuedTask.Run<string>((Func<string>)delegate
 		{
-			AssociationDescription assocDesc = CreateAssociationDescription(association, fromInfo, toInfo);
-			if (assocDesc == null)
+			//IL_003f: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0044: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0050: Unknown result type (might be due to invalid IL or missing references)
+			//IL_005c: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0065: Expected O, but got Unknown
+			AssociationDescription val = CreateAssociationDescription(association, fromInfo, toInfo);
+			if (val == null)
 			{
-				return $"Unsupported association type '{association.Type}'.";
+				return "Unsupported association type '" + association.Type + "'.";
 			}
-			EditOperation operation = new EditOperation
+			EditOperation val2 = new EditOperation
 			{
 				Name = "Create template association",
 				ProgressMessage = "Creating template association...",
 				ShowProgressor = true
 			};
-			operation.Create(assocDesc);
-			return operation.Execute() && operation.IsSucceeded ? null : operation.ErrorMessage;
-		});
+			val2.Create(val);
+			return (val2.Execute() && val2.IsSucceeded) ? null : val2.ErrorMessage;
+		}, TaskCreationOptions.None);
 	}
 
 	private static string FormatAssociationLabel(AssociationObject association, FeatureInfo fromInfo, FeatureInfo toInfo)
@@ -993,23 +972,19 @@ internal static class CommonFunctions
 		return string.IsNullOrWhiteSpace(errorMessage) ? "No error details were returned by ArcGIS Pro." : errorMessage;
 	}
 
-	private static void TryTrackPlacedFeature(List<PlacedFeatureContext> createdFeatures, SimpleTemplate template, Geometry geometry, RowToken token, bool allowPlacementEnhancements = true)
+	private static void TryTrackPlacedFeature(List<PlacedFeatureContext> createdFeatures, SimpleTemplate template, Geometry geometry, RowToken token, bool allowPlacementEnhancements = true, MapPoint splitPointOverride = null)
 	{
-		if (createdFeatures == null || template == null || geometry == null || token == null)
+		if (createdFeatures != null && template != null && geometry != null && token != null && !string.IsNullOrWhiteSpace(template.GroupLayer) && AddinConfiguration.GroupFeatureLayerNames.Contains(template.GroupLayer.ToUpperInvariant()))
 		{
-			return;
+			createdFeatures.Add(new PlacedFeatureContext
+			{
+				Template = template,
+				Geometry = geometry,
+				Token = token,
+				AllowPlacementEnhancements = allowPlacementEnhancements,
+				SplitPointOverride = splitPointOverride
+			});
 		}
-		if (string.IsNullOrWhiteSpace(template.GroupLayer) || !AddinConfiguration.GroupFeatureLayerNames.Contains(template.GroupLayer.ToUpperInvariant()))
-		{
-			return;
-		}
-		createdFeatures.Add(new PlacedFeatureContext
-		{
-			Template = template,
-			Geometry = geometry,
-			Token = token,
-			AllowPlacementEnhancements = allowPlacementEnhancements
-		});
 	}
 
 	private static bool IsPlacementEnhancementCandidate(SimpleTemplateReference templateRef)
@@ -1018,9 +993,13 @@ internal static class CommonFunctions
 		{
 			return true;
 		}
-		if (templateRef.Line != null && AddinConfiguration.Settings?.EnableConfiguredLinePartSplits != true)
+		if (templateRef.Line != null)
 		{
-			return false;
+			TemplateEditorSettings settings = AddinConfiguration.Settings;
+			if (settings == null || !settings.EnableConfiguredLinePartSplits)
+			{
+				return false;
+			}
 		}
 		if (templateRef.Polygon != null)
 		{
@@ -1040,14 +1019,10 @@ internal static class CommonFunctions
 		{
 			return false;
 		}
-		Dictionary<string, object> defaultFieldValues = template.DefaultFieldValues ?? new Dictionary<string, object>();
-		string assetGroup = defaultFieldValues.TryGetValue("ASSETGROUP", out object assetGroupValue) ? Convert.ToString(GetObjectValue(assetGroupValue), CultureInfo.InvariantCulture) : null;
-		string configuredAssetType = defaultFieldValues.TryGetValue("ASSETTYPE", out object assetTypeValue) ? Convert.ToString(GetObjectValue(assetTypeValue), CultureInfo.InvariantCulture) : null;
-		return IsStructureJunctionObjectName(template.GroupLayer) ||
-			IsStructureJunctionObjectName(template.SubtypeLayer) ||
-			IsStructureJunctionObjectName(template.Name) ||
-			(string.Equals(assetGroup, "Framing", StringComparison.OrdinalIgnoreCase) && string.Equals(configuredAssetType, "Framing", StringComparison.OrdinalIgnoreCase)) ||
-			(string.Equals(assetGroup, "Pole Link", StringComparison.OrdinalIgnoreCase) && string.Equals(configuredAssetType, "Pole Link", StringComparison.OrdinalIgnoreCase));
+		Dictionary<string, object> dictionary = template.DefaultFieldValues ?? new Dictionary<string, object>();
+		string a = (dictionary.TryGetValue("ASSETGROUP", out var value) ? Convert.ToString(GetObjectValue(value), CultureInfo.InvariantCulture) : null);
+		string a2 = (dictionary.TryGetValue("ASSETTYPE", out var value2) ? Convert.ToString(GetObjectValue(value2), CultureInfo.InvariantCulture) : null);
+		return IsStructureJunctionObjectName(template.GroupLayer) || IsStructureJunctionObjectName(template.SubtypeLayer) || IsStructureJunctionObjectName(template.Name) || (string.Equals(a, "Framing", StringComparison.OrdinalIgnoreCase) && string.Equals(a2, "Framing", StringComparison.OrdinalIgnoreCase)) || (string.Equals(a, "Pole Link", StringComparison.OrdinalIgnoreCase) && string.Equals(a2, "Pole Link", StringComparison.OrdinalIgnoreCase));
 	}
 
 	private static bool IsStructureJunctionObjectName(string value)
@@ -1056,9 +1031,8 @@ internal static class CommonFunctions
 		{
 			return false;
 		}
-		string normalized = value.Replace(" ", string.Empty).Replace("_", string.Empty).Replace("-", string.Empty);
-		return normalized.IndexOf("StructureJunctionObject", StringComparison.OrdinalIgnoreCase) >= 0 ||
-			normalized.IndexOf("SJO", StringComparison.OrdinalIgnoreCase) >= 0;
+		string text = value.Replace(" ", string.Empty).Replace("_", string.Empty).Replace("-", string.Empty);
+		return text.IndexOf("StructureJunctionObject", StringComparison.OrdinalIgnoreCase) >= 0 || text.IndexOf("SJO", StringComparison.OrdinalIgnoreCase) >= 0;
 	}
 
 	private static async Task PopulatePlacedFeatureDetails(List<PlacedFeatureContext> createdFeatures)
@@ -1072,26 +1046,44 @@ internal static class CommonFunctions
 			createdFeature.Layer = MapMemberLookupService.GetFeatureLayerByName(createdFeature.Template.SubtypeLayer, createdFeature.Template.GroupLayer);
 			createdFeature.ObjectID = createdFeature.Token.ObjectID.GetValueOrDefault();
 		}
-		await QueuedTask.Run(delegate
+		await QueuedTask.Run((Action)delegate
 		{
-			foreach (PlacedFeatureContext createdFeature in createdFeatures)
+			//IL_003d: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0042: Unknown result type (might be due to invalid IL or missing references)
+			//IL_005c: Expected O, but got Unknown
+			//IL_007f: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0086: Expected O, but got Unknown
+			foreach (PlacedFeatureContext createdFeature2 in createdFeatures)
 			{
-				if (createdFeature.Layer == null || createdFeature.ObjectID <= 0)
+				if (createdFeature2.Layer != null && createdFeature2.ObjectID > 0)
 				{
-					continue;
-				}
-				QueryFilter queryFilter = new QueryFilter
-				{
-					ObjectIDs = new List<long> { createdFeature.ObjectID }
-				};
-				using RowCursor rowCursor = createdFeature.Layer.Search(queryFilter);
-				if (rowCursor.MoveNext())
-				{
-					using Feature feature = (Feature)rowCursor.Current;
-					createdFeature.Geometry = feature.GetShape();
+					QueryFilter val = new QueryFilter
+					{
+						ObjectIDs = new List<long> { createdFeature2.ObjectID }
+					};
+					RowCursor val2 = ((BasicFeatureLayer)createdFeature2.Layer).Search(val, (TimeRange)null, (RangeExtent)null, (CIMFloorFilterSettings)null);
+					try
+					{
+						if (val2.MoveNext())
+						{
+							Feature val3 = (Feature)val2.Current;
+							try
+							{
+								createdFeature2.Geometry = val3.GetShape();
+							}
+							finally
+							{
+								((IDisposable)val3)?.Dispose();
+							}
+						}
+					}
+					finally
+					{
+						((IDisposable)val2)?.Dispose();
+					}
 				}
 			}
-		});
+		}, TaskCreationOptions.None);
 	}
 
 	private static async Task CreateTableRowWithAutoAssociationAsync(SimpleTemplate template, Geometry sketchGeometry, EditOperation operation, PlacementOptions options, string parentTemplateName = null, int featureId = 0)
@@ -1102,10 +1094,9 @@ internal static class CommonFunctions
 			{
 				throw new OperationCanceledException();
 			}
-			await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, parentTemplateName: parentTemplateName, featureId: featureId);
+			await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, 0.0, parentTemplateName, featureId);
 			return;
 		}
-
 		List<(FeatureLayer Layer, long ObjectID, string Label, string OwningGroup)> selectedCandidates = await GetSelectedFeaturesForTableAssociationAsync();
 		if (selectedCandidates.Count == 0)
 		{
@@ -1113,55 +1104,47 @@ internal static class CommonFunctions
 			{
 				throw new OperationCanceledException();
 			}
-			await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, parentTemplateName: parentTemplateName, featureId: featureId);
+			await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, 0.0, parentTemplateName, featureId);
 			return;
 		}
-
-		var candidatesWithRules = selectedCandidates
-			.Select(c => (Candidate: c, Rules: FindGroupTemplateAssociations(template, c.Layer.Name, c.OwningGroup)))
-			.Where(c => c.Rules.Count > 0)
-			.ToList();
-
+		List<((FeatureLayer Layer, long ObjectID, string Label, string OwningGroup) Candidate, List<(AssociationObject Rule, bool IsReversed)> Rules)> candidatesWithRules = (from c in selectedCandidates
+			select (Candidate: c, Rules: FindGroupTemplateAssociations(template, ((MapMember)c.Layer).Name, c.OwningGroup)) into c
+			where c.Rules.Count > 0
+			select c).ToList();
 		if (candidatesWithRules.Count == 0)
 		{
 			if (!ConfirmCreateNonSpatialWithoutAssociations(template))
 			{
 				throw new OperationCanceledException();
 			}
-			await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, parentTemplateName: parentTemplateName, featureId: featureId);
+			await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, 0.0, parentTemplateName, featureId);
 			return;
 		}
-
-		string associationSummary = candidatesWithRules.Count == 1
-			? $"{candidatesWithRules[0].Candidate.Label}:\n{BuildTableAssociationSummary(candidatesWithRules[0].Rules)}"
-			: string.Join("\n", candidatesWithRules.Select(pair => $"{pair.Candidate.Label}:\n{BuildTableAssociationSummary(pair.Rules)}"));
-
-		MessageBoxResult result = DialogService.Show(
-			$"Create the following associations?\n\n{associationSummary}",
-			"Template Editor",
-			new DialogButtonChoice("Create Associations", MessageBoxResult.Yes, isPrimary: true),
-			new DialogButtonChoice("Skip Associations", MessageBoxResult.No, isCancel: true));
-
+		string associationSummary = ((candidatesWithRules.Count == 1) ? (candidatesWithRules[0].Candidate.Label + ":\n" + BuildTableAssociationSummary(candidatesWithRules[0].Rules)) : string.Join("\n", candidatesWithRules.Select((((FeatureLayer Layer, long ObjectID, string Label, string OwningGroup) Candidate, List<(AssociationObject Rule, bool IsReversed)> Rules) pair) => pair.Candidate.Label + ":\n" + BuildTableAssociationSummary(pair.Rules))));
+		MessageBoxResult result = DialogService.Show("Create the following associations?\n\n" + associationSummary, "Template Editor", new DialogButtonChoice("Create Associations", MessageBoxResult.Yes, isPrimary: true), new DialogButtonChoice("Skip Associations", MessageBoxResult.No, isPrimary: false, isCancel: true));
 		if (result != MessageBoxResult.Yes && !ConfirmCreateNonSpatialWithoutAssociations(template))
 		{
 			throw new OperationCanceledException();
 		}
-
-		RowToken rowToken = await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, parentTemplateName: parentTemplateName, featureId: featureId);
-
-		if (result == MessageBoxResult.Yes)
+		RowToken rowToken = await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, 0.0, parentTemplateName, featureId);
+		if (result != MessageBoxResult.Yes)
 		{
-			RowHandle rowHandle = new RowHandle(rowToken);
-			foreach (var (candidate, rules) in candidatesWithRules)
+			return;
+		}
+		RowHandle rowHandle = new RowHandle(rowToken);
+		foreach (var item in candidatesWithRules)
+		{
+			(FeatureLayer Layer, long ObjectID, string Label, string OwningGroup) candidate = item.Candidate;
+			List<(AssociationObject Rule, bool IsReversed)> rules = item.Rules;
+			RowHandle selectedHandle = new RowHandle((MapMember)candidate.Layer, candidate.ObjectID);
+			foreach (var item2 in rules)
 			{
-				RowHandle selectedHandle = new RowHandle((MapMember)(object)candidate.Layer, candidate.ObjectID);
-				foreach (var (rule, isReversed) in rules)
+				AssociationObject rule = item2.Rule;
+				bool isReversed = item2.IsReversed;
+				AssociationDescription assocDesc = CreateTableAssociationDescription(rule, isReversed, selectedHandle, rowHandle);
+				if (assocDesc != null)
 				{
-					AssociationDescription assocDesc = CreateTableAssociationDescription(rule, isReversed, selectedHandle, rowHandle);
-					if (assocDesc != null)
-					{
-						operation.Create(assocDesc);
-					}
+					operation.Create(assocDesc);
 				}
 			}
 		}
@@ -1169,159 +1152,149 @@ internal static class CommonFunctions
 
 	private static bool ConfirmCreateNonSpatialWithoutAssociations(SimpleTemplate template)
 	{
-		MessageBoxResult result = DialogService.Show(
-			$"Create non-spatial record '{template?.Name}' without any associations?",
-			"Template Editor",
-			new DialogButtonChoice("Create Without Associations", MessageBoxResult.Yes, isPrimary: true),
-			new DialogButtonChoice("Cancel", MessageBoxResult.No, isCancel: true));
-		return result == MessageBoxResult.Yes;
+		MessageBoxResult messageBoxResult = DialogService.Show("Create non-spatial record '" + template?.Name + "' without any associations?", "Template Editor", new DialogButtonChoice("Create Without Associations", MessageBoxResult.Yes, isPrimary: true), new DialogButtonChoice("Cancel", MessageBoxResult.No, isPrimary: false, isCancel: true));
+		return messageBoxResult == MessageBoxResult.Yes;
 	}
 
 	private static bool ConfirmCreateNonSpatialTemplate(SimpleTemplate template)
 	{
-		MessageBoxResult result = DialogService.Show(
-			$"Template '{template?.Name}' creates a non-spatial record.\n\nContinue?",
-			"Template Editor",
-			new DialogButtonChoice("Continue", MessageBoxResult.Yes, isPrimary: true),
-			new DialogButtonChoice("Cancel", MessageBoxResult.No, isCancel: true));
-		return result == MessageBoxResult.Yes;
+		MessageBoxResult messageBoxResult = DialogService.Show("Template '" + template?.Name + "' creates a non-spatial record.\n\nContinue?", "Template Editor", new DialogButtonChoice("Continue", MessageBoxResult.Yes, isPrimary: true), new DialogButtonChoice("Cancel", MessageBoxResult.No, isPrimary: false, isCancel: true));
+		return messageBoxResult == MessageBoxResult.Yes;
 	}
 
-	private static List<(AssociationObject Rule, bool IsReversed)> FindGroupTemplateAssociations(
-		SimpleTemplate tableTemplate, string selectedLayerName, string selectedOwningGroup)
+	private static List<(AssociationObject Rule, bool IsReversed)> FindGroupTemplateAssociations(SimpleTemplate tableTemplate, string selectedLayerName, string selectedOwningGroup)
 	{
-		foreach (GroupTemplate groupTemplate in AddinConfiguration.Templates.GroupTemplates ?? Enumerable.Empty<GroupTemplate>())
+		IEnumerable<GroupTemplate> groupTemplates = AddinConfiguration.Templates.GroupTemplates;
+		foreach (GroupTemplate item in groupTemplates ?? Enumerable.Empty<GroupTemplate>())
 		{
-			SimpleTemplateReference tableRef = groupTemplate.SimpleTemplates?.FirstOrDefault(r =>
-				string.Equals(r.Name, tableTemplate.Name, StringComparison.OrdinalIgnoreCase));
-			if (tableRef == null)
+			SimpleTemplateReference simpleTemplateReference = item.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference r) => string.Equals(r.Name, tableTemplate.Name, StringComparison.OrdinalIgnoreCase));
+			if (simpleTemplateReference == null)
 			{
 				continue;
 			}
-
-			// Collect all associations that involve this table template, noting which FeatureId is the spatial partner.
-			var tableAssociations = new List<(AssociationObject Rule, bool IsReversed, int SpatialFeatureId)>();
-			foreach (AssociationObject a in groupTemplate.Associations ?? Enumerable.Empty<AssociationObject>())
+			List<(AssociationObject Rule, bool IsReversed, int SpatialFeatureId)> list = new List<(AssociationObject Rule, bool IsReversed, int SpatialFeatureId)>();
+			IEnumerable<AssociationObject> associations = item.Associations;
+			foreach (AssociationObject item2 in associations ?? Enumerable.Empty<AssociationObject>())
 			{
-				if (a.ToFeatureId == tableRef.FeatureId)
-					tableAssociations.Add((a, false, a.FromFeatureId));
-				else if (a.FromFeatureId == tableRef.FeatureId)
-					tableAssociations.Add((a, true, a.ToFeatureId));
+				if (item2.ToFeatureId == simpleTemplateReference.FeatureId)
+				{
+					list.Add((item2, false, item2.FromFeatureId));
+				}
+				else if (item2.FromFeatureId == simpleTemplateReference.FeatureId)
+				{
+					list.Add((item2, true, item2.ToFeatureId));
+				}
 			}
-
-			if (tableAssociations.Count == 0)
+			if (list.Count == 0)
 			{
 				continue;
 			}
-
-			// For each unique spatial partner, check whether the selected feature matches.
-			foreach (int spatialFeatureId in tableAssociations.Select(a => a.SpatialFeatureId).Distinct())
+			foreach (int spatialFeatureId in list.Select<(AssociationObject, bool, int), int>(((AssociationObject Rule, bool IsReversed, int SpatialFeatureId) a) => a.SpatialFeatureId).Distinct())
 			{
-				SimpleTemplateReference spatialRef = groupTemplate.SimpleTemplates?.FirstOrDefault(r =>
-					r.FeatureId == spatialFeatureId);
+				SimpleTemplateReference spatialRef = item.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference r) => r.FeatureId == spatialFeatureId);
 				if (spatialRef == null)
 				{
 					continue;
 				}
-
-				SimpleTemplate spatialTemplate = AddinConfiguration.Templates.SimpleTemplates?.FirstOrDefault(t =>
-					string.Equals(t.Name, spatialRef.Name, StringComparison.OrdinalIgnoreCase));
-				if (spatialTemplate == null || !IsFeatureLayerTemplate(spatialTemplate))
+				SimpleTemplate simpleTemplate = AddinConfiguration.Templates.SimpleTemplates?.FirstOrDefault((SimpleTemplate t) => string.Equals(t.Name, spatialRef.Name, StringComparison.OrdinalIgnoreCase));
+				if (simpleTemplate == null || !IsFeatureLayerTemplate(simpleTemplate))
 				{
 					continue;
 				}
-
-				bool groupMatches = string.Equals(selectedOwningGroup, spatialTemplate.GroupLayer, StringComparison.OrdinalIgnoreCase);
-				bool layerMatches = spatialTemplate.SubtypeLayer != null
-					? string.Equals(selectedLayerName, spatialTemplate.SubtypeLayer, StringComparison.OrdinalIgnoreCase)
-					: string.Equals(selectedLayerName, spatialTemplate.GroupLayer, StringComparison.OrdinalIgnoreCase);
-
-				if (!groupMatches || !layerMatches)
+				bool flag = string.Equals(selectedOwningGroup, simpleTemplate.GroupLayer, StringComparison.OrdinalIgnoreCase);
+				bool flag2 = ((simpleTemplate.SubtypeLayer != null) ? string.Equals(selectedLayerName, simpleTemplate.SubtypeLayer, StringComparison.OrdinalIgnoreCase) : string.Equals(selectedLayerName, simpleTemplate.GroupLayer, StringComparison.OrdinalIgnoreCase));
+				if (flag && flag2)
 				{
-					continue;
-				}
-
-				var matched = tableAssociations
-					.Where(a => a.SpatialFeatureId == spatialFeatureId)
-					.Select(a => (a.Rule, a.IsReversed))
-					.ToList();
-
-				if (matched.Count > 0)
-				{
-					return matched;
+					List<(AssociationObject, bool)> list2 = (from a in list
+						where a.SpatialFeatureId == spatialFeatureId
+						select (Rule: a.Rule, IsReversed: a.IsReversed)).ToList();
+					if (list2.Count > 0)
+					{
+						return list2;
+					}
 				}
 			}
 		}
 		return new List<(AssociationObject, bool)>();
 	}
 
-	private static AssociationDescription CreateTableAssociationDescription(
-		AssociationObject assoc, bool isReversed, RowHandle selectedHandle, RowHandle rowHandle)
+	private static AssociationDescription CreateTableAssociationDescription(AssociationObject assoc, bool isReversed, RowHandle selectedHandle, RowHandle rowHandle)
 	{
-		RowHandle fromHandle = isReversed ? rowHandle : selectedHandle;
-		RowHandle toHandle = isReversed ? selectedHandle : rowHandle;
-		int terminal = isReversed ? assoc.ToTerminal : assoc.FromTerminal;
-
-		return assoc.Type?.ToUpperInvariant() switch
+		//IL_006b: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0071: Expected O, but got Unknown
+		//IL_0076: Unknown result type (might be due to invalid IL or missing references)
+		//IL_007c: Expected O, but got Unknown
+		//IL_0091: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0085: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0097: Expected O, but got Unknown
+		RowHandle val = (isReversed ? rowHandle : selectedHandle);
+		RowHandle val2 = (isReversed ? selectedHandle : rowHandle);
+		int num = (isReversed ? assoc.ToTerminal : assoc.FromTerminal);
+		string text = assoc.Type?.ToUpperInvariant();
+		if (1 == 0)
 		{
-			"CONTAINMENT" => new AssociationDescription(AssociationType.Containment, fromHandle, toHandle, isReversed),
-			"ATTACHMENT" => new AssociationDescription(AssociationType.Attachment, fromHandle, toHandle),
-			"JUNCTIONJUNCTIONCONNECTIVITY" => terminal > 0
-				? new AssociationDescription(UtilityNetworkAssociationTypes.JunctionJunctionConnectivity, fromHandle, (long)terminal, toHandle)
-				: new AssociationDescription(UtilityNetworkAssociationTypes.JunctionJunctionConnectivity, fromHandle, toHandle),
-			_ => null
-		};
+		}
+		AssociationDescription result = (AssociationDescription)(text switch
+		{
+			"CONTAINMENT" => (object)new AssociationDescription((AssociationType)2, val, val2, isReversed), 
+			"ATTACHMENT" => (object)new AssociationDescription((AssociationType)3, val, val2), 
+			"JUNCTIONJUNCTIONCONNECTIVITY" => (object)((num > 0) ? new AssociationDescription((AssociationType)1, val, (long)num, val2) : new AssociationDescription((AssociationType)1, val, val2)), 
+			_ => null, 
+		});
+		if (1 == 0)
+		{
+		}
+		return result;
 	}
 
 	private static string BuildTableAssociationSummary(IEnumerable<(AssociationObject Rule, bool IsReversed)> rules)
 	{
-		var lines = rules.Select(r => r.Rule.Type?.ToUpperInvariant() switch
+		IEnumerable<string> values = rules.Select(delegate((AssociationObject Rule, bool IsReversed) r)
 		{
-			"CONTAINMENT" => "  • Containment",
-			"ATTACHMENT" => "  • Structural Attachment",
-			"JUNCTIONJUNCTIONCONNECTIVITY" => (r.IsReversed ? r.Rule.ToTerminal : r.Rule.FromTerminal) > 0
-				? $"  • JJC (terminal {(r.IsReversed ? r.Rule.ToTerminal : r.Rule.FromTerminal)})"
-				: "  • JJC",
-			_ => $"  • {r.Rule.Type}"
+			string text = r.Rule.Type?.ToUpperInvariant();
+			if (1 == 0)
+			{
+			}
+			string result = text switch
+			{
+				"CONTAINMENT" => "  • Containment", 
+				"ATTACHMENT" => "  • Structural Attachment", 
+				"JUNCTIONJUNCTIONCONNECTIVITY" => ((r.IsReversed ? r.Rule.ToTerminal : r.Rule.FromTerminal) > 0) ? $"  • JJC (terminal {(r.IsReversed ? r.Rule.ToTerminal : r.Rule.FromTerminal)})" : "  • JJC", 
+				_ => "  • " + r.Rule.Type, 
+			};
+			if (1 == 0)
+			{
+			}
+			return result;
 		});
-		return string.Join("\n", lines);
+		return string.Join("\n", values);
 	}
 
 	private static async Task<List<(FeatureLayer Layer, long ObjectID, string Label, string OwningGroup)>> GetSelectedFeaturesForTableAssociationAsync()
 	{
-		return await QueuedTask.Run(delegate
+		return await QueuedTask.Run<List<(FeatureLayer, long, string, string)>>((Func<List<(FeatureLayer, long, string, string)>>)delegate
 		{
-			var result = new List<(FeatureLayer, long, string, string)>();
+			List<(FeatureLayer, long, string, string)> list = new List<(FeatureLayer, long, string, string)>();
 			if (MapView.Active == null)
 			{
-				return result;
+				return list;
 			}
-
-			var configuredGroups = new HashSet<string>(
-				AddinConfiguration.GroupFeatureLayerNames ?? Enumerable.Empty<string>(),
-				StringComparer.OrdinalIgnoreCase);
-
-			foreach (FeatureLayer layer in MapView.Active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>())
+			IEnumerable<string> groupFeatureLayerNames = AddinConfiguration.GroupFeatureLayerNames;
+			HashSet<string> hashSet = new HashSet<string>(groupFeatureLayerNames ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+			foreach (FeatureLayer item in MapView.Active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>())
 			{
-				string owningGroup = MapMemberLookupService.GetOwningGroupName(layer);
-				bool isConfigured = configuredGroups.Contains(layer.Name.ToUpperInvariant())
-					|| (!string.IsNullOrWhiteSpace(owningGroup) && configuredGroups.Contains(owningGroup.ToUpperInvariant()));
-				if (!isConfigured)
+				string owningGroupName = MapMemberLookupService.GetOwningGroupName(item);
+				if (hashSet.Contains(((MapMember)item).Name.ToUpperInvariant()) || (!string.IsNullOrWhiteSpace(owningGroupName) && hashSet.Contains(owningGroupName.ToUpperInvariant())))
 				{
-					continue;
-				}
-
-				string layerLabel = string.IsNullOrWhiteSpace(owningGroup) || owningGroup.Equals(layer.Name, StringComparison.OrdinalIgnoreCase)
-					? layer.Name
-					: $"{owningGroup}/{layer.Name}";
-
-				foreach (long oid in ((BasicFeatureLayer)layer).GetSelection().GetObjectIDs())
-				{
-					result.Add((layer, oid, $"{layerLabel} (OID {oid})", owningGroup));
+					string value = ((string.IsNullOrWhiteSpace(owningGroupName) || owningGroupName.Equals(((MapMember)item).Name, StringComparison.OrdinalIgnoreCase)) ? ((MapMember)item).Name : (owningGroupName + "/" + ((MapMember)item).Name));
+					foreach (long objectID in ((BasicFeatureLayer)item).GetSelection().GetObjectIDs())
+					{
+						list.Add((item, objectID, $"{value} (OID {objectID})", owningGroupName));
+					}
 				}
 			}
-			return result;
-		});
+			return list;
+		}, TaskCreationOptions.None);
 	}
 
 	private static async Task CreateSJOAttachmentsForPoles(SimpleTemplate template, Geometry sketchGeometry, EditOperation operation, PlacementOptions options)
@@ -1331,21 +1304,18 @@ internal static class CommonFunctions
 			List<(FeatureLayer Layer, long ObjectID, string Label, string OwningGroup)> polesToProcess = await GetSelectedPoleCandidatesForSjoAsync();
 			if (polesToProcess.Count > 0)
 			{
-				MessageBoxResult result = DialogService.Show(
-					$"The SJO can be created as attachments for {polesToProcess.Count} selected Pole(s).",
-					"Template Editor",
-					new DialogButtonChoice("Create Attachments", MessageBoxResult.Yes, isPrimary: true),
-					new DialogButtonChoice("Create SJO Only", MessageBoxResult.No, isCancel: true));
+				MessageBoxResult result = DialogService.Show($"The SJO can be created as attachments for {polesToProcess.Count} selected Pole(s).", "Template Editor", new DialogButtonChoice("Create Attachments", MessageBoxResult.Yes, isPrimary: true), new DialogButtonChoice("Create SJO Only", MessageBoxResult.No, isPrimary: false, isCancel: true));
 				if (result == MessageBoxResult.Yes)
 				{
-					foreach ((FeatureLayer layer, long objectId, string _, string _) in polesToProcess)
+					foreach (var item in polesToProcess)
 					{
-						RowHandle poleHandle = new RowHandle((MapMember)(object)layer, objectId);
+						FeatureLayer layer = item.Layer;
+						long objectId = item.ObjectID;
+						RowHandle poleHandle = new RowHandle((MapMember)layer, objectId);
 						RowHandle sjoHandle = new RowHandle(await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes));
-						AssociationDescription assocDesc = new AssociationDescription(AssociationType.Attachment, poleHandle, sjoHandle);
+						AssociationDescription assocDesc = new AssociationDescription((AssociationType)3, poleHandle, sjoHandle);
 						operation.Create(assocDesc);
 					}
-					return;
 				}
 				else
 				{
@@ -1384,12 +1354,21 @@ internal static class CommonFunctions
 				return poles;
 			}
 		}
-		List<(FeatureLayer Layer, long ObjectID, string Label, string OwningGroup)> selectedCandidates = await GetSelectedFeatureCandidatesAsync();
-		foreach ((FeatureLayer layer, long objectId, string label, string owningGroup) in selectedCandidates)
+		foreach (var item in await GetSelectedFeatureCandidatesAsync())
 		{
-			if (IsStructureJunctionPoleLayer(layer, owningGroup) || await IsSupportedPoleAssetTypeAsync(layer, objectId))
+			FeatureLayer layer = item.Item1;
+			long objectId2 = item.Item2;
+			string label = item.Item3;
+			string owningGroup = item.Item4;
+			bool flag = IsStructureJunctionPoleLayer(layer, owningGroup);
+			bool flag2 = flag;
+			if (!flag2)
 			{
-				poles.Add((layer, objectId, label, owningGroup));
+				flag2 = await IsSupportedPoleAssetTypeAsync(layer, objectId2);
+			}
+			if (flag2)
+			{
+				poles.Add((layer, objectId2, label, owningGroup));
 			}
 		}
 		return poles;
@@ -1397,31 +1376,28 @@ internal static class CommonFunctions
 
 	private static async Task<List<(FeatureLayer Layer, long ObjectID, string Label, string OwningGroup)>> GetSelectedFeatureCandidatesAsync()
 	{
-		return await QueuedTask.Run(delegate
+		return await QueuedTask.Run<List<(FeatureLayer, long, string, string)>>((Func<List<(FeatureLayer, long, string, string)>>)delegate
 		{
-			List<(FeatureLayer, long, string, string)> result = new List<(FeatureLayer, long, string, string)>();
+			List<(FeatureLayer, long, string, string)> list = new List<(FeatureLayer, long, string, string)>();
 			if (MapView.Active == null)
 			{
-				return result;
+				return list;
 			}
-			foreach (FeatureLayer layer in MapView.Active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>())
+			foreach (FeatureLayer item in MapView.Active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>())
 			{
-				List<long> objectIds = ((BasicFeatureLayer)layer).GetSelection().GetObjectIDs().ToList();
-				if (objectIds.Count == 0)
+				List<long> list2 = ((BasicFeatureLayer)item).GetSelection().GetObjectIDs().ToList();
+				if (list2.Count != 0)
 				{
-					continue;
-				}
-				string owningGroup = MapMemberLookupService.GetOwningGroupName(layer);
-				string layerLabel = string.IsNullOrWhiteSpace(owningGroup) || owningGroup.Equals(layer.Name, StringComparison.OrdinalIgnoreCase)
-					? layer.Name
-					: $"{owningGroup}/{layer.Name}";
-				foreach (long objectId in objectIds)
-				{
-					result.Add((layer, objectId, $"{layerLabel} (OID {objectId})", owningGroup));
+					string owningGroupName = MapMemberLookupService.GetOwningGroupName(item);
+					string value = ((string.IsNullOrWhiteSpace(owningGroupName) || owningGroupName.Equals(((MapMember)item).Name, StringComparison.OrdinalIgnoreCase)) ? ((MapMember)item).Name : (owningGroupName + "/" + ((MapMember)item).Name));
+					foreach (long item2 in list2)
+					{
+						list.Add((item, item2, $"{value} (OID {item2})", owningGroupName));
+					}
 				}
 			}
-			return result;
-		});
+			return list;
+		}, TaskCreationOptions.None);
 	}
 
 	private static bool IsStructureJunctionPoleLayer(FeatureLayer layer, string owningGroup)
@@ -1430,9 +1406,7 @@ internal static class CommonFunctions
 		{
 			return false;
 		}
-		return string.Equals(owningGroup, "StructureJunction", StringComparison.OrdinalIgnoreCase) &&
-			(layer.Name.IndexOf("Pole", StringComparison.OrdinalIgnoreCase) >= 0 ||
-			 layer.Name.IndexOf("StructureJunction", StringComparison.OrdinalIgnoreCase) >= 0);
+		return string.Equals(owningGroup, "StructureJunction", StringComparison.OrdinalIgnoreCase) && (((MapMember)layer).Name.IndexOf("Pole", StringComparison.OrdinalIgnoreCase) >= 0 || ((MapMember)layer).Name.IndexOf("StructureJunction", StringComparison.OrdinalIgnoreCase) >= 0);
 	}
 
 	private static async Task<bool> IsSupportedPoleAssetTypeAsync(FeatureLayer layer, long objectId)
@@ -1440,10 +1414,12 @@ internal static class CommonFunctions
 		int assetType = 0;
 		try
 		{
-			ArcGIS.Desktop.Editing.Attributes.Inspector inspector = new ArcGIS.Desktop.Editing.Attributes.Inspector();
+			Inspector inspector = new Inspector();
 			await QueuedTask.Run((Action)delegate
 			{
-				inspector.Load((MapMember)(object)layer, objectId);
+				//IL_0012: Unknown result type (might be due to invalid IL or missing references)
+				//IL_0027: Expected O, but got Unknown
+				inspector.Load((MapMember)layer, objectId);
 				assetType = Convert.ToInt32(inspector["ASSETTYPE"], CultureInfo.InvariantCulture);
 			}, TaskCreationOptions.None);
 		}
@@ -1457,22 +1433,34 @@ internal static class CommonFunctions
 
 	private static Geometry CreateGeometryForTemplate(SimpleTemplateReference template, Geometry sketchGeometry, double rotationDegrees = 0.0)
 	{
+		//IL_001d: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0023: Expected O, but got Unknown
+		//IL_0035: Unknown result type (might be due to invalid IL or missing references)
+		//IL_003b: Expected O, but got Unknown
+		//IL_0062: Unknown result type (might be due to invalid IL or missing references)
+		//IL_006c: Expected O, but got Unknown
+		//IL_009e: Unknown result type (might be due to invalid IL or missing references)
+		//IL_00a4: Expected O, but got Unknown
+		//IL_00c8: Unknown result type (might be due to invalid IL or missing references)
+		//IL_00d2: Expected O, but got Unknown
+		//IL_0104: Unknown result type (might be due to invalid IL or missing references)
+		//IL_010a: Expected O, but got Unknown
 		if (template.Location != null)
 		{
 			MapPoint anchorPoint = (MapPoint)sketchGeometry;
-			return (Geometry)(object)CreateMapPoint(anchorPoint, template.Location, rotationDegrees);
+			return (Geometry)CreateMapPoint(anchorPoint, template.Location, rotationDegrees);
 		}
 		if (template.Line != null)
 		{
 			MapPoint anchorPoint2 = (MapPoint)sketchGeometry;
-			List<MapPoint> points = template.Line.Select((List<double> n) => CreateMapPoint(anchorPoint2, n, rotationDegrees)).ToList();
-			return (Geometry)(object)PolylineBuilderEx.CreatePolyline((IEnumerable<MapPoint>)points, anchorPoint2.SpatialReference);
+			List<MapPoint> list = template.Line.Select((List<double> n) => CreateMapPoint(anchorPoint2, n, rotationDegrees)).ToList();
+			return (Geometry)PolylineBuilderEx.CreatePolyline((IEnumerable<MapPoint>)list, ((Geometry)anchorPoint2).SpatialReference);
 		}
 		if (template.Polygon != null)
 		{
 			MapPoint anchorPoint3 = (MapPoint)sketchGeometry;
-			List<MapPoint> points2 = template.Polygon.Select((List<double> n) => CreateMapPoint(anchorPoint3, n, rotationDegrees)).ToList();
-			return (Geometry)(object)PolygonBuilderEx.CreatePolygon((IEnumerable<MapPoint>)points2, anchorPoint3.SpatialReference);
+			List<MapPoint> list2 = template.Polygon.Select((List<double> n) => CreateMapPoint(anchorPoint3, n, rotationDegrees)).ToList();
+			return (Geometry)PolygonBuilderEx.CreatePolygon((IEnumerable<MapPoint>)list2, ((Geometry)anchorPoint3).SpatialReference);
 		}
 		return sketchGeometry;
 	}
@@ -1486,96 +1474,100 @@ internal static class CommonFunctions
 		return sketchGeometry;
 	}
 
-	// Optimize: Cache preview symbols to avoid recreating them on every mouse move
-	private static CIMSymbolReference _cachedPreviewPointSymbol;
-	private static CIMSymbolReference _cachedPreviewLineSymbol;
-	private static CIMSymbolReference _cachedPreviewPolygonSymbol;
-
-	internal static List<PreviewOverlayGraphic> CreatePreviewGraphics(MapPoint anchorPoint, double rotationDegrees = 0.0)
+	internal static List<PreviewOverlayGraphic> CreatePreviewGraphics(MapPoint anchorPoint, double rotationDegrees = 0.0, bool primaryPartOnly = false)
 	{
 		DisplayTemplate selectedTemplate = AddinConfiguration.SelectedTemplate;
-		string templateName = selectedTemplate?.Name;
-		if (anchorPoint == null || string.IsNullOrWhiteSpace(templateName))
+		string text = selectedTemplate?.Name;
+		if (anchorPoint == null || string.IsNullOrWhiteSpace(text))
 		{
 			return new List<PreviewOverlayGraphic>();
 		}
-
-		// Optimize: Cache symbols instead of recreating on every call
 		if (_cachedPreviewPointSymbol == null)
 		{
 			_cachedPreviewPointSymbol = CreatePreviewPointSymbol();
-			_cachedPreviewLineSymbol = SymbolFactory.Instance.ConstructLineSymbol(ColorFactory.Instance.CreateRGBColor(222.0, 123.0, 207.0, 70.0), 2.0, SimpleLineStyle.Dash).MakeSymbolReference();
-			_cachedPreviewPolygonSymbol = SymbolFactory.Instance.ConstructPolygonSymbol(ColorFactory.Instance.CreateRGBColor(222.0, 123.0, 207.0, 18.0), SimpleFillStyle.Solid, SymbolFactory.Instance.ConstructStroke(ColorFactory.Instance.CreateRGBColor(0.0, 133.0, 202.0, 70.0), 2.0, SimpleLineStyle.Dash)).MakeSymbolReference();
+			_cachedPreviewLineSymbol = SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(ColorFactory.Instance.CreateRGBColor(222.0, 123.0, 207.0, 70.0), 2.0, (SimpleLineStyle)1));
+			_cachedPreviewPolygonSymbol = SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(ColorFactory.Instance.CreateRGBColor(222.0, 123.0, 207.0, 18.0), (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(ColorFactory.Instance.CreateRGBColor(0.0, 133.0, 202.0, 70.0), 2.0, (SimpleLineStyle)1)));
 		}
-
-		List<PreviewOverlayGraphic> graphics = new List<PreviewOverlayGraphic>();
+		List<PreviewOverlayGraphic> list = new List<PreviewOverlayGraphic>();
 		if (selectedTemplate.IsGroupChild)
 		{
-			SimpleTemplateReference childTemplateRef = GetGroupChildReference(selectedTemplate);
-			// Optimize: Use TemplateCache for O(1) lookup instead of O(n) FirstOrDefault
-			SimpleTemplate childTemplate = TemplateCache.GetSimpleTemplate(childTemplateRef?.Name);
-			if (childTemplateRef == null || childTemplate == null || !IsFeatureLayerTemplate(childTemplate))
+			SimpleTemplateReference groupChildReference = GetGroupChildReference(selectedTemplate);
+			SimpleTemplate simpleTemplate = TemplateCache.GetSimpleTemplate(groupChildReference?.Name);
+			if (groupChildReference == null || simpleTemplate == null || !IsFeatureLayerTemplate(simpleTemplate))
 			{
-				return graphics;
+				return list;
 			}
-			AddPreviewGraphicForTemplateReference(graphics, childTemplateRef, childTemplate, anchorPoint, rotationDegrees, _cachedPreviewPointSymbol, _cachedPreviewLineSymbol, _cachedPreviewPolygonSymbol, useAllConfiguredGeometry: false);
-			return graphics;
+			AddPreviewGraphicForTemplateReference(list, groupChildReference, simpleTemplate, anchorPoint, rotationDegrees, _cachedPreviewPointSymbol, _cachedPreviewLineSymbol, _cachedPreviewPolygonSymbol, useAllConfiguredGeometry: false);
+			return list;
 		}
-		// Optimize: Use TemplateCache for O(1) lookup instead of O(n) FirstOrDefault
-		GroupTemplate groupTemplate = TemplateCache.GetGroupTemplate(templateName);
+		GroupTemplate groupTemplate = TemplateCache.GetGroupTemplate(text);
 		if (groupTemplate?.SimpleTemplates == null)
 		{
-			// Optimize: Use TemplateCache for O(1) lookup instead of O(n) FirstOrDefault
-			SimpleTemplate simpleTemplate = TemplateCache.GetSimpleTemplate(templateName);
-			if (HasConfiguredSimpleGeometry(simpleTemplate))
+			SimpleTemplate simpleTemplate2 = TemplateCache.GetSimpleTemplate(text);
+			if (HasConfiguredSimpleGeometry(simpleTemplate2))
 			{
-				Geometry geometry = CreateGeometryForSimpleTemplate(simpleTemplate, anchorPoint, rotationDegrees);
-				AddPreviewGraphic(graphics, geometry, _cachedPreviewPointSymbol, _cachedPreviewLineSymbol, _cachedPreviewPolygonSymbol);
+				Geometry geometry = CreateGeometryForSimpleTemplate(simpleTemplate2, anchorPoint, rotationDegrees);
+				AddPreviewGraphic(list, geometry, _cachedPreviewPointSymbol, _cachedPreviewLineSymbol, _cachedPreviewPolygonSymbol);
 			}
-			else if (IsSimplePointTemplate(simpleTemplate))
+			else if (IsSimplePointTemplate(simpleTemplate2))
 			{
-				graphics.Add(new PreviewOverlayGraphic(anchorPoint, _cachedPreviewPointSymbol));
+				list.Add(new PreviewOverlayGraphic((Geometry)(object)anchorPoint, _cachedPreviewPointSymbol));
 			}
-			return graphics;
+			return list;
 		}
 		if (!HasConfiguredPlacementGeometry(groupTemplate))
 		{
-			return graphics;
+			return list;
 		}
-		foreach (SimpleTemplateReference simpleTemplateRef in groupTemplate.SimpleTemplates)
+		IEnumerable<SimpleTemplateReference> enumerable = groupTemplate.SimpleTemplates;
+		if (primaryPartOnly)
 		{
-			// Optimize: Use TemplateCache for O(1) lookup instead of O(n) FirstOrDefault inside loop
-			SimpleTemplate template = TemplateCache.GetSimpleTemplate(simpleTemplateRef.Name);
-			if (!IsFeatureLayerTemplate(template))
+			SimpleTemplateReference simpleTemplateReference = groupTemplate.SimpleTemplates.FirstOrDefault((SimpleTemplateReference templateRef) => templateRef.FeatureId == 1) ?? groupTemplate.SimpleTemplates.FirstOrDefault();
+			IEnumerable<SimpleTemplateReference> enumerable3;
+			if (simpleTemplateReference != null)
 			{
-				continue;
+				IEnumerable<SimpleTemplateReference> enumerable2 = new SimpleTemplateReference[1] { simpleTemplateReference };
+				enumerable3 = enumerable2;
 			}
-			AddPreviewGraphicForTemplateReference(graphics, simpleTemplateRef, template, anchorPoint, rotationDegrees, _cachedPreviewPointSymbol, _cachedPreviewLineSymbol, _cachedPreviewPolygonSymbol, useAllConfiguredGeometry: true);
+			else
+			{
+				enumerable3 = Enumerable.Empty<SimpleTemplateReference>();
+			}
+			enumerable = enumerable3;
 		}
-		return graphics;
+		foreach (SimpleTemplateReference item in enumerable)
+		{
+			SimpleTemplate simpleTemplate3 = TemplateCache.GetSimpleTemplate(item.Name);
+			if (IsFeatureLayerTemplate(simpleTemplate3))
+			{
+				AddPreviewGraphicForTemplateReference(list, item, simpleTemplate3, anchorPoint, rotationDegrees, _cachedPreviewPointSymbol, _cachedPreviewLineSymbol, _cachedPreviewPolygonSymbol, useAllConfiguredGeometry: true);
+			}
+		}
+		return list;
 	}
 
 	private static void AddPreviewGraphicForTemplateReference(List<PreviewOverlayGraphic> graphics, SimpleTemplateReference templateRef, SimpleTemplate template, MapPoint anchorPoint, double rotationDegrees, CIMSymbolReference pointSymbol, CIMSymbolReference lineSymbol, CIMSymbolReference polygonSymbol, bool useAllConfiguredGeometry)
 	{
-		if (templateRef == null || template == null)
+		//IL_003f: Unknown result type (might be due to invalid IL or missing references)
+		//IL_004b: Expected O, but got Unknown
+		//IL_0073: Unknown result type (might be due to invalid IL or missing references)
+		//IL_007f: Expected O, but got Unknown
+		if (templateRef != null && template != null)
 		{
-			return;
-		}
-		if (useAllConfiguredGeometry && (templateRef.Location != null || templateRef.Line != null || templateRef.Polygon != null))
-		{
-			Geometry geometry = CreateGeometryForTemplate(templateRef, (Geometry)(object)anchorPoint, rotationDegrees);
-			AddPreviewGraphic(graphics, geometry, pointSymbol, lineSymbol, polygonSymbol);
-			return;
-		}
-		if (!useAllConfiguredGeometry && templateRef.Polygon != null)
-		{
-			Geometry geometry = CreateGeometryForTemplate(templateRef, (Geometry)(object)anchorPoint, rotationDegrees);
-			AddPreviewGraphic(graphics, geometry, pointSymbol, lineSymbol, polygonSymbol);
-			return;
-		}
-		if (IsSimplePointTemplate(template))
-		{
-			graphics.Add(new PreviewOverlayGraphic(anchorPoint, pointSymbol));
+			if (useAllConfiguredGeometry && (templateRef.Location != null || templateRef.Line != null || templateRef.Polygon != null))
+			{
+				Geometry geometry = CreateGeometryForTemplate(templateRef, (Geometry)anchorPoint, rotationDegrees);
+				AddPreviewGraphic(graphics, geometry, pointSymbol, lineSymbol, polygonSymbol);
+			}
+			else if (!useAllConfiguredGeometry && templateRef.Polygon != null)
+			{
+				Geometry geometry2 = CreateGeometryForTemplate(templateRef, (Geometry)anchorPoint, rotationDegrees);
+				AddPreviewGraphic(graphics, geometry2, pointSymbol, lineSymbol, polygonSymbol);
+			}
+			else if (IsSimplePointTemplate(template))
+			{
+				graphics.Add(new PreviewOverlayGraphic((Geometry)(object)anchorPoint, pointSymbol));
+			}
 		}
 	}
 
@@ -1586,53 +1578,81 @@ internal static class CommonFunctions
 
 	private static Geometry CreateGeometryForSimpleTemplate(SimpleTemplate template, MapPoint anchorPoint, double rotationDegrees)
 	{
-		List<MapPoint> points = template.Geometry.Select((List<double> n) => CreateMapPoint(anchorPoint, n, rotationDegrees)).ToList();
-		return (Geometry)(object)PolygonBuilderEx.CreatePolygon((IEnumerable<MapPoint>)points, anchorPoint.SpatialReference);
+		//IL_0043: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0049: Expected O, but got Unknown
+		List<MapPoint> list = template.Geometry.Select((List<double> n) => CreateMapPoint(anchorPoint, n, rotationDegrees)).ToList();
+		return (Geometry)PolygonBuilderEx.CreatePolygon((IEnumerable<MapPoint>)list, ((Geometry)anchorPoint).SpatialReference);
 	}
 
 	private static void AddPreviewGraphic(List<PreviewOverlayGraphic> graphics, Geometry geometry, CIMSymbolReference pointSymbol, CIMSymbolReference lineSymbol, CIMSymbolReference polygonSymbol)
 	{
-		if (geometry is MapPoint mapPoint)
+		MapPoint val = (MapPoint)(object)((geometry is MapPoint) ? geometry : null);
+		if (val != null)
 		{
-			graphics.Add(new PreviewOverlayGraphic(mapPoint, pointSymbol));
+			graphics.Add(new PreviewOverlayGraphic((Geometry)(object)val, pointSymbol));
+			return;
 		}
-		else if (geometry is Polyline polyline)
+		Polyline val2 = (Polyline)(object)((geometry is Polyline) ? geometry : null);
+		if (val2 != null)
 		{
-			graphics.Add(new PreviewOverlayGraphic(polyline, lineSymbol));
+			graphics.Add(new PreviewOverlayGraphic((Geometry)(object)val2, lineSymbol));
+			return;
 		}
-		else if (geometry is Polygon polygon)
+		Polygon val3 = (Polygon)(object)((geometry is Polygon) ? geometry : null);
+		if (val3 != null)
 		{
-			graphics.Add(new PreviewOverlayGraphic(polygon, polygonSymbol));
+			graphics.Add(new PreviewOverlayGraphic((Geometry)(object)val3, polygonSymbol));
 		}
 	}
 
 	private static CIMSymbolReference CreatePreviewPointSymbol()
 	{
-		CIMColor fillColor = ColorFactory.Instance.CreateRGBColor(222.0, 123.0, 207.0, 70.0);
-		CIMColor outlineColor = ColorFactory.Instance.CreateRGBColor(0.0, 133.0, 202.0, 70.0);
-		CIMPolygonSymbol markerSymbol = SymbolFactory.Instance.ConstructPolygonSymbol(fillColor, SimpleFillStyle.Solid, SymbolFactory.Instance.ConstructStroke(outlineColor, 1.5, SimpleLineStyle.Solid));
-		CIMPointSymbol pointSymbol = SymbolFactory.Instance.ConstructPointSymbol(fillColor, 9.0, SimpleMarkerStyle.Circle);
-		foreach (CIMSymbolLayer layer in pointSymbol.SymbolLayers ?? Array.Empty<CIMSymbolLayer>())
+		CIMColor val = ColorFactory.Instance.CreateRGBColor(222.0, 123.0, 207.0, 70.0);
+		CIMColor val2 = ColorFactory.Instance.CreateRGBColor(0.0, 133.0, 202.0, 70.0);
+		CIMPolygonSymbol symbol = SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 1.5, (SimpleLineStyle)0));
+		CIMPointSymbol val3 = SymbolFactory.Instance.ConstructPointSymbol(val, 9.0, (SimpleMarkerStyle)0);
+		CIMSymbolLayer[] array = ((CIMMultiLayerSymbol)val3).SymbolLayers ?? Array.Empty<CIMSymbolLayer>();
+		foreach (CIMSymbolLayer val4 in array)
 		{
-			if (layer is CIMVectorMarker vectorMarker && vectorMarker.MarkerGraphics != null)
+			CIMVectorMarker val5 = (CIMVectorMarker)(object)((val4 is CIMVectorMarker) ? val4 : null);
+			if (val5 != null && val5.MarkerGraphics != null)
 			{
-				foreach (CIMMarkerGraphic markerGraphic in vectorMarker.MarkerGraphics)
+				CIMMarkerGraphic[] markerGraphics = val5.MarkerGraphics;
+				foreach (CIMMarkerGraphic val6 in markerGraphics)
 				{
-					markerGraphic.Symbol = markerSymbol;
+					val6.Symbol = (CIMSymbol)(object)symbol;
 				}
 			}
 		}
-		return pointSymbol.MakeSymbolReference();
+		return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)val3);
 	}
 
 	private static bool IsSimplePointTemplate(SimpleTemplate template)
 	{
+		//IL_0093: Unknown result type (might be due to invalid IL or missing references)
 		if (!IsFeatureLayerTemplate(template))
 		{
 			return false;
 		}
-		FeatureLayer layer = MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
-		return layer != null && GeometryTypeHelper.IsPoint(layer.GetFeatureClass().GetDefinition().GetShapeType());
+		string key = template.Name ?? string.Empty;
+		lock (_simplePointTemplateCacheLock)
+		{
+			if (_simplePointTemplateCache.TryGetValue(key, out var value))
+			{
+				return value;
+			}
+		}
+		FeatureLayer featureLayerByName = MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
+		if (featureLayerByName == null)
+		{
+			return false;
+		}
+		bool flag = GeometryTypeHelper.IsPoint(featureLayerByName.GetFeatureClass().GetDefinition().GetShapeType());
+		lock (_simplePointTemplateCacheLock)
+		{
+			_simplePointTemplateCache[key] = flag;
+		}
+		return flag;
 	}
 
 	private static MapPoint CreateMapPoint(MapPoint anchorPoint, List<double> templatePoint, double rotationDegrees = 0.0)
@@ -1646,15 +1666,15 @@ internal static class CommonFunctions
 		ApplyMirrorMode(ref xOffset, ref yOffset);
 		if (Math.Abs(rotationDegrees) > 0.0001)
 		{
-			double radians = rotationDegrees * Math.PI / 180.0;
-			double cos = Math.Cos(radians);
-			double sin = Math.Sin(radians);
-			double rotatedX = xOffset * cos - yOffset * sin;
-			double rotatedY = xOffset * sin + yOffset * cos;
-			xOffset = rotatedX;
-			yOffset = rotatedY;
+			double num = rotationDegrees * Math.PI / 180.0;
+			double num2 = Math.Cos(num);
+			double num3 = Math.Sin(num);
+			double num4 = xOffset * num2 - yOffset * num3;
+			double num5 = xOffset * num3 + yOffset * num2;
+			xOffset = num4;
+			yOffset = num5;
 		}
-		return MapPointBuilderEx.CreateMapPoint(anchorPoint.X + xOffset, anchorPoint.Y + yOffset, anchorPoint.SpatialReference);
+		return MapPointBuilderEx.CreateMapPoint(anchorPoint.X + xOffset, anchorPoint.Y + yOffset, ((Geometry)anchorPoint).SpatialReference);
 	}
 
 	private static void ApplyMirrorMode(ref double xOffset, ref double yOffset)
@@ -1662,49 +1682,66 @@ internal static class CommonFunctions
 		switch (AddinConfiguration.PlacementMirrorMode)
 		{
 		case PlacementMirrorMode.Horizontal:
-			xOffset = -xOffset;
+			xOffset = 0.0 - xOffset;
 			break;
 		case PlacementMirrorMode.Vertical:
-			yOffset = -yOffset;
+			yOffset = 0.0 - yOffset;
 			break;
 		case PlacementMirrorMode.Both:
-			xOffset = -xOffset;
-			yOffset = -yOffset;
+			xOffset = 0.0 - xOffset;
+			yOffset = 0.0 - yOffset;
 			break;
 		}
 	}
 
 	private static AssociationDescription CreateAssociationDescription(AssociationObject association, FeatureInfo fromInfo, FeatureInfo toInfo)
 	{
-		RowHandle fromHandle = CreateRowHandle(fromInfo);
-		RowHandle toHandle = CreateRowHandle(toInfo);
-		AssociationDescription description = null;
+		//IL_007a: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0080: Expected O, but got Unknown
+		//IL_0085: Unknown result type (might be due to invalid IL or missing references)
+		//IL_008b: Expected O, but got Unknown
+		//IL_00a9: Unknown result type (might be due to invalid IL or missing references)
+		//IL_009f: Unknown result type (might be due to invalid IL or missing references)
+		//IL_00b4: Unknown result type (might be due to invalid IL or missing references)
+		//IL_00ba: Expected O, but got Unknown
+		//IL_00af: Expected O, but got Unknown
+		//IL_00bf: Unknown result type (might be due to invalid IL or missing references)
+		//IL_00c5: Expected O, but got Unknown
+		//IL_00ca: Unknown result type (might be due to invalid IL or missing references)
+		//IL_00d0: Expected O, but got Unknown
+		RowHandle val = CreateRowHandle(fromInfo);
+		RowHandle val2 = CreateRowHandle(toInfo);
+		AssociationDescription result = null;
 		switch (association.Type.ToUpper())
 		{
 		case "CONTAINMENT":
-			description = new AssociationDescription(AssociationType.Containment, fromHandle, toHandle, toInfo.IsSpatialFeature);
+			result = new AssociationDescription((AssociationType)2, val, val2, toInfo.IsSpatialFeature);
 			break;
 		case "ATTACHMENT":
-			description = new AssociationDescription(AssociationType.Attachment, fromHandle, toHandle);
+			result = new AssociationDescription((AssociationType)3, val, val2);
 			break;
 		case "JUNCTIONJUNCTIONCONNECTIVITY":
-			description = ((association.FromTerminal == 0) ? new AssociationDescription(UtilityNetworkAssociationTypes.JunctionJunctionConnectivity, fromHandle, toHandle) : new AssociationDescription(UtilityNetworkAssociationTypes.JunctionJunctionConnectivity, fromHandle, (long)association.FromTerminal, toHandle));
+			result = ((association.FromTerminal == 0) ? new AssociationDescription((AssociationType)1, val, val2) : new AssociationDescription((AssociationType)1, val, (long)association.FromTerminal, val2));
 			break;
 		case "JUNCTIONEDGEOBJECTCONNECTIVITYFROMSIDE":
-			description = new AssociationDescription(UtilityNetworkAssociationTypes.JunctionEdgeObjectFromSide, fromHandle, toHandle);
+			result = new AssociationDescription((AssociationType)4, val, val2);
 			break;
 		case "JUNCTIONEDGEOBJECTCONNECTIVITYTOSIDE":
-			description = new AssociationDescription(UtilityNetworkAssociationTypes.JunctionEdgeObjectToSide, fromHandle, toHandle);
+			result = new AssociationDescription((AssociationType)6, val, val2);
 			break;
 		case "JUNCTIONEDGEOBJECTCONNECTIVITYMIDSPAN":
-			description = new AssociationDescription(UtilityNetworkAssociationTypes.JunctionEdgeObjectMidspan, fromHandle, toHandle);
+			result = new AssociationDescription((AssociationType)5, val, val2);
 			break;
 		}
-		return description;
+		return result;
 	}
 
 	private static RowHandle CreateRowHandle(FeatureInfo featureInfo)
 	{
+		//IL_0035: Unknown result type (might be due to invalid IL or missing references)
+		//IL_003b: Expected O, but got Unknown
+		//IL_0027: Unknown result type (might be due to invalid IL or missing references)
+		//IL_002d: Expected O, but got Unknown
 		if (featureInfo.MapMember != null && featureInfo.ObjectID > 0)
 		{
 			return new RowHandle(featureInfo.MapMember, featureInfo.ObjectID);
@@ -1714,12 +1751,12 @@ internal static class CommonFunctions
 
 	private static async Task<RowToken> CreateFeatureOrRowFromSimpleTemplate(SimpleTemplate template, Geometry geometry, EditOperation operation, bool includeDefaultAttributes, double rotationDegrees = 0.0, string parentTemplateName = null, int featureId = 0)
 	{
-		RowToken token;
 		if (template == null)
 		{
 			throw new InvalidOperationException("Template configuration references a missing simple template.");
 		}
 		string placementPartKey = PlacementAttributeOverrideService.BuildPlacementPartKey(template, parentTemplateName, featureId);
+		RowToken token;
 		if (AddinConfiguration.GroupFeatureLayerNames.Contains(template.GroupLayer.ToUpperInvariant()))
 		{
 			FeatureLayer layer = MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
@@ -1751,25 +1788,25 @@ internal static class CommonFunctions
 			subtypeField = ((TableDefinition)layer.GetFeatureClass().GetDefinition()).GetSubtypeField();
 			fields = ((TableDefinition)layer.GetFeatureClass().GetDefinition()).GetFields().ToList();
 		}, TaskCreationOptions.None);
-		DataSubtype subtype = null;
+		Subtype subtype = null;
 		if (!string.IsNullOrEmpty(subtypeField))
 		{
 			await QueuedTask.Run((Action)delegate
 			{
-				List<DataSubtype> source = ((TableDefinition)layer.GetFeatureClass().GetDefinition()).GetSubtypes().ToList();
-				if (!defaultFieldValues.TryGetValue(subtypeField, out object subtypeConfigValue))
+				List<Subtype> source = ((TableDefinition)layer.GetFeatureClass().GetDefinition()).GetSubtypes().ToList();
+				if (!defaultFieldValues.TryGetValue(subtypeField, out var value))
 				{
 					throw new InvalidOperationException($"Template '{template.Name}' is missing subtype field '{subtypeField}'.");
 				}
-				string subtypeDesc = Convert.ToString(GetObjectValue(subtypeConfigValue), CultureInfo.InvariantCulture);
-				subtype = source.FirstOrDefault((DataSubtype n) => n.GetName() == subtypeDesc);
+				string subtypeDesc = Convert.ToString(GetObjectValue(value), CultureInfo.InvariantCulture);
+				subtype = source.FirstOrDefault((Subtype n) => n.GetName() == subtypeDesc);
 			}, TaskCreationOptions.None);
 		}
 		if (template.Geometry != null)
 		{
 			MapPoint anchorPoint = (MapPoint)geometry;
 			List<MapPoint> points = template.Geometry.Select((List<double> n) => CreateMapPoint(anchorPoint, n, rotationDegrees)).ToList();
-			geometry = (Geometry)(object)PolygonBuilderEx.CreatePolygon((IEnumerable<MapPoint>)points, anchorPoint.SpatialReference);
+			geometry = (Geometry)PolygonBuilderEx.CreatePolygon((IEnumerable<MapPoint>)points, ((Geometry)anchorPoint).SpatialReference);
 		}
 		Dictionary<string, object> effectiveFieldValues = await PlacementAttributeOverrideService.ApplyOverridesAsync(template, defaultFieldValues, subtype, fields, placementPartKey);
 		Dictionary<string, object> attributes = new Dictionary<string, object> { ["SHAPE"] = geometry };
@@ -1777,9 +1814,11 @@ internal static class CommonFunctions
 		{
 			Dictionary<string, object> dictionary = attributes;
 			string key = fieldName;
-			dictionary[key] = await GetDatabaseFieldValueFromConfigValue(effectiveFieldValues, subtype, fields, fieldName, rotationDegrees);
+			Dictionary<string, object> dictionary2 = dictionary;
+			string key2 = key;
+			dictionary2[key2] = await GetDatabaseFieldValueFromConfigValue(effectiveFieldValues, subtype, fields, fieldName, rotationDegrees);
 		}
-		return operation.Create((MapMember)(object)layer, attributes);
+		return operation.Create((MapMember)layer, attributes);
 	}
 
 	private static async Task<RowToken> CreateTableRow(StandaloneTable table, SimpleTemplate template, EditOperation operation, bool includeDefaultAttributes, string placementPartKey = null)
@@ -1793,19 +1832,19 @@ internal static class CommonFunctions
 			fields = table.GetTable().GetDefinition().GetFields()
 				.ToList();
 		}, TaskCreationOptions.None);
-		DataSubtype subtype = null;
+		Subtype subtype = null;
 		if (!string.IsNullOrEmpty(subtypeField))
 		{
 			await QueuedTask.Run((Action)delegate
 			{
-				List<DataSubtype> source = table.GetTable().GetDefinition().GetSubtypes()
+				List<Subtype> source = table.GetTable().GetDefinition().GetSubtypes()
 					.ToList();
-				if (!defaultFieldValues.TryGetValue(subtypeField, out object subtypeConfigValue))
+				if (!defaultFieldValues.TryGetValue(subtypeField, out var value))
 				{
 					throw new InvalidOperationException($"Template '{template.Name}' is missing subtype field '{subtypeField}'.");
 				}
-				string subtypeDesc = Convert.ToString(GetObjectValue(subtypeConfigValue), CultureInfo.InvariantCulture);
-				subtype = source.FirstOrDefault((DataSubtype n) => n.GetName() == subtypeDesc);
+				string subtypeDesc = Convert.ToString(GetObjectValue(value), CultureInfo.InvariantCulture);
+				subtype = source.FirstOrDefault((Subtype n) => n.GetName() == subtypeDesc);
 			}, TaskCreationOptions.None);
 		}
 		Dictionary<string, object> effectiveFieldValues = await PlacementAttributeOverrideService.ApplyOverridesAsync(template, defaultFieldValues, subtype, fields, placementPartKey);
@@ -1814,61 +1853,51 @@ internal static class CommonFunctions
 		{
 			Dictionary<string, object> dictionary = attributes;
 			string key = fieldName;
-			dictionary[key] = await GetDatabaseFieldValueFromConfigValue(effectiveFieldValues, subtype, fields, fieldName);
+			Dictionary<string, object> dictionary2 = dictionary;
+			string key2 = key;
+			dictionary2[key2] = await GetDatabaseFieldValueFromConfigValue(effectiveFieldValues, subtype, fields, fieldName);
 		}
-		return operation.Create((MapMember)(object)table, attributes);
+		return operation.Create((MapMember)table, attributes);
 	}
 
 	private static IEnumerable<string> GetAttributeFieldsToApply(Dictionary<string, object> defaultFieldValues, string subtypeField, bool includeDefaultAttributes, List<Field> fields = null, double rotationDegrees = 0.0)
 	{
-		IEnumerable<string> attributeFields;
-		if (includeDefaultAttributes)
-		{
-			attributeFields = defaultFieldValues.Keys;
-		}
-		else if (string.IsNullOrWhiteSpace(subtypeField))
-		{
-			attributeFields = Enumerable.Empty<string>();
-		}
-		else
-		{
-			attributeFields = defaultFieldValues.Keys.Where((string fieldName) => string.Equals(fieldName, subtypeField, StringComparison.OrdinalIgnoreCase));
-		}
+		IEnumerable<string> enumerable = (includeDefaultAttributes ? defaultFieldValues.Keys : ((!string.IsNullOrWhiteSpace(subtypeField)) ? defaultFieldValues.Keys.Where((string fieldName) => string.Equals(fieldName, subtypeField, StringComparison.OrdinalIgnoreCase)) : Enumerable.Empty<string>()));
 		if (!ShouldApplySymbolRotation(rotationDegrees))
 		{
-			return attributeFields;
+			return enumerable;
 		}
-		IEnumerable<string> rotationFields = (fields ?? new List<Field>())
-			.Where((Field field) => IsSymbolRotationField(field?.Name))
-			.Select((Field field) => field.Name);
-		return attributeFields.Concat(rotationFields)
-			.GroupBy((string fieldName) => NormalizeFieldIdentifier(fieldName))
-			.Select((IGrouping<string, string> group) => group.First());
+		IEnumerable<string> second = from field in fields ?? new List<Field>()
+			where IsSymbolRotationField((field != null) ? field.Name : null)
+			select field.Name;
+		return from fieldName in enumerable.Concat(second)
+			group fieldName by NormalizeFieldIdentifier(fieldName) into @group
+			select @group.First();
 	}
 
-	private static async Task<object> GetDatabaseFieldValueFromConfigValue(Dictionary<string, object> defaultFieldValues, DataSubtype subtype, List<Field> fields, string fieldName, double rotationDegrees = 0.0)
+	private static async Task<object> GetDatabaseFieldValueFromConfigValue(Dictionary<string, object> defaultFieldValues, Subtype subtype, List<Field> fields, string fieldName, double rotationDegrees = 0.0)
 	{
 		object fieldValue = null;
-		bool hasConfiguredFieldValue = defaultFieldValues.TryGetValue(fieldName, out object rawConfigFieldValue);
+		bool hasConfiguredFieldValue = defaultFieldValues.TryGetValue(fieldName, out var rawConfigFieldValue);
 		object configFieldValue = GetObjectValue(rawConfigFieldValue);
 		Field field = fields.FirstOrDefault((Field n) => string.Equals(n.Name, fieldName, StringComparison.OrdinalIgnoreCase));
 		if (field == null)
 		{
-			throw new InvalidOperationException($"Field '{fieldName}' was not found.");
+			throw new InvalidOperationException("Field '" + fieldName + "' was not found.");
 		}
 		configFieldValue = GetSymbolRotationFieldValue(configFieldValue, hasConfiguredFieldValue, field, fieldName, rotationDegrees);
 		await QueuedTask.Run((Action)delegate
 		{
 			if (subtype != null)
 			{
-				DataDomain domain = field.GetDomain(subtype);
+				Domain domain = field.GetDomain(subtype);
 				if (domain != null)
 				{
 					fieldValue = GetCodedDomainValue(domain, configFieldValue);
 				}
 				else
 				{
-					domain = field.GetDomain((DataSubtype)null);
+					domain = field.GetDomain((Subtype)null);
 					if (domain != null)
 					{
 						fieldValue = GetCodedDomainValue(domain, configFieldValue);
@@ -1881,7 +1910,7 @@ internal static class CommonFunctions
 			}
 			else
 			{
-				DataDomain domain2 = field.GetDomain((DataSubtype)null);
+				Domain domain2 = field.GetDomain((Subtype)null);
 				if (domain2 != null)
 				{
 					fieldValue = GetCodedDomainValue(domain2, configFieldValue);
@@ -1901,58 +1930,72 @@ internal static class CommonFunctions
 		{
 			return configFieldValue;
 		}
-		if (!IsSymbolRotationField(field?.Name) && !IsSymbolRotationField(configFieldName))
+		if (!IsSymbolRotationField((field != null) ? field.Name : null) && !IsSymbolRotationField(configFieldName))
 		{
 			return configFieldValue;
 		}
-		bool useDefaultRotation = !hasConfiguredFieldValue || IsBlankValue(configFieldValue);
-		double? templateRotation = useDefaultRotation ? GetDefaultSymbolRotationWhenMissing() : TryGetDouble(configFieldValue);
-		if (!templateRotation.HasValue)
+		bool flag = !hasConfiguredFieldValue || IsBlankValue(configFieldValue);
+		double? num = (flag ? new double?(GetDefaultSymbolRotationWhenMissing()) : TryGetDouble(configFieldValue));
+		if (!num.HasValue)
 		{
 			return configFieldValue;
 		}
-		double mirroredRotation = ApplyMirrorModeToSymbolRotation(templateRotation.Value);
-		double adjustedRotation = NormalizeSymbolRotation(mirroredRotation + rotationDegrees);
-		string source = useDefaultRotation ? "default missing-field value" : "template value";
-		LogService.Write($"Adjusted symbol rotation field '{configFieldName}' from {templateRotation.Value:0.######} ({source}) to {adjustedRotation:0.######} (placement rotation {rotationDegrees:0.######}, mirror {AddinConfiguration.PlacementMirrorMode}).");
-		return FormatSymbolRotationFieldValue(adjustedRotation, configFieldValue, field);
+		double num2 = ApplyMirrorModeToSymbolRotation(num.Value);
+		double num3 = NormalizeSymbolRotation(num2 + rotationDegrees);
+		string value = (flag ? "default missing-field value" : "template value");
+		LogService.Write($"Adjusted symbol rotation field '{configFieldName}' from {num.Value:0.######} ({value}) to {num3:0.######} (placement rotation {rotationDegrees:0.######}, mirror {AddinConfiguration.PlacementMirrorMode}).");
+		return FormatSymbolRotationFieldValue(num3, configFieldValue, field);
 	}
 
-	private static object ConvertValueToFieldType(Field field, object value, DataSubtype subtype)
+	private static object ConvertValueToFieldType(Field field, object value, Subtype subtype)
 	{
+		//IL_0021: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0027: Invalid comparison between Unknown and I4
+		//IL_002a: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0032: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0039: Invalid comparison between Unknown and I4
+		//IL_00ad: Unknown result type (might be due to invalid IL or missing references)
+		//IL_00b4: Invalid comparison between Unknown and I4
+		//IL_006e: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0075: Invalid comparison between Unknown and I4
+		//IL_00ea: Unknown result type (might be due to invalid IL or missing references)
+		//IL_00f0: Invalid comparison between Unknown and I4
+		//IL_00f3: Unknown result type (might be due to invalid IL or missing references)
+		//IL_00f9: Invalid comparison between Unknown and I4
+		//IL_012f: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0135: Invalid comparison between Unknown and I4
+		//IL_0168: Unknown result type (might be due to invalid IL or missing references)
+		//IL_016e: Invalid comparison between Unknown and I4
 		value = GetObjectValue(value);
 		if (value == null)
 		{
 			return null;
 		}
 		string text = value as string;
-		if ((field.FieldType == FieldType.Integer || field.FieldType == FieldType.SmallInteger || field.FieldType == FieldType.BigInteger) &&
-			!string.IsNullOrWhiteSpace(text) &&
-			subtype != null &&
-			string.Equals(text.Trim(), subtype.GetName(), StringComparison.OrdinalIgnoreCase))
+		if (((int)field.FieldType == 1 || (int)field.FieldType == 0 || (int)field.FieldType == 13) && !string.IsNullOrWhiteSpace(text) && subtype != null && string.Equals(text.Trim(), subtype.GetName(), StringComparison.OrdinalIgnoreCase))
 		{
-			object subtypeCode = subtype.GetCode();
-			if (field.FieldType == FieldType.BigInteger)
+			object value2 = subtype.GetCode();
+			if ((int)field.FieldType == 13)
 			{
-				return Convert.ToInt64(subtypeCode, CultureInfo.InvariantCulture);
+				return Convert.ToInt64(value2, CultureInfo.InvariantCulture);
 			}
-			return Convert.ToInt32(subtypeCode, CultureInfo.InvariantCulture);
+			return Convert.ToInt32(value2, CultureInfo.InvariantCulture);
 		}
-		if (field.FieldType == FieldType.BigInteger)
+		if ((int)field.FieldType == 13)
 		{
-			return value is long longValue ? longValue : long.Parse(text, CultureInfo.InvariantCulture);
+			return (value is long num) ? num : long.Parse(text, CultureInfo.InvariantCulture);
 		}
-		if (field.FieldType == FieldType.Integer || field.FieldType == FieldType.SmallInteger)
+		if ((int)field.FieldType == 1 || (int)field.FieldType == 0)
 		{
-			return value is int intValue ? intValue : int.Parse(text, CultureInfo.InvariantCulture);
+			return (value is int num2) ? num2 : int.Parse(text, CultureInfo.InvariantCulture);
 		}
-		if (field.FieldType == FieldType.Single)
+		if ((int)field.FieldType == 2)
 		{
-			return value is float floatValue ? floatValue : float.Parse(text, CultureInfo.InvariantCulture);
+			return (value is float num3) ? num3 : float.Parse(text, CultureInfo.InvariantCulture);
 		}
-		if (field.FieldType == FieldType.Double)
+		if ((int)field.FieldType == 3)
 		{
-			return value is double doubleValue ? doubleValue : double.Parse(text, CultureInfo.InvariantCulture);
+			return (value is double num4) ? num4 : double.Parse(text, CultureInfo.InvariantCulture);
 		}
 		return value;
 	}
@@ -1964,13 +2007,20 @@ internal static class CommonFunctions
 			return false;
 		}
 		string normalizedFieldName = NormalizeFieldIdentifier(fieldName);
-		List<string> rotationFieldNames = AddinConfiguration.Settings?.SymbolRotationFieldNames;
-		IEnumerable<string> configuredNames = rotationFieldNames?.Count > 0
-			? rotationFieldNames
-			: new[] { "ROTATION", "SYMBOLROTATION", "SYMBOL_ROTATION", "ANGLE" };
-		return configuredNames.Any((string rotationFieldName) =>
-			string.Equals(rotationFieldName, fieldName, StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(NormalizeFieldIdentifier(rotationFieldName), normalizedFieldName, StringComparison.OrdinalIgnoreCase));
+		List<string> list = AddinConfiguration.Settings?.SymbolRotationFieldNames;
+		IEnumerable<string> enumerable2;
+		if (list == null || list.Count <= 0)
+		{
+			IEnumerable<string> enumerable = new string[4] { "ROTATION", "SYMBOLROTATION", "SYMBOL_ROTATION", "ANGLE" };
+			enumerable2 = enumerable;
+		}
+		else
+		{
+			IEnumerable<string> enumerable = list;
+			enumerable2 = enumerable;
+		}
+		IEnumerable<string> source = enumerable2;
+		return source.Any((string rotationFieldName) => string.Equals(rotationFieldName, fieldName, StringComparison.OrdinalIgnoreCase) || string.Equals(NormalizeFieldIdentifier(rotationFieldName), normalizedFieldName, StringComparison.OrdinalIgnoreCase));
 	}
 
 	private static bool ShouldApplySymbolRotation(double rotationDegrees)
@@ -1980,7 +2030,7 @@ internal static class CommonFunctions
 
 	private static bool IsBlankValue(object value)
 	{
-		return value == null || value is string text && string.IsNullOrWhiteSpace(text);
+		return value == null || (value is string value2 && string.IsNullOrWhiteSpace(value2));
 	}
 
 	private static double GetDefaultSymbolRotationWhenMissing()
@@ -1990,10 +2040,7 @@ internal static class CommonFunctions
 
 	private static string NormalizeFieldIdentifier(string fieldName)
 	{
-		return new string((fieldName ?? string.Empty)
-			.Where(char.IsLetterOrDigit)
-			.Select(char.ToUpperInvariant)
-			.ToArray());
+		return new string((fieldName ?? string.Empty).Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 	}
 
 	private static double? TryGetDouble(object value)
@@ -2003,38 +2050,52 @@ internal static class CommonFunctions
 		{
 			return 0.0;
 		}
-		switch (value)
+		object obj = value;
+		object obj2 = obj;
+		if (!(obj2 is double value2))
 		{
-		case double doubleValue:
-			return doubleValue;
-		case float floatValue:
-			return floatValue;
-		case decimal decimalValue:
-			return (double)decimalValue;
-		case int intValue:
-			return intValue;
-		case long longValue:
-			return longValue;
-		case short shortValue:
-			return shortValue;
-		case byte byteValue:
-			return (int)byteValue;
-		case string text:
-			if (string.IsNullOrWhiteSpace(text))
+			if (!(obj2 is float num))
 			{
-				return 0.0;
+				if (!(obj2 is decimal num2))
+				{
+					if (!(obj2 is int num3))
+					{
+						if (!(obj2 is long num4))
+						{
+							if (!(obj2 is short num5))
+							{
+								if (!(obj2 is byte b))
+								{
+									if (obj2 is string text)
+									{
+										if (string.IsNullOrWhiteSpace(text))
+										{
+											return 0.0;
+										}
+										if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var result))
+										{
+											return result;
+										}
+										if (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out var result2))
+										{
+											return result2;
+										}
+									}
+									return null;
+								}
+								return (int)b;
+							}
+							return num5;
+						}
+						return num4;
+					}
+					return num3;
+				}
+				return (double)num2;
 			}
-			if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double invariantValue))
-			{
-				return invariantValue;
-			}
-			if (double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out double currentValue))
-			{
-				return currentValue;
-			}
-			break;
+			return num;
 		}
-		return null;
+		return value2;
 	}
 
 	private static double NormalizeSymbolRotation(double degrees)
@@ -2049,34 +2110,53 @@ internal static class CommonFunctions
 
 	private static double ApplyMirrorModeToSymbolRotation(double degrees)
 	{
-		return AddinConfiguration.PlacementMirrorMode switch
+		PlacementMirrorMode placementMirrorMode = AddinConfiguration.PlacementMirrorMode;
+		if (1 == 0)
 		{
-			PlacementMirrorMode.Horizontal => 180.0 - degrees,
-			PlacementMirrorMode.Vertical => 0.0 - degrees,
-			PlacementMirrorMode.Both => degrees + 180.0,
-			_ => degrees
+		}
+		double result = placementMirrorMode switch
+		{
+			PlacementMirrorMode.Horizontal => 180.0 - degrees, 
+			PlacementMirrorMode.Vertical => 0.0 - degrees, 
+			PlacementMirrorMode.Both => degrees + 180.0, 
+			_ => degrees, 
 		};
+		if (1 == 0)
+		{
+		}
+		return result;
 	}
 
 	private static object FormatSymbolRotationFieldValue(double degrees, object templateValue, Field field)
 	{
+		//IL_0024: Unknown result type (might be due to invalid IL or missing references)
+		//IL_002b: Invalid comparison between Unknown and I4
+		//IL_002e: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0034: Invalid comparison between Unknown and I4
+		//IL_0037: Unknown result type (might be due to invalid IL or missing references)
+		//IL_003d: Invalid comparison between Unknown and I4
+		//IL_005c: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0062: Invalid comparison between Unknown and I4
+		//IL_0065: Unknown result type (might be due to invalid IL or missing references)
+		//IL_006b: Invalid comparison between Unknown and I4
 		if (templateValue is string)
 		{
 			return degrees.ToString("0.######", CultureInfo.InvariantCulture);
 		}
-		if (field.FieldType == FieldType.BigInteger || field.FieldType == FieldType.Integer || field.FieldType == FieldType.SmallInteger)
+		if ((int)field.FieldType == 13 || (int)field.FieldType == 1 || (int)field.FieldType == 0)
 		{
 			return Convert.ToInt32(Math.Round(degrees, MidpointRounding.AwayFromZero));
 		}
-		if (field.FieldType == FieldType.Single || field.FieldType == FieldType.Double)
+		if ((int)field.FieldType == 2 || (int)field.FieldType == 3)
 		{
 			return degrees;
 		}
 		return degrees.ToString("0.######", CultureInfo.InvariantCulture);
 	}
 
-	private static object GetCodedDomainValue(DataDomain domain, object configFieldValue)
+	private static object GetCodedDomainValue(Domain domain, object configFieldValue)
 	{
+		//IL_001a: Unknown result type (might be due to invalid IL or missing references)
 		if (configFieldValue == null)
 		{
 			return null;
@@ -2149,21 +2229,23 @@ internal static class CommonFunctions
 		}
 		if (errors.Count == 0)
 		{
-			foreach (GroupTemplate groupTemplate in templates.GroupTemplates)
+			foreach (GroupTemplate groupTemplate3 in templates.GroupTemplates)
 			{
-				if (groupTemplate.SimpleTemplates?.Any((SimpleTemplateReference templateRef) => templateRef.FeatureId == 1) != true)
+				List<SimpleTemplateReference> simpleTemplates = groupTemplate3.SimpleTemplates;
+				if (simpleTemplates == null || !simpleTemplates.Any((SimpleTemplateReference simpleTemplateReference) => simpleTemplateReference.FeatureId == 1))
 				{
-					errors.Add($"Group template {groupTemplate.Name} must include a simple template reference with FeatureId 1 to define the sketch feature.");
+					errors.Add("Group template " + groupTemplate3.Name + " must include a simple template reference with FeatureId 1 to define the sketch feature.");
 				}
 			}
 		}
 		if (errors.Count == 0)
 		{
-			foreach (GroupTemplate groupTemplate3 in templates.GroupTemplates)
+			foreach (GroupTemplate groupTemplate4 in templates.GroupTemplates)
 			{
-				foreach (SimpleTemplateReference templateRef in groupTemplate3.SimpleTemplates)
+				foreach (SimpleTemplateReference templateRef in groupTemplate4.SimpleTemplates)
 				{
-					string error6 = await ValidateGeometry(template: templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => n.Name == templateRef.Name), groupTemplate: groupTemplate3, templateRef: templateRef);
+					SimpleTemplate template4 = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => n.Name == templateRef.Name);
+					string error6 = await ValidateGeometry(groupTemplate4, templateRef, template4);
 					if (error6 != null)
 					{
 						errors.Add(error6);
@@ -2173,14 +2255,14 @@ internal static class CommonFunctions
 		}
 		if (errors.Count == 0)
 		{
-			foreach (GroupTemplate groupTemplate4 in templates.GroupTemplates)
+			foreach (GroupTemplate groupTemplate5 in templates.GroupTemplates)
 			{
-				List<int> featureIds = (groupTemplate4.SimpleTemplates ?? new List<SimpleTemplateReference>()).Select((SimpleTemplateReference n) => n.FeatureId).ToList();
-				foreach (AssociationObject assoc in groupTemplate4.Associations ?? new List<AssociationObject>())
+				List<int> featureIds = (groupTemplate5.SimpleTemplates ?? new List<SimpleTemplateReference>()).Select((SimpleTemplateReference n) => n.FeatureId).ToList();
+				foreach (AssociationObject assoc in groupTemplate5.Associations ?? new List<AssociationObject>())
 				{
 					if (!featureIds.Contains(assoc.FromFeatureId) || !featureIds.Contains(assoc.ToFeatureId))
 					{
-						string error7 = "Group template " + groupTemplate4.Name + " has associations with invalid FeatureIDs.";
+						string error7 = "Group template " + groupTemplate5.Name + " has associations with invalid FeatureIDs.";
 						errors.Add(error7);
 					}
 				}
@@ -2195,32 +2277,32 @@ internal static class CommonFunctions
 
 	private static string ValidateLayerOrTableName(SimpleTemplate template)
 	{
-		string error = null;
+		string result = null;
 		if (template == null)
 		{
 			return "Template configuration contains a null simple template.";
 		}
 		if (string.IsNullOrWhiteSpace(template.GroupLayer))
 		{
-			return $"Template '{template.Name}' is missing GroupLayer.";
+			return "Template '" + template.Name + "' is missing GroupLayer.";
 		}
 		if (AddinConfiguration.GroupFeatureLayerNames.Contains(template.GroupLayer.ToUpper()))
 		{
-			FeatureLayer layer = MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
-			if (layer == null)
+			FeatureLayer featureLayerByName = MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
+			if (featureLayerByName == null)
 			{
-				error = $"Group layer/subtype layer {template.GroupLayer}/{template.SubtypeLayer} does not exist in the map ({template.Name}).";
+				result = $"Group layer/subtype layer {template.GroupLayer}/{template.SubtypeLayer} does not exist in the map ({template.Name}).";
 			}
 		}
 		else
 		{
-			StandaloneTable table = MapMemberLookupService.GetTableByName(template.SubtypeLayer, template.GroupLayer);
-			if (table == null)
+			StandaloneTable tableByName = MapMemberLookupService.GetTableByName(template.SubtypeLayer, template.GroupLayer);
+			if (tableByName == null)
 			{
-				error = $"Group table/subtype table {template.GroupLayer}/{template.SubtypeLayer} does not exist in the map ({template.Name}).";
+				result = $"Group table/subtype table {template.GroupLayer}/{template.SubtypeLayer} does not exist in the map ({template.Name}).";
 			}
 		}
-		return error;
+		return result;
 	}
 
 	private static async Task<string> ValidateLayerOrTableFields(SimpleTemplate template)
@@ -2277,7 +2359,7 @@ internal static class CommonFunctions
 	private static async Task<string> ValidateSubtypeAndDomains(SimpleTemplate template)
 	{
 		string error = null;
-		List<DataSubtype> subtypes = null;
+		List<Subtype> subtypes = null;
 		string subtypeField = null;
 		List<Field> fields = null;
 		bool isFeatureLayer = AddinConfiguration.GroupFeatureLayerNames.Contains(template.GroupLayer.ToUpper());
@@ -2316,7 +2398,7 @@ internal static class CommonFunctions
 			List<string> subtypeDescs = null;
 			await QueuedTask.Run((Action)delegate
 			{
-				subtypeDescs = subtypes.Select((DataSubtype n) => n.GetName()).ToList();
+				subtypeDescs = subtypes.Select((Subtype n) => n.GetName()).ToList();
 			}, TaskCreationOptions.None);
 			Dictionary<string, object> defaultFieldValues = template.DefaultFieldValues ?? new Dictionary<string, object>();
 			if (string.IsNullOrWhiteSpace(subtypeField) || !defaultFieldValues.ContainsKey(subtypeField))
@@ -2327,17 +2409,17 @@ internal static class CommonFunctions
 			string subtypeDesc = Convert.ToString(GetObjectValue(defaultFieldValues[subtypeField]), CultureInfo.InvariantCulture);
 			if (!subtypeDescs.Contains(subtypeDesc))
 			{
-				string layerType = (isFeatureLayer ? "LAYER" : "TABLE");
-				error = $"{layerType} {template.GroupLayer}/{template.SubtypeLayer}: invalid {subtypeField} (subtype) value: {subtypeDesc}.";
+				string layerType2 = (isFeatureLayer ? "LAYER" : "TABLE");
+				error = $"{layerType2} {template.GroupLayer}/{template.SubtypeLayer}: invalid {subtypeField} (subtype) value: {subtypeDesc}.";
 			}
 			else
 			{
 				List<string> fieldErrors = new List<string>();
 				string subtypeValue = Convert.ToString(GetObjectValue(defaultFieldValues[subtypeField]), CultureInfo.InvariantCulture);
-				DataSubtype subtype = null;
+				Subtype subtype = null;
 				await QueuedTask.Run((Action)delegate
 				{
-					subtype = subtypes.FirstOrDefault((DataSubtype n) => n.GetName() == subtypeValue);
+					subtype = subtypes.FirstOrDefault((Subtype n) => n.GetName() == subtypeValue);
 				}, TaskCreationOptions.None);
 				List<string> defaultFields = defaultFieldValues.Keys.Where((string n) => n.ToUpper() != subtypeField).ToList();
 				foreach (string fieldName in defaultFields)
@@ -2348,7 +2430,7 @@ internal static class CommonFunctions
 						fieldErrors.Add(fieldName.ToUpper() + ": field not found");
 						continue;
 					}
-					DataDomain domain = null;
+					Domain domain = null;
 					await QueuedTask.Run((Action)delegate
 					{
 						domain = field.GetDomain(subtype);
@@ -2360,7 +2442,7 @@ internal static class CommonFunctions
 					}
 					await QueuedTask.Run((Action)delegate
 					{
-						domain = field.GetDomain((DataSubtype)null);
+						domain = field.GetDomain((Subtype)null);
 					}, TaskCreationOptions.None);
 					if (domain != null)
 					{
@@ -2380,8 +2462,8 @@ internal static class CommonFunctions
 		else
 		{
 			List<string> fieldErrors2 = new List<string>();
-			Dictionary<string, object> defaultFieldValues = template.DefaultFieldValues ?? new Dictionary<string, object>();
-			List<string> defaultFields2 = defaultFieldValues.Keys.ToList();
+			Dictionary<string, object> defaultFieldValues2 = template.DefaultFieldValues ?? new Dictionary<string, object>();
+			List<string> defaultFields2 = defaultFieldValues2.Keys.ToList();
 			foreach (string fieldName2 in defaultFields2)
 			{
 				Field field2 = fields.FirstOrDefault((Field n) => string.Equals(n.Name, fieldName2, StringComparison.OrdinalIgnoreCase));
@@ -2390,10 +2472,10 @@ internal static class CommonFunctions
 					fieldErrors2.Add(fieldName2.ToUpper() + ": field not found");
 					continue;
 				}
-				DataDomain domain2 = null;
+				Domain domain2 = null;
 				await QueuedTask.Run((Action)delegate
 				{
-					domain2 = field2.GetDomain((DataSubtype)null);
+					domain2 = field2.GetDomain((Subtype)null);
 				}, TaskCreationOptions.None);
 				if (domain2 != null)
 				{
@@ -2412,7 +2494,7 @@ internal static class CommonFunctions
 		return error;
 	}
 
-	private static async Task CheckValueAgainstDomain(DataDomain domain, SimpleTemplate template, string fieldName, List<string> fieldErrors)
+	private static async Task CheckValueAgainstDomain(Domain domain, SimpleTemplate template, string fieldName, List<string> fieldErrors)
 	{
 		if (domain is CodedValueDomain)
 		{
@@ -2446,19 +2528,29 @@ internal static class CommonFunctions
 
 	private static void CheckValueAgainstFieldType(SimpleTemplate template, Field field, List<string> fieldErrors)
 	{
-		string fieldValue = GetObjectValue(template.DefaultFieldValues[field.Name])?.ToString();
-		bool isValid = true;
-		if (field.FieldType == FieldType.BigInteger || field.FieldType == FieldType.Integer || field.FieldType == FieldType.SmallInteger)
+		//IL_0027: Unknown result type (might be due to invalid IL or missing references)
+		//IL_002e: Invalid comparison between Unknown and I4
+		//IL_0031: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0037: Invalid comparison between Unknown and I4
+		//IL_003a: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0040: Invalid comparison between Unknown and I4
+		//IL_0057: Unknown result type (might be due to invalid IL or missing references)
+		//IL_005d: Invalid comparison between Unknown and I4
+		//IL_0060: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0066: Invalid comparison between Unknown and I4
+		string text = GetObjectValue(template.DefaultFieldValues[field.Name])?.ToString();
+		bool flag = true;
+		if ((int)field.FieldType == 13 || (int)field.FieldType == 1 || (int)field.FieldType == 0)
 		{
-			isValid = int.TryParse(fieldValue, out var _);
+			flag = int.TryParse(text, out var _);
 		}
-		else if (field.FieldType == FieldType.Single || field.FieldType == FieldType.Double)
+		else if ((int)field.FieldType == 2 || (int)field.FieldType == 3)
 		{
-			isValid = double.TryParse(fieldValue, out var _);
+			flag = double.TryParse(text, out var _);
 		}
-		if (!isValid)
+		if (!flag)
 		{
-			fieldErrors.Add(field.Name.ToUpper() + ": " + fieldValue);
+			fieldErrors.Add(field.Name.ToUpper() + ": " + text);
 		}
 	}
 
@@ -2479,6 +2571,8 @@ internal static class CommonFunctions
 			GeometryType geometryType = (GeometryType)0;
 			await QueuedTask.Run((Action)delegate
 			{
+				//IL_0012: Unknown result type (might be due to invalid IL or missing references)
+				//IL_0017: Unknown result type (might be due to invalid IL or missing references)
 				geometryType = layer.GetFeatureClass().GetDefinition().GetShapeType();
 			}, TaskCreationOptions.None);
 			if (templateRef.SketchType != null)
@@ -2521,65 +2615,4 @@ internal static class CommonFunctions
 		}
 		return error;
 	}
-
-	private sealed class PlacementBuildResult
-	{
-		public EditOperation Operation { get; set; }
-
-		public List<PlacedFeatureContext> CreatedFeatures { get; set; }
-
-		public List<FeatureInfo> FeatureInfos { get; set; }
-
-		public List<AssociationObject> ConfiguredAssociations { get; set; }
-
-		public bool ApplyConfiguredAssociations { get; set; }
-	}
-
-	private sealed class ConfiguredAssociationResult
-	{
-		public static ConfiguredAssociationResult Empty => new ConfiguredAssociationResult();
-
-		public int AttemptedCount { get; set; }
-
-		public List<ExistingAssociationPair> CreatedPairs { get; } = new List<ExistingAssociationPair>();
-
-		public List<string> Failures { get; } = new List<string>();
-
-		public int CreatedCount => CreatedPairs.Count;
-
-		public int FailedCount => Math.Max(Failures.Count, AttemptedCount - CreatedCount);
-
-		public bool HasFailures => FailedCount > 0;
-	}
-
-	private sealed class PlacementOptions
-	{
-		public static PlacementOptions Full { get; } = new PlacementOptions
-		{
-			OperationName = "Create template features",
-			IncludeConfiguredAssociations = true,
-			IncludeDefaultAttributes = true
-		};
-
-		public static PlacementOptions WithoutAssociations { get; } = new PlacementOptions
-		{
-			OperationName = "Create template features without associations",
-			IncludeConfiguredAssociations = false,
-			IncludeDefaultAttributes = true
-		};
-
-		public static PlacementOptions MinimalAttributes { get; } = new PlacementOptions
-		{
-			OperationName = "Create template features with minimal attributes",
-			IncludeConfiguredAssociations = false,
-			IncludeDefaultAttributes = false
-		};
-
-		public string OperationName { get; private set; }
-
-		public bool IncludeConfiguredAssociations { get; private set; }
-
-		public bool IncludeDefaultAttributes { get; private set; }
-	}
-
 }

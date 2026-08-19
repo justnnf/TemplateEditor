@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 using ArcGIS.Core.CIM;
 using ArcGIS.Core.Data;
 using ArcGIS.Core.Data.UtilityNetwork;
@@ -11,123 +13,55 @@ using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Editing;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
-using DataDomain = ArcGIS.Core.Data.Domain;
-using DataSubtype = ArcGIS.Core.Data.Subtype;
 
 namespace TemplateEditor;
 
-/// <summary>
-/// Cache for feature info lookups (domain descriptions, subtypes) to avoid redundant field/domain queries.
-/// Cache key format: "{LayerName}:{FieldName}:{Value}:{SubtypeCode}"
-/// </summary>
-internal static class FeatureInfoCache
-{
-	private static readonly Dictionary<string, string> DomainDescriptionCache = new(StringComparer.Ordinal);
-	private static readonly Dictionary<string, DataSubtype> SubtypeCache = new(StringComparer.Ordinal);
-	private static readonly object LockObject = new();
-
-	/// <summary>
-	/// Gets a cached domain description or retrieves and caches it if not found.
-	/// </summary>
-	public static string GetDomainDescription(DataDomain domain, object value, string cacheKeyPrefix = null)
-	{
-		if (domain is not CodedValueDomain codedValueDomain || value == null)
-		{
-			return null;
-		}
-
-		string valueText = Convert.ToString(value);
-		string cacheKey = $"{cacheKeyPrefix ?? ""}Domain:{domain?.GetName() ?? ""}:{valueText}";
-
-		lock (LockObject)
-		{
-			if (DomainDescriptionCache.TryGetValue(cacheKey, out var cachedDescription))
-			{
-				return cachedDescription;
-			}
-		}
-
-		// Perform lookup
-		foreach (KeyValuePair<object, string> pair in codedValueDomain.GetCodedValuePairs())
-		{
-			if (string.Equals(Convert.ToString(pair.Key), valueText, StringComparison.OrdinalIgnoreCase))
-			{
-				lock (LockObject)
-				{
-					DomainDescriptionCache[cacheKey] = pair.Value;
-				}
-				return pair.Value;
-			}
-		}
-
-		// Cache negative result
-		lock (LockObject)
-		{
-			DomainDescriptionCache[cacheKey] = null;
-		}
-		return null;
-	}
-
-	/// <summary>
-	/// Gets a cached subtype or retrieves and caches it if not found.
-	/// </summary>
-	public static DataSubtype GetSubtype(TableDefinition definition, Feature feature, string cacheKeyPrefix = null)
-	{
-		string subtypeField = definition?.GetSubtypeField();
-		if (string.IsNullOrWhiteSpace(subtypeField))
-		{
-			return null;
-		}
-
-		object subtypeValue = feature[subtypeField];
-		if (subtypeValue == null || subtypeValue == DBNull.Value)
-		{
-			return null;
-		}
-
-		string subtypeValueText = Convert.ToString(subtypeValue);
-		string cacheKey = $"{cacheKeyPrefix ?? ""}Subtype:{definition?.GetName() ?? ""}:{subtypeValueText}";
-
-		lock (LockObject)
-		{
-			if (SubtypeCache.TryGetValue(cacheKey, out var cachedSubtype))
-			{
-				return cachedSubtype;
-			}
-		}
-
-		// Perform lookup
-		var subtype = definition.GetSubtypes().FirstOrDefault((DataSubtype st) =>
-			string.Equals(Convert.ToString(st.GetCode()), subtypeValueText, StringComparison.OrdinalIgnoreCase) ||
-			string.Equals(st.GetName(), subtypeValueText, StringComparison.OrdinalIgnoreCase));
-
-		lock (LockObject)
-		{
-			SubtypeCache[cacheKey] = subtype;
-		}
-		return subtype;
-	}
-
-	/// <summary>
-	/// Clears the cache. Call this between placement operations if needed.
-	/// </summary>
-	public static void Clear()
-	{
-		lock (LockObject)
-		{
-			DomainDescriptionCache.Clear();
-			SubtypeCache.Clear();
-		}
-	}
-}
-
 internal static class PlacementEnhancementService
 {
+	private sealed class CandidateSelectionOverlay : IDisposable
+	{
+		private readonly PlacedFeatureContext _createdFeature;
+
+		private readonly bool _isSplitCandidate;
+
+		private IDisposable _overlay;
+
+		private int _updateVersion;
+
+		public CandidateSelectionOverlay(PlacedFeatureContext createdFeature, bool isSplitCandidate)
+		{
+			_createdFeature = createdFeature;
+			_isSplitCandidate = isSplitCandidate;
+		}
+
+		public async Task UpdateAsync(FeatureCandidate candidate)
+		{
+			int updateVersion = Interlocked.Increment(ref _updateVersion);
+			IDisposable nextOverlay = await ShowCandidateSelectionOverlayAsync(_createdFeature, candidate, _isSplitCandidate);
+			if (updateVersion != _updateVersion)
+			{
+				nextOverlay?.Dispose();
+				return;
+			}
+			IDisposable previousOverlay = _overlay;
+			_overlay = nextOverlay;
+			previousOverlay?.Dispose();
+		}
+
+		public void Dispose()
+		{
+			Interlocked.Increment(ref _updateVersion);
+			_overlay?.Dispose();
+			_overlay = null;
+		}
+	}
+
 	private static readonly SemaphoreSlim EnhancementPromptGate = new SemaphoreSlim(1, 1);
-	// Cache for FACILITYID field names per layer to avoid repeated field lookups
+
 	private static readonly Dictionary<string, string> FacilityIdFieldCache = new Dictionary<string, string>(StringComparer.Ordinal);
-	// Cache for layer metadata (definition, fields, owning group) to avoid repeated queries per feature
+
 	private static readonly Dictionary<string, LayerMetadata> LayerMetadataCache = new Dictionary<string, LayerMetadata>(StringComparer.Ordinal);
+
 	private static readonly object CacheLock = new object();
 
 	public static async Task ApplyPostPlacementEnhancementsAsync(IReadOnlyList<PlacedFeatureContext> createdFeatures, IReadOnlyList<ExistingAssociationPair> existingAssociations = null)
@@ -136,33 +70,29 @@ internal static class PlacementEnhancementService
 		{
 			return;
 		}
-		if (!await EnhancementPromptGate.WaitAsync(TimeSpan.FromSeconds(30)))
+		if (await EnhancementPromptGate.WaitAsync(TimeSpan.FromSeconds(30.0)))
 		{
-			await ShowMessageBoxAsync(
-				"Automatic split and association prompts were skipped because another Template Editor placement prompt is still open. Finish the open prompt, then review the placed feature's associations before continuing.",
-				"Template Editor",
-				MessageBoxButton.OK);
-			return;
-		}
-		try
-		{
-			HashSet<string> processedSplitPointKeys = new(StringComparer.Ordinal);
-			foreach (PlacedFeatureContext createdFeature in createdFeatures)
+			try
 			{
-				if (createdFeature?.Layer == null || createdFeature.Geometry == null || createdFeature.ObjectID <= 0 || !createdFeature.AllowPlacementEnhancements)
+				HashSet<string> processedSplitPointKeys = new HashSet<string>(StringComparer.Ordinal);
+				foreach (PlacedFeatureContext createdFeature in createdFeatures)
 				{
-					continue;
+					if (createdFeature?.Layer != null && createdFeature.Geometry != null && createdFeature.ObjectID > 0 && createdFeature.AllowPlacementEnhancements)
+					{
+						await RunEnhancementStepAsync("line split", () => TryPromptForLineSplitAsync(createdFeature, createdFeatures, processedSplitPointKeys));
+						await WaitForEnhancementSettleAsync();
+						await RunEnhancementStepAsync("association", () => TryPromptForAssociationsAsync(createdFeature, createdFeatures, existingAssociations));
+						await WaitForEnhancementSettleAsync();
+					}
 				}
-				await RunEnhancementStepAsync("line split", () => TryPromptForLineSplitAsync(createdFeature, createdFeatures, processedSplitPointKeys));
-				await WaitForEnhancementSettleAsync();
-				await RunEnhancementStepAsync("association", () => TryPromptForAssociationsAsync(createdFeature, createdFeatures, existingAssociations));
-				await WaitForEnhancementSettleAsync();
+				return;
+			}
+			finally
+			{
+				EnhancementPromptGate.Release();
 			}
 		}
-		finally
-		{
-			EnhancementPromptGate.Release();
-		}
+		await ShowMessageBoxAsync("Automatic split and association prompts were skipped because another Template Editor placement prompt is still open. Finish the open prompt, then review the placed feature's associations before continuing.", "Template Editor", MessageBoxButton.OK);
 	}
 
 	private static async Task RunEnhancementStepAsync(string stepName, Func<Task> action)
@@ -173,7 +103,8 @@ internal static class PlacementEnhancementService
 		}
 		catch (Exception ex)
 		{
-			if (AddinConfiguration.Settings?.ShowAutomaticStepDiagnostics == false)
+			TemplateEditorSettings settings = AddinConfiguration.Settings;
+			if (settings != null && !settings.ShowAutomaticStepDiagnostics)
 			{
 				return;
 			}
@@ -183,7 +114,9 @@ internal static class PlacementEnhancementService
 
 	private static async Task WaitForEnhancementSettleAsync()
 	{
-		await Application.Current.Dispatcher.InvokeAsync(() => { });
+		await ((DispatcherObject)Application.Current).Dispatcher.InvokeAsync((Action)delegate
+		{
+		});
 	}
 
 	private static async Task TryPromptForLineSplitAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, HashSet<string> processedSplitPointKeys)
@@ -194,36 +127,45 @@ internal static class PlacementEnhancementService
 			return;
 		}
 		string groupName = createdFeature.Template?.GroupLayer?.ToUpperInvariant();
-		GeometryType createdShapeType = await QueuedTask.Run(() => createdFeature.Layer.GetFeatureClass().GetDefinition().GetShapeType());
+		GeometryType createdShapeType = await QueuedTask.Run<GeometryType>((Func<GeometryType>)delegate
+		{
+			//IL_0015: Unknown result type (might be due to invalid IL or missing references)
+			return createdFeature.Layer.GetFeatureClass().GetDefinition().GetShapeType();
+		}, TaskCreationOptions.None);
 		if (GeometryTypeHelper.IsPoint(createdShapeType))
 		{
-			if (!settings.EnablePointPlacementSplitPrompt || !settings.SplitPointPlacementGroups.Contains(groupName))
+			if (settings.EnablePointPlacementSplitPrompt && settings.SplitPointPlacementGroups.Contains(groupName))
+			{
+				MapPoint splitAnchor = createdFeature.SplitPointOverride ?? createdFeature.Geometry as MapPoint;
+				if (splitAnchor != null)
+				{
+					await TryPromptForSingleSplitPointAsync(createdFeature, featuresCreatedByOperation, processedSplitPointKeys, splitAnchor, "Split underlying line at the original insert point?");
+				}
+			}
+		}
+		else
+		{
+			if (!GeometryTypeHelper.IsPolyline(createdShapeType))
 			{
 				return;
 			}
-			await TryPromptForSingleSplitPointAsync(createdFeature, featuresCreatedByOperation, processedSplitPointKeys, (MapPoint)createdFeature.Geometry, "Split underlying line at the placement point?");
-			return;
-		}
-		if (GeometryTypeHelper.IsPolyline(createdShapeType))
-		{
 			if (!settings.EnableLineEndpointSplitPrompt || !settings.SplitLinePlacementGroups.Contains(groupName))
 			{
 				return;
 			}
-			Polyline polyline = createdFeature.Geometry as Polyline;
-			if (polyline == null || polyline.PointCount < 2)
+			Geometry geometry = createdFeature.Geometry;
+			Polyline polyline = (Polyline)(object)((geometry is Polyline) ? geometry : null);
+			if (polyline == null || ((Geometry)polyline).PointCount < 2)
 			{
 				return;
 			}
 			List<string> availableOptions = new List<string>();
-			MapPoint startPoint = polyline.Points.First();
-			MapPoint endPoint = polyline.Points.Last();
-			List<FeatureCandidate> startCandidates = settings.EnableSplitAtLineStartPoint && (!settings.SuppressDuplicateSplitPrompts || !WasSplitPointProcessed(processedSplitPointKeys, startPoint))
-				? await FindSplitCandidatesAsync(createdFeature, featuresCreatedByOperation, startPoint)
-				: new List<FeatureCandidate>();
-			List<FeatureCandidate> endCandidates = settings.EnableSplitAtLineEndPoint && (!settings.SuppressDuplicateSplitPrompts || !WasSplitPointProcessed(processedSplitPointKeys, endPoint))
-				? await FindSplitCandidatesAsync(createdFeature, featuresCreatedByOperation, endPoint)
-				: new List<FeatureCandidate>();
+			MapPoint startPoint = ((IEnumerable<MapPoint>)((Multipart)polyline).Points).First();
+			MapPoint endPoint = ((IEnumerable<MapPoint>)((Multipart)polyline).Points).Last();
+			List<FeatureCandidate> list = ((!settings.EnableSplitAtLineStartPoint || (settings.SuppressDuplicateSplitPrompts && WasSplitPointProcessed(processedSplitPointKeys, startPoint))) ? new List<FeatureCandidate>() : (await FindSplitCandidatesAsync(createdFeature, featuresCreatedByOperation, startPoint)));
+			List<FeatureCandidate> startCandidates = list;
+			List<FeatureCandidate> list2 = ((!settings.EnableSplitAtLineEndPoint || (settings.SuppressDuplicateSplitPrompts && WasSplitPointProcessed(processedSplitPointKeys, endPoint))) ? new List<FeatureCandidate>() : (await FindSplitCandidatesAsync(createdFeature, featuresCreatedByOperation, endPoint)));
+			List<FeatureCandidate> endCandidates = list2;
 			bool hasStartCandidate = startCandidates.Count > 0;
 			bool hasEndCandidate = endCandidates.Count > 0;
 			if (hasStartCandidate)
@@ -251,17 +193,16 @@ internal static class PlacementEnhancementService
 				return;
 			}
 			LineSplitChoiceDialog choiceDialog = await ShowDialogAsync(() => new LineSplitChoiceDialog(availableOptions));
-			if (choiceDialog == null)
+			if (choiceDialog != null)
 			{
-				return;
-			}
-			if (choiceDialog.SplitAtStart)
-			{
-				await TryPromptForSingleSplitPointAsync(createdFeature, featuresCreatedByOperation, processedSplitPointKeys, startPoint, "Split underlying line at the insert/start point?", startCandidates);
-			}
-			if (choiceDialog.SplitAtEnd)
-			{
-				await TryPromptForSingleSplitPointAsync(createdFeature, featuresCreatedByOperation, processedSplitPointKeys, endPoint, "Split underlying line at this line endpoint?", endCandidates);
+				if (choiceDialog.SplitAtStart)
+				{
+					await TryPromptForSingleSplitPointAsync(createdFeature, featuresCreatedByOperation, processedSplitPointKeys, startPoint, "Split underlying line at the insert/start point?", startCandidates);
+				}
+				if (choiceDialog.SplitAtEnd)
+				{
+					await TryPromptForSingleSplitPointAsync(createdFeature, featuresCreatedByOperation, processedSplitPointKeys, endPoint, "Split underlying line at this line endpoint?", endCandidates);
+				}
 			}
 		}
 	}
@@ -269,30 +210,38 @@ internal static class PlacementEnhancementService
 	private static async Task TryPromptForSingleSplitPointAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, HashSet<string> processedSplitPointKeys, MapPoint splitPoint, string message, List<FeatureCandidate> splitCandidates = null)
 	{
 		TemplateEditorSettings settings = AddinConfiguration.Settings;
-		if (settings?.SuppressDuplicateSplitPrompts == true && WasSplitPointProcessed(processedSplitPointKeys, splitPoint))
+		if ((settings?.SuppressDuplicateSplitPrompts ?? false) && WasSplitPointProcessed(processedSplitPointKeys, splitPoint))
 		{
 			return;
 		}
-		splitCandidates ??= await FindSplitCandidatesAsync(createdFeature, featuresCreatedByOperation, splitPoint);
+		List<FeatureCandidate> list = splitCandidates;
+		List<FeatureCandidate> list2 = list;
+		if (list2 == null)
+		{
+			List<FeatureCandidate> list3;
+			splitCandidates = (list3 = await FindSplitCandidatesAsync(createdFeature, featuresCreatedByOperation, splitPoint));
+			list2 = list3;
+		}
+		_ = list2;
 		if (splitCandidates.Count == 0)
 		{
 			return;
 		}
-		if (settings?.SuppressDuplicateSplitPrompts == true)
+		if (settings?.SuppressDuplicateSplitPrompts ?? false)
 		{
 			TrackProcessedSplitPoint(processedSplitPointKeys, splitPoint);
 		}
-		FeatureCandidate splitCandidate = splitCandidates.Count == 1 ? splitCandidates[0] : await ChooseCandidateAsync(createdFeature, "Choose Line To Split", "Review the highlighted line and choose which one to split.", splitCandidates, isSplitCandidate: true);
+		FeatureCandidate featureCandidate = ((splitCandidates.Count != 1) ? (await ChooseCandidateAsync(createdFeature, "Choose Line To Split", "Review the highlighted line and choose which one to split.", splitCandidates, isSplitCandidate: true)) : splitCandidates[0]);
+		FeatureCandidate splitCandidate = featureCandidate;
 		if (splitCandidate == null)
 		{
 			return;
 		}
-		bool autoSplit = splitCandidates.Count == 1 && string.Equals(settings?.SplitPromptMode, "AutoWhenOne", StringComparison.OrdinalIgnoreCase);
-		if (!autoSplit)
+		if (splitCandidates.Count != 1 || !string.Equals(settings?.SplitPromptMode, "AutoWhenOne", StringComparison.OrdinalIgnoreCase))
 		{
 			using (await ShowCandidateContextAsync(createdFeature, splitCandidate, isSplitCandidate: true))
 			{
-				if (!await ShowConfirmationAsync(message, "Template Editor", "Split Line", "Skip"))
+				if (!(await ShowConfirmationAsync(message, "Template Editor", "Split Line", "Skip")))
 				{
 					return;
 				}
@@ -301,34 +250,28 @@ internal static class PlacementEnhancementService
 		await ExecuteSplitAsync(splitCandidate.Layer, splitCandidate.ObjectID, splitPoint);
 	}
 
-
-	/// <summary>
-	/// Generates a string key for a MapPoint to enable O(1) split point deduplication.
-	/// Uses rounded coordinates to account for floating-point precision.
-	/// </summary>
 	private static string GetSplitPointKey(MapPoint point)
 	{
 		if (point == null)
+		{
 			return null;
-
-		int wkid = point.SpatialReference?.Wkid ?? 0;
-		// Round coordinates to avoid floating-point precision issues
-		// Using scale of 1e6 means precision to 0.000001 units
-		long x = (long)Math.Round(point.X * 1e6);
-		long y = (long)Math.Round(point.Y * 1e6);
-		return $"{x}|{y}|{wkid}";
+		}
+		SpatialReference spatialReference = ((Geometry)point).SpatialReference;
+		int value = ((spatialReference != null) ? spatialReference.Wkid : 0);
+		long value2 = (long)Math.Round(point.X * 1000000.0);
+		long value3 = (long)Math.Round(point.Y * 1000000.0);
+		return $"{value2}|{value3}|{value}";
 	}
 
 	private static void TrackProcessedSplitPoint(HashSet<string> processedSplitPointKeys, MapPoint splitPoint)
 	{
-		if (processedSplitPointKeys == null || splitPoint == null)
+		if (processedSplitPointKeys != null && splitPoint != null)
 		{
-			return;
-		}
-		string key = GetSplitPointKey(splitPoint);
-		if (key != null)
-		{
-			processedSplitPointKeys.Add(key);
+			string splitPointKey = GetSplitPointKey(splitPoint);
+			if (splitPointKey != null)
+			{
+				processedSplitPointKeys.Add(splitPointKey);
+			}
 		}
 	}
 
@@ -338,8 +281,8 @@ internal static class PlacementEnhancementService
 		{
 			return false;
 		}
-		string key = GetSplitPointKey(splitPoint);
-		return key != null && processedSplitPointKeys.Contains(key);
+		string splitPointKey = GetSplitPointKey(splitPoint);
+		return splitPointKey != null && processedSplitPointKeys.Contains(splitPointKey);
 	}
 
 	private static bool AreSameSplitPoint(MapPoint firstPoint, MapPoint secondPoint)
@@ -348,12 +291,7 @@ internal static class PlacementEnhancementService
 		{
 			return false;
 		}
-		const double coordinateTolerance = 1e-6;
-		return Math.Abs(firstPoint.X - secondPoint.X) <= coordinateTolerance &&
-			Math.Abs(firstPoint.Y - secondPoint.Y) <= coordinateTolerance &&
-			(firstPoint.SpatialReference == null ||
-				secondPoint.SpatialReference == null ||
-				firstPoint.SpatialReference.Wkid == secondPoint.SpatialReference.Wkid);
+		return Math.Abs(firstPoint.X - secondPoint.X) <= 1E-06 && Math.Abs(firstPoint.Y - secondPoint.Y) <= 1E-06 && (((Geometry)firstPoint).SpatialReference == null || ((Geometry)secondPoint).SpatialReference == null || ((Geometry)firstPoint).SpatialReference.Wkid == ((Geometry)secondPoint).SpatialReference.Wkid);
 	}
 
 	private static async Task TryPromptForAssociationsAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, IReadOnlyList<ExistingAssociationPair> existingAssociations)
@@ -365,8 +303,11 @@ internal static class PlacementEnhancementService
 			return;
 		}
 		bool useRuleCatalogSearchScope = AssociationRuleCatalog.Current.HasRules;
-		GeometryType createdShapeType = await QueuedTask.Run(() => createdFeature.Layer.GetFeatureClass().GetDefinition().GetShapeType());
-		bool createdFeatureIsLine = GeometryTypeHelper.IsPolyline(createdShapeType);
+		bool createdFeatureIsLine = GeometryTypeHelper.IsPolyline(await QueuedTask.Run<GeometryType>((Func<GeometryType>)delegate
+		{
+			//IL_0015: Unknown result type (might be due to invalid IL or missing references)
+			return createdFeature.Layer.GetFeatureClass().GetDefinition().GetShapeType();
+		}, TaskCreationOptions.None));
 		if (string.Equals(settings.AssociationPromptMode, "Never", StringComparison.OrdinalIgnoreCase))
 		{
 			return;
@@ -375,117 +316,145 @@ internal static class PlacementEnhancementService
 		{
 			if (settings.EnableStructuralAttachmentPrompts)
 			{
-				List<FeatureCandidate> reverseAttachmentCandidates = await FindAssociationCandidatesAsync(
-					createdFeature,
-					featuresCreatedByOperation,
-					settings.AssociationPlacementGroups,
-					Enumerable.Empty<string>(),
-					settings.StructuralAttachmentSearchDistance,
-					AssociationType.Attachment,
-					"Structural attachment",
-					createdFeatureIsAssociationSource: true);
-				reverseAttachmentCandidates = ExcludeExistingAssociationCandidates(createdFeature, reverseAttachmentCandidates, existingAssociations);
-				await PromptForMultipleAssociationsAsync(
-					createdFeature,
-					reverseAttachmentCandidates,
-					"Create structural attachments?",
-					"Create structural attachment associations for the nearby eligible features?");
+				await PromptForMultipleAssociationsAsync(candidates: ExcludeExistingAssociationCandidates(candidates: await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.AssociationPlacementGroups, Enumerable.Empty<string>(), settings.StructuralAttachmentSearchDistance, (AssociationType)3, "Structural attachment", createdFeatureIsAssociationSource: true), createdFeature: createdFeature, existingAssociations: existingAssociations), createdFeature: createdFeature, title: "Create structural attachments?", prompt: "Create structural attachment associations for the nearby eligible features?");
 			}
 			if (settings.EnableContainmentBoundaryPrompts && IsLineOrPolygonGeometry(createdFeature.Geometry))
 			{
-				List<FeatureCandidate> reverseContainmentCandidates = await FindAssociationCandidatesAsync(
-					createdFeature,
-					featuresCreatedByOperation,
-					settings.AssociationPlacementGroups,
-					Enumerable.Empty<string>(),
-					settings.ContainmentBoundarySearchDistance,
-					AssociationType.Containment,
-					"Contain in this structure container",
-					createdFeatureIsAssociationSource: true,
-					geometryPredicate: IsLineOrPointGeometry);
-				reverseContainmentCandidates = ExcludeExistingAssociationCandidates(createdFeature, reverseContainmentCandidates, existingAssociations);
-				await PromptForMultipleAssociationsAsync(
-					createdFeature,
-					reverseContainmentCandidates,
-					"Create containment associations?",
-					"Create containment associations for the nearby eligible features?");
+				await PromptForMultipleAssociationsAsync(candidates: ExcludeExistingAssociationCandidates(candidates: await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.AssociationPlacementGroups, Enumerable.Empty<string>(), settings.ContainmentBoundarySearchDistance, (AssociationType)2, "Contain in this structure container", createdFeatureIsAssociationSource: true, IsLineOrPointGeometry), createdFeature: createdFeature, existingAssociations: existingAssociations), createdFeature: createdFeature, title: "Create containment associations?", prompt: "Create containment associations for the nearby eligible features?");
 			}
 		}
 		if (!useRuleCatalogSearchScope && !settings.AssociationPlacementGroups.Contains(groupName))
 		{
 			if (settings.EnableStructuralAttachmentPrompts && settings.StructuralAttachmentTargetGroups.Contains(groupName))
 			{
-				List<FeatureCandidate> reverseAttachmentCandidates = await FindAssociationCandidatesAsync(
-					createdFeature,
-					featuresCreatedByOperation,
-					settings.AssociationPlacementGroups,
-					Enumerable.Empty<string>(),
-					settings.StructuralAttachmentSearchDistance,
-					AssociationType.Attachment,
-					"Structural attachment",
-					createdFeatureIsAssociationSource: true);
-				reverseAttachmentCandidates = ExcludeExistingAssociationCandidates(createdFeature, reverseAttachmentCandidates, existingAssociations);
-				await PromptForMultipleAssociationsAsync(
-					createdFeature,
-					reverseAttachmentCandidates,
-					"Create structural attachments?",
-					"Create structural attachment associations for the nearby eligible features?");
+				await PromptForMultipleAssociationsAsync(candidates: ExcludeExistingAssociationCandidates(candidates: await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.AssociationPlacementGroups, Enumerable.Empty<string>(), settings.StructuralAttachmentSearchDistance, (AssociationType)3, "Structural attachment", createdFeatureIsAssociationSource: true), createdFeature: createdFeature, existingAssociations: existingAssociations), createdFeature: createdFeature, title: "Create structural attachments?", prompt: "Create structural attachment associations for the nearby eligible features?");
 			}
 			if (settings.EnableContainmentBoundaryPrompts && IsContainmentContainerTarget(createdFeature, settings))
 			{
-				List<FeatureCandidate> reverseContainmentCandidates = await FindAssociationCandidatesAsync(
-					createdFeature,
-					featuresCreatedByOperation,
-					settings.AssociationPlacementGroups,
-					Enumerable.Empty<string>(),
-					settings.ContainmentBoundarySearchDistance,
-					AssociationType.Containment,
-					"Contain in this structure container",
-					createdFeatureIsAssociationSource: true,
-					geometryPredicate: IsLineOrPointGeometry);
-				reverseContainmentCandidates = ExcludeExistingAssociationCandidates(createdFeature, reverseContainmentCandidates, existingAssociations);
-				await PromptForMultipleAssociationsAsync(
-					createdFeature,
-					reverseContainmentCandidates,
-					"Create containment associations?",
-					"Create containment associations for the nearby eligible features?");
-			}
-			return;
-		}
-		if (settings.EnableStructuralAttachmentPrompts && (!createdFeatureIsLine || settings.EnableLineAssociationPrompts || settings.EnableLineStructuralAttachmentPrompts))
-		{
-			List<FeatureCandidate> attachmentCandidates = await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.StructuralAttachmentTargetGroups, settings.StructuralAttachmentTargetLayerNames, settings.StructuralAttachmentSearchDistance, AssociationType.Attachment, "Structural attachment");
-			attachmentCandidates = ExcludeExistingAssociationCandidates(createdFeature, attachmentCandidates, existingAssociations);
-			AssociationPromptResult attachmentResult = await PromptForAssociationAsync(createdFeature, attachmentCandidates, "Create structural attachment?", "Review the highlighted structural attachment candidate.");
-			if (attachmentResult.WasCreated && settings.StopAfterFirstSuccessfulAssociation)
-			{
-				return;
+				await PromptForMultipleAssociationsAsync(candidates: ExcludeExistingAssociationCandidates(candidates: await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.AssociationPlacementGroups, Enumerable.Empty<string>(), settings.ContainmentBoundarySearchDistance, (AssociationType)2, "Contain in this structure container", createdFeatureIsAssociationSource: true, IsLineOrPointGeometry), createdFeature: createdFeature, existingAssociations: existingAssociations), createdFeature: createdFeature, title: "Create containment associations?", prompt: "Create containment associations for the nearby eligible features?");
 			}
 		}
-		if (settings.EnableJunctionJunctionConnectivityPrompts && !createdFeatureIsLine)
-		{
-			List<FeatureCandidate> connectivityCandidates = await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.JunctionJunctionConnectivityTargetGroups, settings.JunctionJunctionConnectivityTargetLayerNames, settings.JunctionJunctionConnectivitySearchDistance, UtilityNetworkAssociationTypes.JunctionJunctionConnectivity, "Junction-junction connectivity");
-			connectivityCandidates = ExcludeExistingAssociationCandidates(createdFeature, connectivityCandidates, existingAssociations);
-			AssociationPromptResult connectivityResult = await PromptForAssociationAsync(createdFeature, connectivityCandidates, "Create junction-junction connectivity association?", "Review the highlighted junction-junction connectivity candidate.");
-			if (connectivityResult.WasCreated && settings.StopAfterFirstSuccessfulAssociation)
-			{
-				return;
-			}
-		}
-		if (settings.EnableContainmentPointPrompts || settings.EnableContainmentBoundaryPrompts)
+		else if ((!settings.EnableStructuralAttachmentPrompts || (createdFeatureIsLine && !settings.EnableLineAssociationPrompts && !settings.EnableLineStructuralAttachmentPrompts) || !(await PromptForAssociationAsync(candidates: ExcludeExistingAssociationCandidates(candidates: MergeUniqueCandidates(await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.StructuralAttachmentTargetGroups, settings.StructuralAttachmentTargetLayerNames, settings.StructuralAttachmentSearchDistance, (AssociationType)3, "Structural attachment"), await FindSelectedAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, (AssociationType)3, "Selected structural attachment")), createdFeature: createdFeature, existingAssociations: existingAssociations), createdFeature: createdFeature, singlePrompt: "Create structural attachment?", chooserPrompt: "Review the highlighted structural attachment candidate.")).WasCreated || !settings.StopAfterFirstSuccessfulAssociation) && (!settings.EnableJunctionJunctionConnectivityPrompts || createdFeatureIsLine || !(await PromptForAssociationAsync(candidates: ExcludeExistingAssociationCandidates(candidates: MergeUniqueCandidates(await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.JunctionJunctionConnectivityTargetGroups, settings.JunctionJunctionConnectivityTargetLayerNames, settings.JunctionJunctionConnectivitySearchDistance, (AssociationType)1, "Junction-junction connectivity"), await FindSelectedAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, (AssociationType)1, "Selected junction")), createdFeature: createdFeature, existingAssociations: existingAssociations), createdFeature: createdFeature, singlePrompt: "Create junction-junction connectivity association?", chooserPrompt: "Review the highlighted junction-junction connectivity candidate.")).WasCreated || !settings.StopAfterFirstSuccessfulAssociation) && (settings.EnableContainmentPointPrompts || settings.EnableContainmentBoundaryPrompts))
 		{
 			List<FeatureCandidate> containmentCandidates = new List<FeatureCandidate>();
 			if (settings.EnableContainmentPointPrompts && (!createdFeatureIsLine || settings.EnableLineAssociationPrompts || settings.EnableLineContainmentPointPrompts))
 			{
-				containmentCandidates.AddRange(await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.ContainmentPointTargetGroups, settings.ContainmentPointTargetLayerNames, settings.ContainmentPointSearchDistance, AssociationType.Containment, "Containment in structure point", geometryPredicate: IsPointGeometry));
+				List<FeatureCandidate> list = containmentCandidates;
+				list.AddRange(await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.ContainmentPointTargetGroups, settings.ContainmentPointTargetLayerNames, settings.ContainmentPointSearchDistance, (AssociationType)2, "Containment in structure point", createdFeatureIsAssociationSource: false, IsPointGeometry));
 			}
 			if (settings.EnableContainmentBoundaryPrompts && (!createdFeatureIsLine || settings.EnableLineContainmentBoundaryPrompts))
 			{
-				containmentCandidates.AddRange(await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.ContainmentBoundaryTargetGroups, settings.ContainmentBoundaryTargetLayerNames, settings.ContainmentBoundarySearchDistance, AssociationType.Containment, "Containment in structure container", geometryPredicate: IsLineOrPolygonGeometry));
+				List<FeatureCandidate> list2 = containmentCandidates;
+				list2.AddRange(await FindAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, settings.ContainmentBoundaryTargetGroups, settings.ContainmentBoundaryTargetLayerNames, settings.ContainmentBoundarySearchDistance, (AssociationType)2, "Containment in structure container", createdFeatureIsAssociationSource: false, IsLineOrPolygonGeometry));
 			}
-			containmentCandidates = ExcludeExistingAssociationCandidates(createdFeature, containmentCandidates, existingAssociations);
-			await PromptForAssociationAsync(createdFeature, containmentCandidates, "Create containment association?", "Review the highlighted containment candidate.");
+			IEnumerable<FeatureCandidate> first = containmentCandidates;
+			await PromptForAssociationAsync(candidates: ExcludeExistingAssociationCandidates(candidates: MergeUniqueCandidates(first, await FindSelectedAssociationCandidatesAsync(createdFeature, featuresCreatedByOperation, (AssociationType)2, "Selected containment target")), createdFeature: createdFeature, existingAssociations: existingAssociations), createdFeature: createdFeature, singlePrompt: "Create containment association?", chooserPrompt: "Review the highlighted containment candidate.");
 		}
+	}
+
+	private static async Task<List<FeatureCandidate>> FindSelectedAssociationCandidatesAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, AssociationType associationType, string labelPrefix)
+	{
+		//IL_0020: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0021: Unknown result type (might be due to invalid IL or missing references)
+		if (!AssociationRuleCatalog.Current.HasRules || createdFeature?.Layer == null)
+		{
+			return new List<FeatureCandidate>();
+		}
+		FeatureLayerInfo createdFeatureInfo = await GetPlacedFeatureInfoAsync(createdFeature);
+		if (createdFeatureInfo == null)
+		{
+			return new List<FeatureCandidate>();
+		}
+		HashSet<string> createdFeatureKeys = BuildCreatedFeatureKeySet(featuresCreatedByOperation);
+		return await QueuedTask.Run<List<FeatureCandidate>>((Func<List<FeatureCandidate>>)delegate
+		{
+			//IL_006d: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0072: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0082: Expected O, but got Unknown
+			//IL_0091: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0098: Expected O, but got Unknown
+			//IL_00ae: Unknown result type (might be due to invalid IL or missing references)
+			//IL_01a6: Unknown result type (might be due to invalid IL or missing references)
+			List<FeatureCandidate> list = new List<FeatureCandidate>();
+			MapView active = MapView.Active;
+			object obj;
+			if (active == null)
+			{
+				obj = null;
+			}
+			else
+			{
+				Map map = active.Map;
+				obj = ((map != null) ? map.GetLayersAsFlattenedList().OfType<FeatureLayer>() : null);
+			}
+			if (obj == null)
+			{
+				obj = Enumerable.Empty<FeatureLayer>();
+			}
+			foreach (FeatureLayer item in (IEnumerable<FeatureLayer>)obj)
+			{
+				List<long> list2 = ((BasicFeatureLayer)item).GetSelection().GetObjectIDs().ToList();
+				if (list2.Count != 0)
+				{
+					RowCursor val = ((BasicFeatureLayer)item).Search(new QueryFilter
+					{
+						ObjectIDs = list2
+					}, (TimeRange)null, (RangeExtent)null, (CIMFloorFilterSettings)null);
+					try
+					{
+						while (val.MoveNext())
+						{
+							Feature val2 = (Feature)val.Current;
+							try
+							{
+								if (!IsFeatureInSet(createdFeatureKeys, item, ((Row)val2).GetObjectID()) && IsAllowedAssociationCandidate(associationType, item, val2, createdFeatureInfo, createdFeatureIsAssociationSource: false))
+								{
+									Geometry shape = val2.GetShape();
+									string owningGroupName = MapMemberLookupService.GetOwningGroupName(item);
+									list.Add(new FeatureCandidate
+									{
+										Layer = item,
+										ObjectID = ((Row)val2).GetObjectID(),
+										Geometry = shape,
+										Label = $"{labelPrefix}: {owningGroupName}/{((MapMember)item).Name} (OID {((Row)val2).GetObjectID()})",
+										Distance = GetCompatibleDistance(createdFeature.Geometry, shape),
+										AssociationType = associationType
+									});
+								}
+							}
+							finally
+							{
+								((IDisposable)val2)?.Dispose();
+							}
+						}
+					}
+					finally
+					{
+						((IDisposable)val)?.Dispose();
+					}
+				}
+			}
+			return list;
+		}, TaskCreationOptions.None);
+	}
+
+	private static List<FeatureCandidate> MergeUniqueCandidates(IEnumerable<FeatureCandidate> first, IEnumerable<FeatureCandidate> second)
+	{
+		return (from @group in (first ?? Enumerable.Empty<FeatureCandidate>()).Concat(second ?? Enumerable.Empty<FeatureCandidate>()).GroupBy<FeatureCandidate, string>(delegate(FeatureCandidate candidate)
+			{
+				//IL_004e: Unknown result type (might be due to invalid IL or missing references)
+				DefaultInterpolatedStringHandler defaultInterpolatedStringHandler = new DefaultInterpolatedStringHandler(2, 3);
+				FeatureLayer layer = candidate.Layer;
+				defaultInterpolatedStringHandler.AppendFormatted((layer != null) ? ((MapMember)layer).URI : null);
+				defaultInterpolatedStringHandler.AppendLiteral("|");
+				defaultInterpolatedStringHandler.AppendFormatted(candidate.ObjectID);
+				defaultInterpolatedStringHandler.AppendLiteral("|");
+				defaultInterpolatedStringHandler.AppendFormatted<AssociationType>(candidate.AssociationType);
+				return defaultInterpolatedStringHandler.ToStringAndClear();
+			}, StringComparer.Ordinal)
+			select @group.OrderBy((FeatureCandidate candidate) => candidate.Distance).First() into candidate
+			orderby candidate.Distance
+			select candidate).ToList();
 	}
 
 	private static List<FeatureCandidate> ExcludeExistingAssociationCandidates(PlacedFeatureContext createdFeature, List<FeatureCandidate> candidates, IReadOnlyList<ExistingAssociationPair> existingAssociations)
@@ -494,23 +463,35 @@ internal static class PlacementEnhancementService
 		{
 			return candidates ?? new List<FeatureCandidate>();
 		}
-		return candidates
-			.Where((FeatureCandidate candidate) => !existingAssociations.Any((ExistingAssociationPair existingAssociation) =>
-				existingAssociation.Matches(candidate.AssociationType, createdFeature.Layer, createdFeature.ObjectID, candidate.Layer, candidate.ObjectID)))
-			.ToList();
+		return candidates.Where((FeatureCandidate candidate) => !existingAssociations.Any(delegate(ExistingAssociationPair existingAssociation)
+		{
+			//IL_0007: Unknown result type (might be due to invalid IL or missing references)
+			return existingAssociation.Matches(candidate.AssociationType, (MapMember)(object)createdFeature.Layer, createdFeature.ObjectID, (MapMember)(object)candidate.Layer, candidate.ObjectID);
+		})).ToList();
 	}
 
 	private static bool IsContainmentContainerTarget(PlacedFeatureContext createdFeature, TemplateEditorSettings settings)
 	{
-		string groupName = createdFeature?.Template?.GroupLayer?.ToUpperInvariant();
-		if (settings?.ContainmentBoundaryTargetGroups?.Contains(groupName) != true)
+		string item = createdFeature?.Template?.GroupLayer?.ToUpperInvariant();
+		if (settings == null || settings.ContainmentBoundaryTargetGroups?.Contains(item) != true)
 		{
 			return false;
 		}
-		List<string> targetLayerNames = settings.ContainmentBoundaryTargetLayerNames ?? new List<string>();
-		return targetLayerNames.Count == 0 ||
-			targetLayerNames.Contains(createdFeature.Layer?.Name?.ToUpperInvariant()) ||
-			targetLayerNames.Contains(createdFeature.Template?.SubtypeLayer?.ToUpperInvariant());
+		List<string> list = settings.ContainmentBoundaryTargetLayerNames ?? new List<string>();
+		int result;
+		if (list.Count != 0)
+		{
+			FeatureLayer layer = createdFeature.Layer;
+			if (!list.Contains((layer == null) ? null : ((MapMember)layer).Name?.ToUpperInvariant()))
+			{
+				result = (list.Contains(createdFeature.Template?.SubtypeLayer?.ToUpperInvariant()) ? 1 : 0);
+				goto IL_00c6;
+			}
+		}
+		result = 1;
+		goto IL_00c6;
+		IL_00c6:
+		return (byte)result != 0;
 	}
 
 	private static async Task<AssociationPromptResult> PromptForAssociationAsync(PlacedFeatureContext createdFeature, List<FeatureCandidate> candidates, string singlePrompt, string chooserPrompt)
@@ -520,19 +501,17 @@ internal static class PlacementEnhancementService
 			return AssociationPromptResult.NotAttempted;
 		}
 		TemplateEditorSettings settings = AddinConfiguration.Settings;
-		FeatureCandidate chosenCandidate = candidates.Count == 1 ? candidates[0] : await ChooseCandidateAsync(createdFeature, "Choose Association Target", chooserPrompt, candidates, isSplitCandidate: false);
+		FeatureCandidate featureCandidate = ((candidates.Count != 1) ? (await ChooseCandidateAsync(createdFeature, "Choose Association Target", chooserPrompt, candidates, isSplitCandidate: false)) : candidates[0]);
+		FeatureCandidate chosenCandidate = featureCandidate;
 		if (chosenCandidate == null)
 		{
 			return AssociationPromptResult.NotAttempted;
 		}
-		bool autoCreate = candidates.Count == 1 &&
-			(string.Equals(settings?.AssociationPromptMode, "AutoWhenOne", StringComparison.OrdinalIgnoreCase) ||
-				string.Equals(settings?.AssociationPromptMode, "ReviewMultipleOnly", StringComparison.OrdinalIgnoreCase));
-		if (!autoCreate)
+		if (candidates.Count != 1 || (!string.Equals(settings?.AssociationPromptMode, "AutoWhenOne", StringComparison.OrdinalIgnoreCase) && !string.Equals(settings?.AssociationPromptMode, "ReviewMultipleOnly", StringComparison.OrdinalIgnoreCase)))
 		{
 			using (await ShowCandidateContextAsync(createdFeature, chosenCandidate, isSplitCandidate: false))
 			{
-				if (!await ShowConfirmationAsync(singlePrompt + "\n\n" + chosenCandidate.Label, "Template Editor", "Create Association", "Skip"))
+				if (!(await ShowConfirmationAsync(singlePrompt + "\n\n" + chosenCandidate.Label, "Template Editor", "Create Association", "Skip")))
 				{
 					return AssociationPromptResult.NotAttempted;
 				}
@@ -558,14 +537,14 @@ internal static class PlacementEnhancementService
 		}
 		if (candidates.Count == 1)
 		{
-			AssociationPromptResult result = await PromptForAssociationAsync(createdFeature, candidates, title, prompt);
-			return result.WasCreated ? 1 : 0;
+			return (await PromptForAssociationAsync(createdFeature, candidates, title, prompt)).WasCreated ? 1 : 0;
 		}
-		string candidateSummary = string.Join("\n", candidates.Take(12).Select((FeatureCandidate candidate) => "  - " + candidate.Label));
-		string additionalText = candidates.Count > 12 ? $"\n  - {candidates.Count - 12} more..." : string.Empty;
+		string candidateSummary = string.Join("\n", from featureCandidate in candidates.Take(12)
+			select "  - " + featureCandidate.Label);
+		string additionalText = ((candidates.Count > 12) ? $"\n  - {candidates.Count - 12} more..." : string.Empty);
 		using (await ShowCandidateContextAsync(createdFeature, candidates, isSplitCandidate: false))
 		{
-			if (!await ShowConfirmationAsync($"{prompt}\n\n{candidates.Count} candidate(s):\n{candidateSummary}{additionalText}", title, "Create Associations", "Skip"))
+			if (!(await ShowConfirmationAsync($"{prompt}\n\n{candidates.Count} candidate(s):\n{candidateSummary}{additionalText}", title, "Create Associations", "Skip")))
 			{
 				return 0;
 			}
@@ -581,56 +560,44 @@ internal static class PlacementEnhancementService
 			}
 			catch (Exception ex)
 			{
-				failures.Add($"{candidate.Label}: {ex.Message}");
+				failures.Add(candidate.Label + ": " + ex.Message);
 			}
 		}
 		if (failures.Count > 0)
 		{
 			string displayedFailures = string.Join("\n", failures.Take(8));
-			string additionalFailureText = failures.Count > 8 ? $"\n\n{failures.Count - 8} more association failure(s) were not shown." : string.Empty;
-			await ShowMessageBoxAsync(
-				$"{createdCount} association(s) were created, but {failures.Count} failed.\n\n{displayedFailures}{additionalFailureText}",
-				"Template Editor",
-				MessageBoxButton.OK);
+			string additionalFailureText = ((failures.Count > 8) ? $"\n\n{failures.Count - 8} more association failure(s) were not shown." : string.Empty);
+			await ShowMessageBoxAsync($"{createdCount} association(s) were created, but {failures.Count} failed.\n\n{displayedFailures}{additionalFailureText}", "Template Editor", MessageBoxButton.OK);
 		}
 		return createdCount;
 	}
 
 	private static async Task<List<FeatureCandidate>> FindSplitCandidatesAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, MapPoint point)
 	{
-		if (!IsSplitAllowedForPlacedFeature(createdFeature))
+		if (createdFeature == null || point == null)
 		{
 			return new List<FeatureCandidate>();
 		}
 		TemplateEditorSettings settings = AddinConfiguration.Settings;
-		Geometry searchGeometry = await CreateSearchGeometryAsync(point, settings.SplitSearchDistance);
-		if (!await HasNearbyFeatureCandidatesAsync(settings.SplitTargetLineGroups, settings.SplitTargetLayerNames, searchGeometry, layerContextPredicate: IsElectricLineLayerContext))
-		{
-			return new List<FeatureCandidate>();
-		}
+		Geometry searchGeometry = await CreateSearchGeometryAsync((Geometry)(object)point, settings.SplitSearchDistance);
 		HashSet<string> createdFeatureKeys = BuildCreatedFeatureKeySet(featuresCreatedByOperation);
-		List<FeatureCandidate> candidates = await FindFeatureCandidatesAsync(settings.SplitTargetLineGroups, settings.SplitTargetLayerNames, searchGeometry, createdFeature.Geometry, delegate(FeatureLayer layer, Feature feature, Geometry geometry)
-		{
-			return !IsFeatureInSet(createdFeatureKeys, layer, feature.GetObjectID()) &&
-				(!settings.SplitOnlyInteriorCandidates || IsInteriorSplitCandidate(geometry, point));
-		}, "Line", false, settings.MaxSplitCandidatesToReview, layerContextPredicate: IsElectricLineLayerContext);
-		return candidates;
+		return await FindFeatureCandidatesAsync(settings.SplitTargetLineGroups, settings.SplitTargetLayerNames, searchGeometry, point, (FeatureLayer layer, Feature feature, Geometry geometry) => !IsFeatureInSet(createdFeatureKeys, layer, ((Row)feature).GetObjectID()) && (!settings.SplitOnlyInteriorCandidates || IsInteriorSplitCandidate(geometry, point)), "Line", useRuleCatalogSearchScope: false, settings.MaxSplitCandidatesToReview);
 	}
 
 	private static HashSet<string> BuildCreatedFeatureKeySet(IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation)
 	{
-		HashSet<string> keys = new HashSet<string>(StringComparer.Ordinal);
+		HashSet<string> hashSet = new HashSet<string>(StringComparer.Ordinal);
 		if (featuresCreatedByOperation != null)
 		{
-			foreach (PlacedFeatureContext feature in featuresCreatedByOperation)
+			foreach (PlacedFeatureContext item in featuresCreatedByOperation)
 			{
-				if (feature?.Layer != null && feature.ObjectID > 0)
+				if (item?.Layer != null && item.ObjectID > 0)
 				{
-					keys.Add($"{feature.Layer.URI}|{feature.ObjectID}");
+					hashSet.Add($"{((MapMember)item.Layer).URI}|{item.ObjectID}");
 				}
 			}
 		}
-		return keys;
+		return hashSet;
 	}
 
 	private static bool IsFeatureInSet(HashSet<string> createdFeatureKeys, FeatureLayer layer, long objectId)
@@ -639,20 +606,22 @@ internal static class PlacementEnhancementService
 		{
 			return false;
 		}
-		string key = $"{layer.URI}|{objectId}";
-		return createdFeatureKeys.Contains(key);
+		string item = $"{((MapMember)layer).URI}|{objectId}";
+		return createdFeatureKeys.Contains(item);
 	}
 
 	private static bool WasCreatedByOperation(IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, FeatureLayer layer, long objectId)
 	{
-		return featuresCreatedByOperation != null && featuresCreatedByOperation.Any((PlacedFeatureContext feature) => feature?.Layer == layer && feature.ObjectID == objectId);
+		return featuresCreatedByOperation?.Any((PlacedFeatureContext feature) => feature?.Layer == layer && feature.ObjectID == objectId) ?? false;
 	}
 
 	private static async Task<List<FeatureCandidate>> FindAssociationCandidatesAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, IEnumerable<string> targetGroups, IEnumerable<string> targetLayerNames, double searchDistance, AssociationType associationType, string labelPrefix, bool createdFeatureIsAssociationSource = false, Func<Geometry, bool> geometryPredicate = null)
 	{
+		//IL_0036: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0038: Unknown result type (might be due to invalid IL or missing references)
 		Geometry searchGeometry = await CreateSearchGeometryAsync(createdFeature.Geometry, searchDistance);
 		bool useRuleCatalogSearchScope = AssociationRuleCatalog.Current.HasRules;
-		if (!await HasNearbyFeatureCandidatesAsync(targetGroups, targetLayerNames, searchGeometry, useRuleCatalogSearchScope))
+		if (!AssociationRuleCatalog.Current.IsAvailable)
 		{
 			return new List<FeatureCandidate>();
 		}
@@ -668,15 +637,20 @@ internal static class PlacementEnhancementService
 				{
 					return new List<FeatureCandidate>();
 				}
-				layerContextPredicate = (LayerSearchContext context) => allowedCounterpartTables.Contains(NormalizeAssociationName(ResolveUtilityNetworkTableName(context.OwningGroupName, context.Layer?.Name)));
+				layerContextPredicate = delegate(LayerSearchContext context)
+				{
+					HashSet<string> hashSet = allowedCounterpartTables;
+					string owningGroupName = context.OwningGroupName;
+					FeatureLayer layer = context.Layer;
+					return hashSet.Contains(NormalizeAssociationName(ResolveUtilityNetworkTableName(owningGroupName, (layer != null) ? ((MapMember)layer).Name : null)));
+				};
 			}
 		}
 		HashSet<string> createdFeatureKeys = BuildCreatedFeatureKeySet(featuresCreatedByOperation);
 		List<FeatureCandidate> candidates = await FindFeatureCandidatesAsync(targetGroups, targetLayerNames, searchGeometry, createdFeature.Geometry, delegate(FeatureLayer layer, Feature feature, Geometry geometry)
 		{
-			return (geometryPredicate == null || geometryPredicate(geometry)) &&
-				!IsFeatureInSet(createdFeatureKeys, layer, feature.GetObjectID()) &&
-				IsAllowedAssociationCandidate(associationType, layer, feature, createdFeatureInfo, createdFeatureIsAssociationSource);
+			//IL_002c: Unknown result type (might be due to invalid IL or missing references)
+			return (geometryPredicate == null || geometryPredicate(geometry)) && !IsFeatureInSet(createdFeatureKeys, layer, ((Row)feature).GetObjectID()) && IsAllowedAssociationCandidate(associationType, layer, feature, createdFeatureInfo, createdFeatureIsAssociationSource);
 		}, labelPrefix, useRuleCatalogSearchScope, int.MaxValue, layerContextPredicate);
 		foreach (FeatureCandidate candidate in candidates)
 		{
@@ -707,33 +681,52 @@ internal static class PlacementEnhancementService
 		{
 			return null;
 		}
-		return await QueuedTask.Run(delegate
+		return await QueuedTask.Run<FeatureLayerInfo>((Func<FeatureLayerInfo>)delegate
 		{
-			QueryFilter queryFilter = new QueryFilter
+			//IL_0001: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0006: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0025: Expected O, but got Unknown
+			//IL_0053: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0059: Expected O, but got Unknown
+			QueryFilter val = new QueryFilter
 			{
 				ObjectIDs = new List<long> { createdFeature.ObjectID }
 			};
-			using RowCursor rowCursor = createdFeature.Layer.Search(queryFilter);
-			if (!rowCursor.MoveNext())
+			RowCursor val2 = ((BasicFeatureLayer)createdFeature.Layer).Search(val, (TimeRange)null, (RangeExtent)null, (CIMFloorFilterSettings)null);
+			try
 			{
-				return null;
+				if (val2.MoveNext())
+				{
+					Feature val3 = (Feature)val2.Current;
+					try
+					{
+						return GetFeatureLayerInfo(createdFeature.Layer, val3);
+					}
+					finally
+					{
+						((IDisposable)val3)?.Dispose();
+					}
+				}
+				return (FeatureLayerInfo)null;
 			}
-			using Feature feature = (Feature)rowCursor.Current;
-			return GetFeatureLayerInfo(createdFeature.Layer, feature);
-		});
+			finally
+			{
+				((IDisposable)val2)?.Dispose();
+			}
+		}, TaskCreationOptions.None);
 	}
 
 	private static bool IsAllowedAssociationCandidate(AssociationType associationType, FeatureLayer candidateLayer, Feature candidateFeature, FeatureLayerInfo createdFeatureInfo, bool createdFeatureIsAssociationSource)
 	{
-		AssociationRuleCatalog catalog = AssociationRuleCatalog.Current;
-		if (!catalog.HasRules || createdFeatureInfo == null || candidateFeature == null)
+		//IL_003a: Unknown result type (might be due to invalid IL or missing references)
+		//IL_002f: Unknown result type (might be due to invalid IL or missing references)
+		AssociationRuleCatalog current = AssociationRuleCatalog.Current;
+		if (!current.HasRules || createdFeatureInfo == null || candidateFeature == null)
 		{
 			return true;
 		}
-		FeatureLayerInfo candidateInfo = GetFeatureLayerInfo(candidateLayer, candidateFeature);
-		return createdFeatureIsAssociationSource
-			? catalog.Allows(associationType, createdFeatureInfo, candidateInfo)
-			: catalog.Allows(associationType, candidateInfo, createdFeatureInfo);
+		FeatureLayerInfo featureLayerInfo = GetFeatureLayerInfo(candidateLayer, candidateFeature);
+		return createdFeatureIsAssociationSource ? current.Allows(associationType, createdFeatureInfo, featureLayerInfo) : current.Allows(associationType, featureLayerInfo, createdFeatureInfo);
 	}
 
 	private static FeatureLayerInfo GetFeatureLayerInfo(FeatureLayer layer, Feature feature)
@@ -742,114 +735,108 @@ internal static class PlacementEnhancementService
 		{
 			return null;
 		}
-
-		// Optimize: Cache layer metadata (definition, fields, owning group) per layer to avoid repeated queries
-		string layerUri = layer.URI;
-		LayerMetadata metadata;
-
+		string uRI = ((MapMember)layer).URI;
+		LayerMetadata value;
 		lock (CacheLock)
 		{
-			if (!LayerMetadataCache.TryGetValue(layerUri, out metadata))
+			if (!LayerMetadataCache.TryGetValue(uRI, out value))
 			{
-				// First time for this layer - query and cache the metadata
-				TableDefinition definition = layer.GetFeatureClass().GetDefinition() as TableDefinition;
-				metadata = new LayerMetadata
+				TableDefinition definition = (TableDefinition)(object)layer.GetFeatureClass().GetDefinition();
+				value = new LayerMetadata
 				{
 					Definition = definition,
-					Fields = definition?.GetFields()?.ToList() ?? new List<Field>(),
+					Fields = (((definition == null) ? null : definition.GetFields()?.ToList()) ?? new List<Field>()),
 					OwningGroupName = MapMemberLookupService.GetOwningGroupName(layer)
 				};
-				LayerMetadataCache[layerUri] = metadata;
+				LayerMetadataCache[uRI] = value;
 			}
 		}
-
-		string assetGroup = GetLayerAssetGroupName(layer, metadata.OwningGroupName, feature, metadata.Fields, metadata.Definition);
-		string assetType = GetResolvedFieldText(feature, metadata.Fields, metadata.Definition, "ASSETTYPE");
+		string layerAssetGroupName = GetLayerAssetGroupName(layer, value.OwningGroupName, feature, value.Fields, value.Definition);
+		string resolvedFieldText = GetResolvedFieldText(feature, value.Fields, value.Definition, "ASSETTYPE");
 		return new FeatureLayerInfo
 		{
-			TableName = ResolveUtilityNetworkTableName(metadata.OwningGroupName, layer.Name),
-			AssetGroup = assetGroup,
-			AssetType = assetType
+			TableName = ResolveUtilityNetworkTableName(value.OwningGroupName, ((MapMember)layer).Name),
+			AssetGroup = layerAssetGroupName,
+			AssetType = resolvedFieldText
 		};
 	}
 
 	private static string GetLayerAssetGroupName(FeatureLayer layer, string owningGroupName, Feature feature, IReadOnlyList<Field> fields, TableDefinition definition)
 	{
-		if (((Layer)layer).Parent is SubtypeGroupLayer && !string.Equals(layer.Name, owningGroupName, StringComparison.OrdinalIgnoreCase))
+		if (((Layer)layer).Parent is SubtypeGroupLayer && !string.Equals(((MapMember)layer).Name, owningGroupName, StringComparison.OrdinalIgnoreCase))
 		{
-			return layer.Name;
+			return ((MapMember)layer).Name;
 		}
-		string assetGroup = GetResolvedFieldText(feature, fields, definition, "ASSETGROUP");
-		return string.IsNullOrWhiteSpace(assetGroup) ? layer.Name : assetGroup;
+		string resolvedFieldText = GetResolvedFieldText(feature, fields, definition, "ASSETGROUP");
+		return string.IsNullOrWhiteSpace(resolvedFieldText) ? ((MapMember)layer).Name : resolvedFieldText;
 	}
 
 	private static string GetResolvedFieldText(Feature feature, IReadOnlyList<Field> fields, TableDefinition definition, string requestedFieldName)
 	{
-		Field field = fields.FirstOrDefault((Field candidate) => string.Equals(candidate.Name, requestedFieldName, StringComparison.OrdinalIgnoreCase));
-		if (field == null)
+		Field val = fields.FirstOrDefault((Field candidate) => string.Equals(candidate.Name, requestedFieldName, StringComparison.OrdinalIgnoreCase));
+		if (val == null)
 		{
 			return null;
 		}
-		object value = feature[field.Name];
-		if (value == null || value == DBNull.Value)
+		object obj = ((Row)feature)[val.Name];
+		if (obj == null || obj == DBNull.Value)
 		{
 			return null;
 		}
-		DataSubtype subtype = FeatureInfoCache.GetSubtype(definition, feature, definition?.GetName());
-		string cacheKeyPrefix = $"{definition?.GetName()}:{field.Name}:";
-		string domainDescription = FeatureInfoCache.GetDomainDescription(field.GetDomain(subtype), value, cacheKeyPrefix) ?? FeatureInfoCache.GetDomainDescription(field.GetDomain((DataSubtype)null), value, cacheKeyPrefix);
-		return string.IsNullOrWhiteSpace(domainDescription) ? Convert.ToString(value) : domainDescription;
+		Subtype subtype = FeatureInfoCache.GetSubtype(definition, feature, (definition != null) ? ((Definition)definition).GetName() : null);
+		string cacheKeyPrefix = ((definition != null) ? ((Definition)definition).GetName() : null) + ":" + val.Name + ":";
+		string text = FeatureInfoCache.GetDomainDescription(val.GetDomain(subtype), obj, cacheKeyPrefix) ?? FeatureInfoCache.GetDomainDescription(val.GetDomain((Subtype)null), obj, cacheKeyPrefix);
+		return string.IsNullOrWhiteSpace(text) ? Convert.ToString(obj) : text;
 	}
 
 	private static string ResolveUtilityNetworkTableName(string owningGroupName, string layerName)
 	{
-		string normalizedName = NormalizeAssociationName(owningGroupName) ?? NormalizeAssociationName(layerName);
-		if (string.IsNullOrWhiteSpace(normalizedName))
+		string text = NormalizeAssociationName(owningGroupName) ?? NormalizeAssociationName(layerName);
+		if (string.IsNullOrWhiteSpace(text))
 		{
 			return owningGroupName ?? layerName;
 		}
-		// These names normalize common Esri electric utility network table/layer labels used by the rule JSON.
-		if (normalizedName.Contains("ELECTRICASSEMBLY"))
+		if (text.Contains("ELECTRICASSEMBLY"))
 		{
 			return "ElectricAssembly";
 		}
-		if (normalizedName.Contains("ELECTRICDEVICE"))
+		if (text.Contains("ELECTRICDEVICE"))
 		{
 			return "ElectricDevice";
 		}
-		if (normalizedName.Contains("ELECTRICJUNCTIONOBJECT"))
+		if (text.Contains("ELECTRICJUNCTIONOBJECT"))
 		{
 			return "ElectricJunctionObject";
 		}
-		if (normalizedName.Contains("ELECTRICEDGEOBJECT"))
+		if (text.Contains("ELECTRICEDGEOBJECT"))
 		{
 			return "ElectricEdgeObject";
 		}
-		if (normalizedName.Contains("ELECTRICJUNCTION"))
+		if (text.Contains("ELECTRICJUNCTION"))
 		{
 			return "ElectricJunction";
 		}
-		if (normalizedName.Contains("ELECTRICLINE"))
+		if (text.Contains("ELECTRICLINE"))
 		{
 			return "ElectricLine";
 		}
-		if (normalizedName.Contains("STRUCTUREJUNCTIONOBJECT"))
+		if (text.Contains("STRUCTUREJUNCTIONOBJECT"))
 		{
 			return "StructureJunctionObject";
 		}
-		if (normalizedName.Contains("STRUCTUREEDGEOBJECT"))
+		if (text.Contains("STRUCTUREEDGEOBJECT"))
 		{
 			return "StructureEdgeObject";
 		}
-		if (normalizedName.Contains("STRUCTUREBOUNDARY"))
+		if (text.Contains("STRUCTUREBOUNDARY"))
 		{
 			return "StructureBoundary";
 		}
-		if (normalizedName.Contains("STRUCTUREJUNCTION"))
+		if (text.Contains("STRUCTUREJUNCTION"))
 		{
 			return "StructureJunction";
 		}
-		if (normalizedName.Contains("STRUCTURELINE"))
+		if (text.Contains("STRUCTURELINE"))
 		{
 			return "StructureLine";
 		}
@@ -862,13 +849,25 @@ internal static class PlacementEnhancementService
 		{
 			return null;
 		}
-		return value.Replace(" ", string.Empty).Replace("-", string.Empty).Replace("_", string.Empty).ToUpperInvariant();
+		return value.Replace(" ", string.Empty).Replace("-", string.Empty).Replace("_", string.Empty)
+			.ToUpperInvariant();
 	}
 
 	private static bool IsSplitAllowedForPlacedFeature(PlacedFeatureContext createdFeature)
 	{
-		string sourceTableName = ResolveUtilityNetworkTableName(createdFeature?.Template?.GroupLayer, createdFeature?.Layer?.Name);
-		return string.Equals(sourceTableName, "ElectricDevice", StringComparison.OrdinalIgnoreCase);
+		string owningGroupName = createdFeature?.Template?.GroupLayer;
+		object layerName;
+		if (createdFeature == null)
+		{
+			layerName = null;
+		}
+		else
+		{
+			FeatureLayer layer = createdFeature.Layer;
+			layerName = ((layer != null) ? ((MapMember)layer).Name : null);
+		}
+		string a = ResolveUtilityNetworkTableName(owningGroupName, (string)layerName);
+		return string.Equals(a, "ElectricDevice", StringComparison.OrdinalIgnoreCase) || string.Equals(a, "ElectricJunction", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static bool IsElectricLineLayerContext(LayerSearchContext context)
@@ -877,102 +876,56 @@ internal static class PlacementEnhancementService
 		{
 			return false;
 		}
-		string tableName = ResolveUtilityNetworkTableName(context.OwningGroupName, context.Layer.Name);
-		return string.Equals(tableName, "ElectricLine", StringComparison.OrdinalIgnoreCase);
-	}
-
-	private static async Task<bool> HasNearbyFeatureCandidatesAsync(IEnumerable<string> targetGroupNames, IEnumerable<string> targetLayerNames, Geometry searchGeometry, bool useRuleCatalogSearchScope = false, Func<LayerSearchContext, bool> layerContextPredicate = null)
-	{
-		if (MapView.Active == null || searchGeometry == null)
-		{
-			return false;
-		}
-		List<LayerSearchContext> layerContexts = BuildLayerSearchContexts(targetGroupNames, targetLayerNames, useRuleCatalogSearchScope, layerContextPredicate);
-		if (layerContexts.Count == 0)
-		{
-			return false;
-		}
-		return await QueuedTask.Run(delegate
-		{
-			foreach (LayerSearchContext layerContext in layerContexts)
-			{
-				FeatureLayer layer = layerContext.Layer;
-				SpatialReference layerSpatialReference = GetLayerSpatialReference(layer);
-				Geometry layerSearchGeometry;
-				try
-				{
-					layerSearchGeometry = ProjectGeometry(searchGeometry, layerSpatialReference);
-				}
-				catch
-				{
-					continue;
-				}
-				SpatialQueryFilter filter = new SpatialQueryFilter
-				{
-					FilterGeometry = layerSearchGeometry,
-					SpatialRelationship = SpatialRelationship.Intersects,
-					SubFields = "OBJECTID"
-				};
-				using RowCursor cursor = layer.Search(filter);
-				if (cursor.MoveNext())
-				{
-					return true;
-				}
-			}
-			return false;
-		});
+		string a = ResolveUtilityNetworkTableName(context.OwningGroupName, ((MapMember)context.Layer).Name);
+		return string.Equals(a, "ElectricLine", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static List<LayerSearchContext> BuildLayerSearchContexts(IEnumerable<string> targetGroupNames, IEnumerable<string> targetLayerNames, bool useRuleCatalogSearchScope, Func<LayerSearchContext, bool> layerContextPredicate)
 	{
-		HashSet<string> targetGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		if (targetGroupNames != null)
 		{
-			foreach (string name in targetGroupNames)
+			foreach (string targetGroupName in targetGroupNames)
 			{
-				if (!string.IsNullOrWhiteSpace(name))
+				if (!string.IsNullOrWhiteSpace(targetGroupName))
 				{
-					targetGroups.Add(name.ToUpperInvariant());
+					hashSet.Add(targetGroupName.ToUpperInvariant());
 				}
 			}
 		}
-		HashSet<string> targetLayers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		HashSet<string> hashSet2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		if (targetLayerNames != null)
 		{
-			foreach (string name in targetLayerNames)
+			foreach (string targetLayerName in targetLayerNames)
 			{
-				if (!string.IsNullOrWhiteSpace(name))
+				if (!string.IsNullOrWhiteSpace(targetLayerName))
 				{
-					targetLayers.Add(name.ToUpperInvariant());
+					hashSet2.Add(targetLayerName.ToUpperInvariant());
 				}
 			}
 		}
-		if (!useRuleCatalogSearchScope && targetGroups.Count == 0)
+		if (!useRuleCatalogSearchScope && hashSet.Count == 0)
 		{
 			return new List<LayerSearchContext>();
 		}
-		IEnumerable<FeatureLayer> searchLayers = useRuleCatalogSearchScope
-			? MapView.Active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>()
-			: MapMemberLookupService.GetFeatureLayersForGroups(targetGroups);
-		List<LayerSearchContext> layerContexts = new List<LayerSearchContext>();
-		foreach (FeatureLayer layer in searchLayers)
+		IEnumerable<FeatureLayer> enumerable = (useRuleCatalogSearchScope ? MapView.Active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>() : MapMemberLookupService.GetFeatureLayersForGroups(hashSet));
+		List<LayerSearchContext> list = new List<LayerSearchContext>();
+		foreach (FeatureLayer item in enumerable)
 		{
-			if (!useRuleCatalogSearchScope && targetLayers.Count > 0 && !targetLayers.Contains(layer.Name.ToUpperInvariant()))
+			if (useRuleCatalogSearchScope || hashSet2.Count <= 0 || hashSet2.Contains(((MapMember)item).Name.ToUpperInvariant()))
 			{
-				continue;
+				LayerSearchContext layerSearchContext = new LayerSearchContext
+				{
+					Layer = item,
+					OwningGroupName = MapMemberLookupService.GetOwningGroupName(item)
+				};
+				if (layerContextPredicate == null || layerContextPredicate(layerSearchContext))
+				{
+					list.Add(layerSearchContext);
+				}
 			}
-			LayerSearchContext context = new LayerSearchContext
-			{
-				Layer = layer,
-				OwningGroupName = MapMemberLookupService.GetOwningGroupName(layer)
-			};
-			if (layerContextPredicate != null && !layerContextPredicate(context))
-			{
-				continue;
-			}
-			layerContexts.Add(context);
 		}
-		return layerContexts;
+		return list;
 	}
 
 	private static async Task<List<FeatureCandidate>> FindFeatureCandidatesAsync(IEnumerable<string> targetGroupNames, IEnumerable<string> targetLayerNames, Geometry searchGeometry, Geometry sourceGeometry, Func<FeatureLayer, Feature, Geometry, bool> includePredicate, string labelPrefix, bool useRuleCatalogSearchScope = false, int maxCandidates = int.MaxValue, Func<LayerSearchContext, bool> layerContextPredicate = null)
@@ -986,93 +939,97 @@ internal static class PlacementEnhancementService
 		{
 			return new List<FeatureCandidate>();
 		}
-		return await QueuedTask.Run(delegate
+		return await QueuedTask.Run<List<FeatureCandidate>>((Func<List<FeatureCandidate>>)delegate
 		{
-			// Optimize: Pre-allocate capacity based on maxCandidates to reduce reallocations
-			int estimatedCapacity = Math.Min(maxCandidates, 100);
-			List<FeatureCandidate> candidates = new List<FeatureCandidate>(estimatedCapacity);
-
-			foreach (LayerSearchContext layerContext in layerContexts)
+			//IL_00ae: Unknown result type (might be due to invalid IL or missing references)
+			//IL_00b3: Unknown result type (might be due to invalid IL or missing references)
+			//IL_00bc: Unknown result type (might be due to invalid IL or missing references)
+			//IL_00c6: Expected O, but got Unknown
+			//IL_0144: Unknown result type (might be due to invalid IL or missing references)
+			//IL_014b: Expected O, but got Unknown
+			int capacity = Math.Min(maxCandidates, 100);
+			List<FeatureCandidate> list = new List<FeatureCandidate>(capacity);
+			foreach (LayerSearchContext item in layerContexts)
 			{
-				// Early termination: stop searching if we have enough candidates
-				if (candidates.Count >= maxCandidates)
+				if (list.Count >= maxCandidates)
 				{
 					break;
 				}
-
-				FeatureLayer layer = layerContext.Layer;
-				// Optimize: Cache layer spatial reference to avoid repeated calls
+				FeatureLayer layer = item.Layer;
 				SpatialReference layerSpatialReference = GetLayerSpatialReference(layer);
-				Geometry layerSearchGeometry;
-				Geometry projectedSourceGeometry;
+				Geometry filterGeometry;
+				Geometry sourceGeometry2;
 				try
 				{
-					layerSearchGeometry = ProjectGeometry(searchGeometry, layerSpatialReference);
-					// Project sourceGeometry once per layer instead of for each feature
-					projectedSourceGeometry = ProjectGeometry(sourceGeometry, layerSpatialReference);
+					filterGeometry = ProjectGeometry(searchGeometry, layerSpatialReference);
+					sourceGeometry2 = ProjectGeometry(sourceGeometry, layerSpatialReference);
 				}
-				catch (Exception ex)
+				catch (Exception exception)
 				{
-					LogService.LogException($"Could not project automatic search geometry for layer '{layer?.Name}'.", ex);
+					LogService.LogException("Could not project automatic search geometry for layer '" + ((layer != null) ? ((MapMember)layer).Name : null) + "'.", exception);
 					continue;
 				}
-				SpatialQueryFilter spatialQueryFilter = new SpatialQueryFilter
+				SpatialQueryFilter val = new SpatialQueryFilter
 				{
-					FilterGeometry = layerSearchGeometry,
-					SpatialRelationship = SpatialRelationship.Intersects
+					FilterGeometry = filterGeometry,
+					SpatialRelationship = (SpatialRelationship)1
 				};
-				RowCursor rowCursor;
+				RowCursor val2;
 				try
 				{
-					rowCursor = layer.Search(spatialQueryFilter);
+					val2 = ((BasicFeatureLayer)layer).Search((QueryFilter)(object)val, (TimeRange)null, (RangeExtent)null, (CIMFloorFilterSettings)null);
 				}
-				catch (Exception ex)
+				catch (Exception exception2)
 				{
-					LogService.LogException($"Automatic candidate search failed for layer '{layer?.Name}'.", ex);
+					LogService.LogException("Automatic candidate search failed for layer '" + ((layer != null) ? ((MapMember)layer).Name : null) + "'.", exception2);
 					continue;
 				}
-				// Optimize: Cache layer name and owning group to avoid repeated property accesses
-				string layerName = layer.Name;
-				string owningGroupName = layerContext.OwningGroupName;
-
-				using (rowCursor)
-			while (rowCursor.MoveNext())
+				string name = ((MapMember)layer).Name;
+				string owningGroupName = item.OwningGroupName;
+				RowCursor val3 = val2;
+				try
+				{
+					while (val2.MoveNext() && list.Count < maxCandidates)
+					{
+						Feature val4 = (Feature)val2.Current;
+						try
+						{
+							Geometry shape = val4.GetShape();
+							if (includePredicate(layer, val4, shape))
+							{
+								double distance = GetDistance(sourceGeometry2, shape);
+								string label = labelPrefix + ": " + owningGroupName + "/" + name + " (OID " + ((Row)val4).GetObjectID() + ")";
+								list.Add(new FeatureCandidate
+								{
+									Layer = layer,
+									ObjectID = ((Row)val4).GetObjectID(),
+									Geometry = shape,
+									Label = label,
+									Distance = distance
+								});
+							}
+						}
+						finally
+						{
+							((IDisposable)val4)?.Dispose();
+						}
+					}
+				}
+				finally
+				{
+					((IDisposable)val3)?.Dispose();
+				}
+			}
+			if (list.Count > 1)
 			{
-				// Early termination within layer: stop if we have enough candidates
-				if (candidates.Count >= maxCandidates)
+				list.Sort(delegate(FeatureCandidate a, FeatureCandidate b)
 				{
-					break;
-				}
-
-				using Feature feature = (Feature)rowCursor.Current;
-				Geometry geometry = feature.GetShape();
-				if (!includePredicate(layer, feature, geometry))
-				{
-					continue;
-				}
-				double distance = GetDistance(projectedSourceGeometry, geometry);
-				string label = labelPrefix + ": " + owningGroupName + "/" + layerName + " (OID " + feature.GetObjectID() + ")";
-				candidates.Add(new FeatureCandidate
-				{
-					Layer = layer,
-					ObjectID = feature.GetObjectID(),
-					Geometry = geometry,
-					Label = label,
-					Distance = distance
+					int num = a.Distance.CompareTo(b.Distance);
+					return (num != 0) ? num : a.ObjectID.CompareTo(b.ObjectID);
 				});
 			}
-			}
-			// Optimize: Use Array.Sort with custom comparer instead of LINQ OrderBy for better performance
-			if (candidates.Count > 1)
-			{
-				candidates.Sort((a, b) =>
-				{
-					int distanceComparison = a.Distance.CompareTo(b.Distance);
-					return distanceComparison != 0 ? distanceComparison : a.ObjectID.CompareTo(b.ObjectID);
-				});
-			}
-			return candidates;
-		});
+			return list;
+		}, TaskCreationOptions.None);
 	}
 
 	private static double GetCompatibleDistance(Geometry sourceGeometry, Geometry candidateGeometry)
@@ -1083,20 +1040,16 @@ internal static class PlacementEnhancementService
 		}
 		try
 		{
-			Geometry comparableSourceGeometry = ProjectGeometry(sourceGeometry, candidateGeometry.SpatialReference);
-			return GeometryEngine.Instance.Distance(comparableSourceGeometry, candidateGeometry);
+			Geometry val = ProjectGeometry(sourceGeometry, candidateGeometry.SpatialReference);
+			return GeometryEngine.Instance.Distance(val, candidateGeometry);
 		}
-		catch (Exception ex)
+		catch (Exception exception)
 		{
-			LogService.LogException("Automatic candidate distance could not be calculated with compatible spatial references.", ex);
+			LogService.LogException("Automatic candidate distance could not be calculated with compatible spatial references.", exception);
 			return double.MaxValue;
 		}
 	}
 
-	/// <summary>
-	/// Calculates distance between two geometries that are already in the same spatial reference.
-	/// Use this instead of GetCompatibleDistance when geometries have already been projected.
-	/// </summary>
 	private static double GetDistance(Geometry sourceGeometry, Geometry candidateGeometry)
 	{
 		if (sourceGeometry == null || candidateGeometry == null)
@@ -1107,18 +1060,27 @@ internal static class PlacementEnhancementService
 		{
 			return GeometryEngine.Instance.Distance(sourceGeometry, candidateGeometry);
 		}
-		catch (Exception ex)
+		catch (Exception exception)
 		{
-			LogService.LogException("Automatic candidate distance could not be calculated.", ex);
+			LogService.LogException("Automatic candidate distance could not be calculated.", exception);
 			return double.MaxValue;
 		}
 	}
 
 	private static SpatialReference GetLayerSpatialReference(FeatureLayer layer)
 	{
-		return layer?.GetFeatureClass()?.GetDefinition() is FeatureClassDefinition definition
-			? definition.GetSpatialReference()
-			: null;
+		object obj;
+		if (layer == null)
+		{
+			obj = null;
+		}
+		else
+		{
+			FeatureClass featureClass = layer.GetFeatureClass();
+			obj = ((featureClass != null) ? featureClass.GetDefinition() : null);
+		}
+		FeatureClassDefinition val = (FeatureClassDefinition)obj;
+		return (val != null) ? val.GetSpatialReference() : null;
 	}
 
 	private static Geometry ProjectGeometry(Geometry geometry, SpatialReference outputSpatialReference)
@@ -1127,9 +1089,8 @@ internal static class PlacementEnhancementService
 		{
 			return geometry;
 		}
-		SpatialReference inputSpatialReference = geometry.SpatialReference;
-		if (inputSpatialReference == null ||
-			SpatialReference.AreEqual(inputSpatialReference, outputSpatialReference, ignoreUnknown: true, checkResolution: false))
+		SpatialReference spatialReference = geometry.SpatialReference;
+		if (spatialReference == null || SpatialReference.AreEqual(spatialReference, outputSpatialReference, true, false))
 		{
 			return geometry;
 		}
@@ -1138,136 +1099,139 @@ internal static class PlacementEnhancementService
 
 	private static bool IsInteriorSplitCandidate(Geometry candidateGeometry, MapPoint splitPoint)
 	{
-		if (candidateGeometry is not Polyline candidateLine || splitPoint == null || candidateLine.PointCount < 2)
+		Polyline val = (Polyline)(object)((candidateGeometry is Polyline) ? candidateGeometry : null);
+		if (val == null || splitPoint == null || ((Geometry)val).PointCount < 2)
 		{
 			return true;
 		}
-		return !AreSameSplitPoint(candidateLine.Points.First(), splitPoint) && !AreSameSplitPoint(candidateLine.Points.Last(), splitPoint);
+		return !AreSameSplitPoint(((IEnumerable<MapPoint>)((Multipart)val).Points).First(), splitPoint) && !AreSameSplitPoint(((IEnumerable<MapPoint>)((Multipart)val).Points).Last(), splitPoint);
 	}
 
 	private static string GetFeatureIdentifier(Feature feature, FeatureLayer layer)
 	{
-		// Optimize: Cache FACILITYID field name per layer to avoid repeated field queries
-		string layerUri = layer.URI;
-		string facilityIdFieldName;
-
+		string uRI = ((MapMember)layer).URI;
+		string value;
 		lock (CacheLock)
 		{
-			if (!FacilityIdFieldCache.TryGetValue(layerUri, out facilityIdFieldName))
+			if (!FacilityIdFieldCache.TryGetValue(uRI, out value))
 			{
-				// First time for this layer - query and cache the field name
-				facilityIdFieldName = layer.GetFeatureClass().GetDefinition().GetFields()
-					.Select((Field field) => field.Name)
-					.FirstOrDefault((string fieldName) => string.Equals(fieldName, "FACILITYID", StringComparison.OrdinalIgnoreCase));
-				FacilityIdFieldCache[layerUri] = facilityIdFieldName; // Cache even if null
+				value = (from field in ((TableDefinition)layer.GetFeatureClass().GetDefinition()).GetFields()
+					select field.Name).FirstOrDefault((string fieldName) => string.Equals(fieldName, "FACILITYID", StringComparison.OrdinalIgnoreCase));
+				FacilityIdFieldCache[uRI] = value;
 			}
 		}
-
-		if (!string.IsNullOrWhiteSpace(facilityIdFieldName))
+		if (!string.IsNullOrWhiteSpace(value))
 		{
-			object facilityId = feature[facilityIdFieldName];
-			string facilityIdText = Convert.ToString(facilityId);
-			if (!string.IsNullOrWhiteSpace(facilityIdText))
+			object obj = ((Row)feature)[value];
+			string text = Convert.ToString(obj);
+			if (!string.IsNullOrWhiteSpace(text))
 			{
-				return "Facility ID " + facilityIdText;
+				return "Facility ID " + text;
 			}
 		}
-		return "OID " + feature.GetObjectID();
+		return "OID " + ((Row)feature).GetObjectID();
 	}
 
 	private static async Task<Geometry> CreateSearchGeometryAsync(Geometry geometry, double searchDistance)
 	{
-		return await QueuedTask.Run(delegate
+		return await QueuedTask.Run<Geometry>((Func<Geometry>)delegate
 		{
 			if (geometry == null)
 			{
-				return null;
+				return (Geometry)null;
 			}
-			if (searchDistance <= 0.0)
-			{
-				return geometry;
-			}
-			return GeometryEngine.Instance.Buffer(geometry, searchDistance);
-		});
+			return (searchDistance <= 0.0) ? geometry : GeometryEngine.Instance.Buffer(geometry, searchDistance);
+		}, TaskCreationOptions.None);
 	}
 
 	private static async Task ExecuteSplitAsync(FeatureLayer targetLayer, long targetObjectId, MapPoint splitPoint)
 	{
-		await QueuedTask.Run(delegate
+		await QueuedTask.Run((Action)delegate
 		{
-			EditOperation editOperation = new EditOperation
+			//IL_0001: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0006: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0012: Unknown result type (might be due to invalid IL or missing references)
+			//IL_001e: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0027: Expected O, but got Unknown
+			EditOperation val = new EditOperation
 			{
 				Name = "Split underlying line",
 				ProgressMessage = "Splitting underlying line...",
 				ShowProgressor = true
 			};
-			editOperation.Split(targetLayer, targetObjectId, splitPoint);
-			if (!editOperation.IsEmpty && !editOperation.Execute())
+			val.Split((Layer)(object)targetLayer, targetObjectId, (Geometry)(object)splitPoint);
+			if (!val.IsEmpty && !val.Execute())
 			{
-				throw new InvalidOperationException(string.IsNullOrWhiteSpace(editOperation.ErrorMessage) ? "The line split did not complete." : editOperation.ErrorMessage);
+				throw new InvalidOperationException(string.IsNullOrWhiteSpace(val.ErrorMessage) ? "The line split did not complete." : val.ErrorMessage);
 			}
-		});
+		}, TaskCreationOptions.None);
 	}
 
 	private static async Task ExecuteAssociationAsync(PlacedFeatureContext createdFeature, FeatureCandidate candidate)
 	{
-		await QueuedTask.Run(delegate
+		await QueuedTask.Run((Action)delegate
 		{
-			EditOperation editOperation = new EditOperation
+			//IL_0001: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0006: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0012: Unknown result type (might be due to invalid IL or missing references)
+			//IL_001e: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0027: Expected O, but got Unknown
+			//IL_003d: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0043: Expected O, but got Unknown
+			//IL_0059: Unknown result type (might be due to invalid IL or missing references)
+			//IL_005f: Expected O, but got Unknown
+			//IL_008a: Unknown result type (might be due to invalid IL or missing references)
+			//IL_0090: Invalid comparison between Unknown and I4
+			//IL_00c1: Unknown result type (might be due to invalid IL or missing references)
+			//IL_00c9: Unknown result type (might be due to invalid IL or missing references)
+			//IL_00d0: Expected O, but got Unknown
+			//IL_00b4: Unknown result type (might be due to invalid IL or missing references)
+			EditOperation val = new EditOperation
 			{
 				Name = "Create association",
 				ProgressMessage = "Creating association...",
 				ShowProgressor = true
 			};
-			RowHandle targetHandle = new RowHandle((MapMember)candidate.Layer, candidate.ObjectID);
-			RowHandle createdHandle = new RowHandle((MapMember)createdFeature.Layer, createdFeature.ObjectID);
-			RowHandle fromHandle = candidate.CreatedFeatureIsAssociationSource ? createdHandle : targetHandle;
-			RowHandle toHandle = candidate.CreatedFeatureIsAssociationSource ? targetHandle : createdHandle;
-			AssociationDescription associationDescription = (candidate.AssociationType != AssociationType.Containment) ? new AssociationDescription(candidate.AssociationType, fromHandle, toHandle) : new AssociationDescription(AssociationType.Containment, fromHandle, toHandle, !candidate.CreatedFeatureIsAssociationSource && createdFeature.Layer != null);
-			editOperation.Create(associationDescription);
-			if (!editOperation.IsEmpty && !editOperation.Execute())
+			RowHandle val2 = new RowHandle((MapMember)(object)candidate.Layer, candidate.ObjectID);
+			RowHandle val3 = new RowHandle((MapMember)(object)createdFeature.Layer, createdFeature.ObjectID);
+			RowHandle val4 = (candidate.CreatedFeatureIsAssociationSource ? val3 : val2);
+			RowHandle val5 = (candidate.CreatedFeatureIsAssociationSource ? val2 : val3);
+			AssociationDescription val6 = (((int)candidate.AssociationType != 2) ? new AssociationDescription(candidate.AssociationType, val4, val5) : new AssociationDescription((AssociationType)2, val4, val5, !candidate.CreatedFeatureIsAssociationSource && createdFeature.Layer != null));
+			val.Create(val6);
+			if (!val.IsEmpty && !val.Execute())
 			{
-				throw new InvalidOperationException(string.IsNullOrWhiteSpace(editOperation.ErrorMessage) ? "The association could not be created." : editOperation.ErrorMessage);
+				throw new InvalidOperationException(string.IsNullOrWhiteSpace(val.ErrorMessage) ? "The association could not be created." : val.ErrorMessage);
 			}
-		});
+		}, TaskCreationOptions.None);
 	}
 
 	private static async Task<FeatureCandidate> ChooseCandidateAsync(PlacedFeatureContext createdFeature, string title, string prompt, IReadOnlyList<FeatureCandidate> candidates, bool isSplitCandidate)
 	{
-		int i = 0;
-		while (i >= 0 && i < candidates.Count)
+		if (candidates == null || candidates.Count == 0)
 		{
-			FeatureCandidate candidate = candidates[i];
-			using (await ShowCandidateContextAsync(createdFeature, candidate, isSplitCandidate))
+			return null;
+		}
+		using (await ShowSourceContextAsync(createdFeature))
+		{
+			CandidateSelectionOverlay selectedOverlay = new CandidateSelectionOverlay(createdFeature, isSplitCandidate);
+			try
 			{
-				string candidateLabel = $"{candidate.Label}\n\nCandidate {i + 1} of {candidates.Count}";
-				CandidateChoiceDialog dialog = await ShowDialogAsync(() => new CandidateChoiceDialog(title, prompt, candidateLabel, i > 0, i < candidates.Count - 1));
-				if (dialog == null)
+				List<string> labels = candidates.Select((FeatureCandidate candidate, int index) => $"{index + 1}. {candidate.Label}").ToList();
+				await selectedOverlay.UpdateAsync(candidates[0]);
+				CandidateChoiceDialog dialog = await ShowDialogAsync(() => new CandidateChoiceDialog(title, prompt + "\n\nCandidates are ordered by proximity. The selected candidate is highlighted in yellow on the map.", labels, delegate(int selectedIndex)
 				{
-					return null;
-				}
-				if (dialog.Result == CandidateChoiceResult.UseCandidate)
+					TaskObservationService.Forget(selectedOverlay.UpdateAsync(candidates[selectedIndex]), "Candidate selection highlight update failed.");
+				}));
+				return (dialog != null && dialog.Result == CandidateChoiceResult.UseCandidate && dialog.SelectedIndex >= 0 && dialog.SelectedIndex < candidates.Count) ? candidates[dialog.SelectedIndex] : null;
+			}
+			finally
+			{
+				if (selectedOverlay != null)
 				{
-					return candidate;
-				}
-				if (dialog.Result == CandidateChoiceResult.PreviousCandidate)
-				{
-					i = Math.Max(0, i - 1);
-					continue;
-				}
-				if (dialog.Result == CandidateChoiceResult.NextCandidate)
-				{
-					i++;
-					continue;
-				}
-				if (dialog.Result == CandidateChoiceResult.Skip)
-				{
-					return null;
+					((IDisposable)selectedOverlay).Dispose();
 				}
 			}
-			i++;
 		}
-		return null;
 	}
 
 	private static async Task<IDisposable> ShowCandidateContextAsync(PlacedFeatureContext createdFeature, FeatureCandidate candidate, bool isSplitCandidate)
@@ -1276,277 +1240,202 @@ internal static class PlacementEnhancementService
 		{
 			return null;
 		}
-		return await ShowCandidateContextAsync(createdFeature, new[] { candidate }, isSplitCandidate);
+		return await ShowCandidateContextAsync(createdFeature, new FeatureCandidate[1] { candidate }, isSplitCandidate);
+	}
+
+	private static async Task<IDisposable> ShowSourceContextAsync(PlacedFeatureContext createdFeature)
+	{
+		if (createdFeature?.Geometry == null)
+		{
+			return null;
+		}
+		TemplateEditorSettings settings = AddinConfiguration.Settings;
+		return await QueuedTask.Run<IDisposable>((Func<IDisposable>)delegate
+		{
+			MapView active = MapView.Active;
+			return (active != null) ? MappingExtensions.AddOverlay(active, createdFeature.Geometry, CreateSourceHintSymbol(createdFeature.Geometry, settings), -1.0) : null;
+		}, TaskCreationOptions.None);
 	}
 
 	private static async Task<IDisposable> ShowCandidateContextAsync(PlacedFeatureContext createdFeature, IEnumerable<FeatureCandidate> candidates, bool isSplitCandidate)
 	{
-		List<FeatureCandidate> candidateList = (candidates ?? Enumerable.Empty<FeatureCandidate>())
-			.Where((FeatureCandidate candidate) => candidate?.Layer != null && candidate.ObjectID > 0 && candidate.Geometry != null)
-			.ToList();
+		List<FeatureCandidate> candidateList = (candidates ?? Enumerable.Empty<FeatureCandidate>()).Where((FeatureCandidate candidate) => candidate?.Layer != null && candidate.ObjectID > 0 && candidate.Geometry != null).ToList();
 		if (candidateList.Count == 0)
 		{
 			return null;
 		}
 		TemplateEditorSettings settings = AddinConfiguration.Settings;
-		if (isSplitCandidate ? settings?.HighlightSplitCandidates != true : settings?.HighlightAssociationCandidates != true)
+		int num;
+		if (!isSplitCandidate)
+		{
+			TemplateEditorSettings templateEditorSettings = settings;
+			num = ((templateEditorSettings == null || !templateEditorSettings.HighlightAssociationCandidates) ? 1 : 0);
+		}
+		else
+		{
+			TemplateEditorSettings templateEditorSettings2 = settings;
+			num = ((templateEditorSettings2 == null || !templateEditorSettings2.HighlightSplitCandidates) ? 1 : 0);
+		}
+		if (num != 0)
 		{
 			return null;
 		}
 		IDisposable overlay = null;
-		await QueuedTask.Run(delegate
+		await QueuedTask.Run((Action)delegate
 		{
-			List<IDisposable> overlays = new List<IDisposable>();
+			List<IDisposable> list = new List<IDisposable>();
 			if (MapView.Active != null)
 			{
-				foreach (FeatureCandidate candidate in candidateList)
+				foreach (FeatureCandidate item in candidateList)
 				{
-					overlays.Add(MapView.Active.AddOverlay(candidate.Geometry, isSplitCandidate ? CreateSplitCandidateSymbol(candidate.Geometry, settings) : CreateAssociationTargetSymbol(candidate.Geometry, settings)));
+					list.Add(MappingExtensions.AddOverlay(MapView.Active, item.Geometry, isSplitCandidate ? CreateSplitCandidateSymbol(item.Geometry, settings) : CreateAssociationTargetSymbol(item.Geometry, settings), -1.0));
 				}
 				if (createdFeature?.Geometry != null)
 				{
-					overlays.Add(MapView.Active.AddOverlay(createdFeature.Geometry, CreateSourceHintSymbol(createdFeature.Geometry, settings)));
+					list.Add(MappingExtensions.AddOverlay(MapView.Active, createdFeature.Geometry, CreateSourceHintSymbol(createdFeature.Geometry, settings), -1.0));
 				}
 			}
-			overlay = new OverlayGroup(overlays);
-		});
+			overlay = new OverlayGroup(list);
+		}, TaskCreationOptions.None);
 		return overlay;
+	}
+
+	private static async Task<IDisposable> ShowCandidateSelectionOverlayAsync(PlacedFeatureContext createdFeature, FeatureCandidate candidate, bool isSplitCandidate)
+	{
+		if (candidate?.Geometry == null)
+		{
+			return null;
+		}
+		return await QueuedTask.Run<IDisposable>((Func<IDisposable>)(() => (MapView.Active == null) ? null : MappingExtensions.AddOverlay(MapView.Active, candidate.Geometry, CreateSelectedCandidateSymbol(candidate.Geometry, isSplitCandidate), -1.0)), TaskCreationOptions.None);
+	}
+
+	private static CIMSymbolReference CreateSelectedCandidateSymbol(Geometry geometry, bool isSplitCandidate)
+	{
+		CIMColor val = ColorFactory.Instance.CreateRGBColor(255.0, 215.0, 0.0, isSplitCandidate ? 85.0 : 60.0);
+		CIMColor val2 = ColorFactory.Instance.CreateRGBColor(255.0, 215.0, 0.0, 100.0);
+		if (geometry is Polyline)
+		{
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(val2, 7.0, (SimpleLineStyle)0));
+		}
+		if (geometry is Polygon)
+		{
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 4.0, (SimpleLineStyle)0)));
+		}
+		return CreatePointHintSymbol(val, val2, 24.0, 3.0);
 	}
 
 	private static CIMSymbolReference CreateSourceHintSymbol(Geometry geometry, TemplateEditorSettings settings)
 	{
-		CIMColor color = CreateHintColor(settings?.HintSourceColorHex, "#00FF50", 75.0);
-		CIMColor outlineColor = CreateHintColor(settings?.HintSourceColorHex, "#00FF50", 100.0);
+		CIMColor val = CreateHintColor(settings?.HintSourceColorHex, "#00FF50", 75.0);
+		CIMColor val2 = CreateHintColor(settings?.HintSourceColorHex, "#00FF50", 100.0);
 		if (geometry is Polyline)
 		{
-			return SymbolFactory.Instance.ConstructLineSymbol(outlineColor, 4.0, SimpleLineStyle.Solid).MakeSymbolReference();
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(val2, 4.0, (SimpleLineStyle)0));
 		}
 		if (geometry is Polygon)
 		{
-			return SymbolFactory.Instance.ConstructPolygonSymbol(color, SimpleFillStyle.Solid, SymbolFactory.Instance.ConstructStroke(outlineColor, 2.0, SimpleLineStyle.Solid)).MakeSymbolReference();
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 2.0, (SimpleLineStyle)0)));
 		}
-		return CreatePointHintSymbol(color, outlineColor, 10.0, 1.5);
+		return CreatePointHintSymbol(val, val2, 10.0, 1.5);
 	}
 
 	private static CIMSymbolReference CreateSplitCandidateSymbol(Geometry geometry, TemplateEditorSettings settings)
 	{
-		CIMColor color = CreateHintColor(settings?.HintSplitCandidateColorHex, "#FF0000", 60.0);
-		CIMColor outlineColor = CreateHintColor(settings?.HintSplitCandidateColorHex, "#FF0000", 100.0);
+		CIMColor val = CreateHintColor(settings?.HintSplitCandidateColorHex, "#FF0000", 60.0);
+		CIMColor val2 = CreateHintColor(settings?.HintSplitCandidateColorHex, "#FF0000", 100.0);
 		if (geometry is Polyline)
 		{
-			return SymbolFactory.Instance.ConstructLineSymbol(outlineColor, 5.0, SimpleLineStyle.Solid).MakeSymbolReference();
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(val2, 5.0, (SimpleLineStyle)0));
 		}
 		if (geometry is Polygon)
 		{
-			return SymbolFactory.Instance.ConstructPolygonSymbol(color, SimpleFillStyle.Solid, SymbolFactory.Instance.ConstructStroke(outlineColor, 3.0, SimpleLineStyle.Solid)).MakeSymbolReference();
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 3.0, (SimpleLineStyle)0)));
 		}
-		return CreatePointHintSymbol(color, outlineColor, 12.0, 1.75);
+		return CreatePointHintSymbol(val, val2, 12.0, 1.75);
 	}
 
 	private static CIMSymbolReference CreateAssociationTargetSymbol(Geometry geometry, TemplateEditorSettings settings)
 	{
-		CIMColor color = CreateHintColor(settings?.HintAssociationTargetColorHex, "#FF0000", 35.0);
-		CIMColor outlineColor = CreateHintColor(settings?.HintAssociationTargetColorHex, "#FF0000", 100.0);
+		CIMColor val = CreateHintColor(settings?.HintAssociationTargetColorHex, "#FF0000", 35.0);
+		CIMColor val2 = CreateHintColor(settings?.HintAssociationTargetColorHex, "#FF0000", 100.0);
 		if (geometry is Polyline)
 		{
-			return SymbolFactory.Instance.ConstructLineSymbol(outlineColor, 5.0, SimpleLineStyle.Solid).MakeSymbolReference();
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(val2, 5.0, (SimpleLineStyle)0));
 		}
 		if (geometry is Polygon)
 		{
-			return SymbolFactory.Instance.ConstructPolygonSymbol(color, SimpleFillStyle.Solid, SymbolFactory.Instance.ConstructStroke(outlineColor, 3.0, SimpleLineStyle.Solid)).MakeSymbolReference();
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 3.0, (SimpleLineStyle)0)));
 		}
-		return CreatePointHintSymbol(color, outlineColor, 19.0, 2.25);
+		return CreatePointHintSymbol(val, val2, 19.0, 2.25);
 	}
 
 	private static CIMSymbolReference CreatePointHintSymbol(CIMColor fillColor, CIMColor outlineColor, double size, double outlineWidth)
 	{
-		CIMPolygonSymbol markerSymbol = SymbolFactory.Instance.ConstructPolygonSymbol(fillColor, SimpleFillStyle.Solid, SymbolFactory.Instance.ConstructStroke(outlineColor, outlineWidth, SimpleLineStyle.Solid));
-		CIMPointSymbol pointSymbol = SymbolFactory.Instance.ConstructPointSymbol(fillColor, size, SimpleMarkerStyle.Circle);
-		foreach (CIMSymbolLayer layer in pointSymbol.SymbolLayers ?? Array.Empty<CIMSymbolLayer>())
+		CIMPolygonSymbol symbol = SymbolFactory.Instance.ConstructPolygonSymbol(fillColor, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(outlineColor, outlineWidth, (SimpleLineStyle)0));
+		CIMPointSymbol val = SymbolFactory.Instance.ConstructPointSymbol(fillColor, size, (SimpleMarkerStyle)0);
+		CIMSymbolLayer[] array = ((CIMMultiLayerSymbol)val).SymbolLayers ?? Array.Empty<CIMSymbolLayer>();
+		foreach (CIMSymbolLayer val2 in array)
 		{
-			if (layer is CIMVectorMarker vectorMarker && vectorMarker.MarkerGraphics != null)
+			CIMVectorMarker val3 = (CIMVectorMarker)(object)((val2 is CIMVectorMarker) ? val2 : null);
+			if (val3 != null && val3.MarkerGraphics != null)
 			{
-				foreach (CIMMarkerGraphic markerGraphic in vectorMarker.MarkerGraphics)
+				CIMMarkerGraphic[] markerGraphics = val3.MarkerGraphics;
+				foreach (CIMMarkerGraphic val4 in markerGraphics)
 				{
-					markerGraphic.Symbol = markerSymbol;
+					val4.Symbol = (CIMSymbol)(object)symbol;
 				}
 			}
 		}
-		return pointSymbol.MakeSymbolReference();
+		return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)val);
 	}
 
 	private static CIMColor CreateHintColor(string hexColor, string fallbackHexColor, double alpha)
 	{
-		string normalized = NormalizeHintColor(hexColor, fallbackHexColor);
-		int red = Convert.ToInt32(normalized.Substring(1, 2), 16);
-		int green = Convert.ToInt32(normalized.Substring(3, 2), 16);
-		int blue = Convert.ToInt32(normalized.Substring(5, 2), 16);
-		return ColorFactory.Instance.CreateRGBColor(red, green, blue, alpha);
+		string text = NormalizeHintColor(hexColor, fallbackHexColor);
+		int num = Convert.ToInt32(text.Substring(1, 2), 16);
+		int num2 = Convert.ToInt32(text.Substring(3, 2), 16);
+		int num3 = Convert.ToInt32(text.Substring(5, 2), 16);
+		return ColorFactory.Instance.CreateRGBColor((double)num, (double)num2, (double)num3, alpha);
 	}
 
 	private static string NormalizeHintColor(string hexColor, string fallbackHexColor)
 	{
-		string normalized = (hexColor ?? string.Empty).Trim();
-		if (normalized.StartsWith("#", StringComparison.Ordinal))
+		string text = (hexColor ?? string.Empty).Trim();
+		if (text.StartsWith("#", StringComparison.Ordinal))
 		{
-			normalized = normalized.Substring(1);
+			text = text.Substring(1);
 		}
-		if (normalized.Length != 6 || normalized.Any((char c) => !Uri.IsHexDigit(c)))
+		if (text.Length != 6 || text.Any((char c) => !Uri.IsHexDigit(c)))
 		{
 			return fallbackHexColor;
 		}
-		return "#" + normalized;
+		return "#" + text;
 	}
 
 	private static async Task<MessageBoxResult> ShowMessageBoxAsync(string message, string title, MessageBoxButton buttons)
 	{
-		return await Application.Current.Dispatcher.InvokeAsync(delegate
-		{
-			return DialogService.Show(message, title, buttons);
-		});
+		return await ((DispatcherObject)Application.Current).Dispatcher.InvokeAsync<MessageBoxResult>((Func<MessageBoxResult>)(() => DialogService.Show(message, title, buttons)));
 	}
 
 	private static async Task<bool> ShowConfirmationAsync(string message, string title, string confirmLabel = "Yes", string cancelLabel = "No")
 	{
-		EnhancementConfirmationDialog dialog = await ShowDialogAsync(() => new EnhancementConfirmationDialog(title, message, confirmLabel, cancelLabel));
-		return dialog != null;
+		return await ShowDialogAsync(() => new EnhancementConfirmationDialog(title, message, confirmLabel, cancelLabel)) != null;
 	}
 
 	private static async Task<TDialog> ShowDialogAsync<TDialog>(Func<TDialog> createDialog) where TDialog : Window
 	{
-		return await Application.Current.Dispatcher.InvokeAsync(delegate
+		return await ((DispatcherObject)Application.Current).Dispatcher.InvokeAsync<TDialog>((Func<TDialog>)delegate
 		{
-			TDialog val = createDialog();
-			Window mainWindow = Application.Current?.MainWindow;
-			if (mainWindow != null && val != mainWindow)
+			using (DialogService.SuspendPlacementProgressForPrompt())
 			{
-				val.Owner = mainWindow;
+				TDialog val = createDialog();
+				Window window = Application.Current?.MainWindow;
+				if (window != null && val != window)
+				{
+					val.Owner = window;
+				}
+				return (val.ShowDialog() == true) ? val : null;
 			}
-			return val.ShowDialog() == true ? val : null;
 		});
-	}
-}
-
-internal sealed class PlacedFeatureContext
-{
-	public SimpleTemplate Template { get; set; }
-
-	public Geometry Geometry { get; set; }
-
-	public RowToken Token { get; set; }
-
-	public FeatureLayer Layer { get; set; }
-
-	public long ObjectID { get; set; }
-
-	public bool AllowPlacementEnhancements { get; set; } = true;
-}
-
-internal sealed class ExistingAssociationPair
-{
-	public AssociationType AssociationType { get; set; }
-
-	public MapMember FirstMember { get; set; }
-
-	public long FirstObjectID { get; set; }
-
-	public MapMember SecondMember { get; set; }
-
-	public long SecondObjectID { get; set; }
-
-	public bool Matches(AssociationType associationType, MapMember firstMember, long firstObjectID, MapMember secondMember, long secondObjectID)
-	{
-		if (AssociationType != associationType || firstMember == null || secondMember == null || firstObjectID <= 0 || secondObjectID <= 0)
-		{
-			return false;
-		}
-		return MatchesEndpoint(FirstMember, FirstObjectID, firstMember, firstObjectID) &&
-			MatchesEndpoint(SecondMember, SecondObjectID, secondMember, secondObjectID) ||
-			MatchesEndpoint(FirstMember, FirstObjectID, secondMember, secondObjectID) &&
-			MatchesEndpoint(SecondMember, SecondObjectID, firstMember, firstObjectID);
-	}
-
-	private static bool MatchesEndpoint(MapMember expectedMember, long expectedObjectID, MapMember actualMember, long actualObjectID)
-	{
-		return expectedMember == actualMember && expectedObjectID == actualObjectID;
-	}
-}
-
-internal sealed class FeatureCandidate
-{
-	public FeatureLayer Layer { get; set; }
-
-	public long ObjectID { get; set; }
-
-	public Geometry Geometry { get; set; }
-
-	public string Label { get; set; }
-
-	public double Distance { get; set; }
-
-	public AssociationType AssociationType { get; set; }
-
-	public bool CreatedFeatureIsAssociationSource { get; set; }
-}
-
-internal sealed class LayerSearchContext
-{
-	public FeatureLayer Layer { get; set; }
-
-	public string OwningGroupName { get; set; }
-}
-
-internal sealed class LayerMetadata
-{
-	public TableDefinition Definition { get; set; }
-	public List<Field> Fields { get; set; }
-	public string OwningGroupName { get; set; }
-}
-
-internal sealed class OverlayGroup : IDisposable
-{
-	private readonly IReadOnlyList<IDisposable> _overlays;
-
-	public OverlayGroup(IReadOnlyList<IDisposable> overlays)
-	{
-		_overlays = overlays ?? new List<IDisposable>();
-	}
-
-	public void Dispose()
-	{
-		foreach (IDisposable overlay in _overlays)
-		{
-			overlay?.Dispose();
-		}
-	}
-}
-
-internal sealed class AssociationPromptResult
-{
-	public static AssociationPromptResult NotAttempted { get; } = new AssociationPromptResult();
-
-	public FeatureCandidate Candidate { get; private set; }
-
-	public bool WasAttempted { get; private set; }
-
-	public bool WasCreated { get; private set; }
-
-	public static AssociationPromptResult Created(FeatureCandidate candidate)
-	{
-		return new AssociationPromptResult
-		{
-			Candidate = candidate,
-			WasAttempted = true,
-			WasCreated = true
-		};
-	}
-
-	public static AssociationPromptResult Failed(FeatureCandidate candidate)
-	{
-		return new AssociationPromptResult
-		{
-			Candidate = candidate,
-			WasAttempted = true
-		};
 	}
 }

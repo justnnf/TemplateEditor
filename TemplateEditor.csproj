@@ -18,10 +18,12 @@
     <NoWarn>CA1416</NoWarn>
     <AddInName>TemplateEditor</AddInName>
     <AddInDescription>Template editor tools</AddInDescription>
-    <AddInImage>Images\AddInDesktop32.png</AddInImage>
+    <AddInImage>Images\MapBadgeIcons\AddInDesktopMap.png</AddInImage>
     <AddInAuthor>FortisAlberta</AddInAuthor>
     <AddInCompany>FortisAlberta</AddInCompany>
-    <AddInVersion>1.5.0</AddInVersion>
+    <AddInVersion>1.7.5</AddInVersion>
+    <ArcGISProReleaseVersion>3.3</ArcGISProReleaseVersion>
+    <ReleaseDirectory>$(MSBuildProjectDirectory)\Release\</ReleaseDirectory>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,6 +42,18 @@
     <Content Include="DarkImages\TemplateEditor32.png" />
     <Content Include="Images\AddInDesktop16.png" />
     <Content Include="Images\AddInDesktop32.png" />
+    <Content Include="Images\MapBadgeIcons\AddInDesktopMap16.png" />
+    <Content Include="Images\MapBadgeIcons\AddInDesktopMap32.png" />
+    <Content Include="Images\MapBadgeIcons\AddInDesktopMap.png" />
+    <Content Include="Images\MapBadgeIcons\ConfigSettingsMap16.png" />
+    <Content Include="Images\MapBadgeIcons\ConfigSettingsMap32.png" />
+    <Content Include="Images\MapBadgeIcons\ConfigSettingsMap.png" />
+    <Content Include="Images\MapBadgeIcons\ReloadConfigMap16.png" />
+    <Content Include="Images\MapBadgeIcons\ReloadConfigMap32.png" />
+    <Content Include="Images\MapBadgeIcons\ReloadConfigMap.png" />
+    <Content Include="Images\MapBadgeIcons\TemplateEditorMap16.png" />
+    <Content Include="Images\MapBadgeIcons\TemplateEditorMap32.png" />
+    <Content Include="Images\MapBadgeIcons\TemplateEditorMap.png" />
     <Content Include="Images\ConfigSettings16.png" />
     <Content Include="Images\ConfigSettings32.png" />
     <Content Include="TemplateEditor.dll.config">
@@ -111,4 +125,41 @@
   </ItemGroup>
 
   <Import Project="Esri.ArcGISPro.Extensions.targets" Condition="Exists('Esri.ArcGISPro.Extensions.targets')" />
+
+  <Target Name="GenerateVersionedAssemblyAttributes" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <VersionedAssemblyInfo>$(IntermediateOutputPath)VersionInfo.cs</VersionedAssemblyInfo>
+    </PropertyGroup>
+    <ItemGroup>
+      <VersionedAssemblyAttribute Include="System.Reflection.AssemblyVersionAttribute">
+        <_Parameter1>$(AddInVersion)</_Parameter1>
+      </VersionedAssemblyAttribute>
+      <VersionedAssemblyAttribute Include="System.Reflection.AssemblyFileVersionAttribute">
+        <_Parameter1>$(AddInVersion)</_Parameter1>
+      </VersionedAssemblyAttribute>
+      <VersionedAssemblyAttribute Include="System.Reflection.AssemblyInformationalVersionAttribute">
+        <_Parameter1>$(AddInVersion)</_Parameter1>
+      </VersionedAssemblyAttribute>
+    </ItemGroup>
+    <WriteCodeFragment Language="CS" OutputFile="$(VersionedAssemblyInfo)" AssemblyAttributes="@(VersionedAssemblyAttribute)" />
+    <ItemGroup>
+      <Compile Include="$(VersionedAssemblyInfo)" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="StampAddInPackageVersion" AfterTargets="PackageArcGISContents" Condition="'$(_ArcGISExtension)' != '' And Exists('$(_ArcGISPackageFile)')">
+    <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\Tools\Set-AddInManifestVersion.ps1&quot; -PackagePath &quot;$(_ArcGISPackageFile)&quot; -Version &quot;$(AddInVersion)&quot;" />
+    <Exec Command="RegisterAddIn.exe &quot;$(_ArcGISPackageFile)&quot; /s" WorkingDirectory="$(ArcGISFolder)" Condition="Exists('$(ArcGISFolder)RegisterAddIn.exe')" />
+    <Copy SourceFiles="$(_ArcGISPackageFile)" DestinationFolder="$(ArcGISAddInInstallFolder)" />
+    <Message Text="Updated the installed add-in package to version $(AddInVersion)" Importance="High" />
+  </Target>
+
+  <Target Name="CopyAddInToReleaseFolder" AfterTargets="StampAddInPackageVersion" Condition="'$(_ArcGISExtension)' != '' And Exists('$(_ArcGISPackageFile)')">
+    <PropertyGroup>
+      <ReleaseAddInFileName>$(AssemblyName).ArcPro.$(ArcGISProReleaseVersion).v.$(AddInVersion)$(_ArcGISExtension)</ReleaseAddInFileName>
+    </PropertyGroup>
+    <MakeDir Directories="$(ReleaseDirectory)" />
+    <Copy SourceFiles="$(_ArcGISPackageFile)" DestinationFiles="$(ReleaseDirectory)$(ReleaseAddInFileName)" SkipUnchangedFiles="true" />
+    <Message Text="Copied $(_ArcGISPackageFile) to $(ReleaseDirectory)$(ReleaseAddInFileName)" Importance="High" />
+  </Target>
 </Project>

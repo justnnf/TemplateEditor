@@ -5,10 +5,7 @@ using System.Runtime.Versioning;
 
 [assembly: AssemblyCompany("Template Editor")]
 [assembly: AssemblyConfiguration("Release")]
-[assembly: AssemblyFileVersion("1.5.0")]
-[assembly: AssemblyInformationalVersion("1.5.0")]
 [assembly: AssemblyProduct("Template Editor")]
 [assembly: AssemblyTitle("Template Editor")]
 [assembly: TargetPlatform("Windows10.0")]
 [assembly: SupportedOSPlatform("Windows10.0")]
-[assembly: AssemblyVersion("1.5.0")]

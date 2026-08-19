@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ArcGIS.Core;
 using ArcGIS.Core.Data;
 using ArcGIS.Core.Data.UtilityNetwork;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
@@ -15,25 +15,25 @@ internal static class AssociationRuleJsonRegenerator
 {
 	public static async Task<AssociationRuleGenerationResult> RegenerateFromActiveMapAsync(string outputPathOverride = null)
 	{
-		string outputPath = string.IsNullOrWhiteSpace(outputPathOverride) ? AssociationRuleCatalog.RuleFilePath : outputPathOverride.Trim();
-		AssociationRuleEnvelope envelope = await QueuedTask.Run(delegate
+		string outputPath = AtomicFileService.NormalizeJsonFilePath(string.IsNullOrWhiteSpace(outputPathOverride) ? AssociationRuleCatalog.RuleFilePath : outputPathOverride);
+		AssociationRuleEnvelope envelope = await QueuedTask.Run<AssociationRuleEnvelope>((Func<AssociationRuleEnvelope>)delegate
 		{
-			if (MapView.Active?.Map == null)
+			MapView active = MapView.Active;
+			if (((active != null) ? active.Map : null) == null)
 			{
 				throw new InvalidOperationException("No active map was found.");
 			}
-			foreach (Layer layer in MapView.Active.Map.GetLayersAsFlattenedList())
+			foreach (Layer layersAsFlattened in MapView.Active.Map.GetLayersAsFlattenedList())
 			{
-				AssociationRuleEnvelope result = TryBuildRuleEnvelope(layer);
-				if (result != null)
+				AssociationRuleEnvelope associationRuleEnvelope = TryBuildRuleEnvelope(layersAsFlattened);
+				if (associationRuleEnvelope != null)
 				{
-					return result;
+					return associationRuleEnvelope;
 				}
 			}
 			throw new InvalidOperationException("No utility network was found in the active map.");
-		});
-		Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
-		File.WriteAllText(outputPath, JsonSerializer.Serialize(envelope, new JsonSerializerOptions
+		}, TaskCreationOptions.None);
+		AtomicFileService.WriteAllText(outputPath, JsonSerializer.Serialize(envelope, new JsonSerializerOptions
 		{
 			WriteIndented = true
 		}) + Environment.NewLine);
@@ -41,114 +41,155 @@ internal static class AssociationRuleJsonRegenerator
 		return new AssociationRuleGenerationResult
 		{
 			OutputPath = outputPath,
-			RuleCount = envelope.Rules?.Count ?? 0
+			RuleCount = (envelope.Rules?.Count ?? 0)
 		};
 	}
 
 	private static AssociationRuleEnvelope TryBuildRuleEnvelope(Layer layer)
 	{
-		using UtilityNetwork utilityNetwork = TryGetUtilityNetwork(layer);
-		if (utilityNetwork == null)
+		UtilityNetwork val = TryGetUtilityNetwork(layer);
+		try
 		{
-			return null;
+			if (val == null)
+			{
+				return null;
+			}
+			UtilityNetworkDefinition definition = val.GetDefinition();
+			try
+			{
+				List<AssociationRule> rules = (from @group in (from rule in definition.GetRules().Where(delegate(Rule rule)
+						{
+							//IL_0001: Unknown result type (might be due to invalid IL or missing references)
+							//IL_0007: Invalid comparison between Unknown and I4
+							//IL_000a: Unknown result type (might be due to invalid IL or missing references)
+							//IL_0010: Invalid comparison between Unknown and I4
+							//IL_0013: Unknown result type (might be due to invalid IL or missing references)
+							//IL_0019: Invalid comparison between Unknown and I4
+							return (int)rule.Type == 3 || (int)rule.Type == 2 || (int)rule.Type == 1;
+						}).Select(ToAssociationRule)
+						where rule != null
+						select rule).GroupBy(GetRuleKey)
+					select @group.First() into rule
+					orderby rule.AssociationType, rule.FromTable, rule.FromAssetGroup, rule.FromAssetType, rule.ToTable, rule.ToAssetGroup, rule.ToAssetType
+					select rule).ToList();
+				return new AssociationRuleEnvelope
+				{
+					Source = ((Definition)definition).GetName() + " / UtilityNetworkDefinition.GetRules",
+					GeneratedUtc = DateTimeOffset.UtcNow.ToString("O"),
+					Rules = rules
+				};
+			}
+			finally
+			{
+				((IDisposable)definition)?.Dispose();
+			}
 		}
-		using UtilityNetworkDefinition definition = utilityNetwork.GetDefinition();
-		List<AssociationRule> rules = definition.GetRules()
-			.Where((Rule rule) => rule.Type == RuleType.Attachment || rule.Type == RuleType.Containment || rule.Type == RuleType.JunctionJunctionConnectivity)
-			.Select(ToAssociationRule)
-			.Where((AssociationRule rule) => rule != null)
-			.GroupBy(GetRuleKey)
-			.Select((IGrouping<string, AssociationRule> group) => group.First())
-			.OrderBy((AssociationRule rule) => rule.AssociationType)
-			.ThenBy((AssociationRule rule) => rule.FromTable)
-			.ThenBy((AssociationRule rule) => rule.FromAssetGroup)
-			.ThenBy((AssociationRule rule) => rule.FromAssetType)
-			.ThenBy((AssociationRule rule) => rule.ToTable)
-			.ThenBy((AssociationRule rule) => rule.ToAssetGroup)
-			.ThenBy((AssociationRule rule) => rule.ToAssetType)
-			.ToList();
-		return new AssociationRuleEnvelope
+		finally
 		{
-			Source = definition.GetName() + " / UtilityNetworkDefinition.GetRules",
-			GeneratedUtc = DateTimeOffset.UtcNow.ToString("O"),
-			Rules = rules
-		};
+			((IDisposable)val)?.Dispose();
+		}
 	}
 
 	private static UtilityNetwork TryGetUtilityNetwork(Layer layer)
 	{
-		if (layer is UtilityNetworkLayer utilityNetworkLayer)
+		UtilityNetworkLayer val = (UtilityNetworkLayer)(object)((layer is UtilityNetworkLayer) ? layer : null);
+		if (val != null)
 		{
-			return utilityNetworkLayer.GetUtilityNetwork();
+			return val.GetUtilityNetwork();
 		}
-		if (layer is SubtypeGroupLayer subtypeGroupLayer)
+		SubtypeGroupLayer val2 = (SubtypeGroupLayer)(object)((layer is SubtypeGroupLayer) ? layer : null);
+		if (val2 != null)
 		{
-			foreach (Layer childLayer in subtypeGroupLayer.Layers)
+			foreach (Layer layer2 in ((CompositeLayer)val2).Layers)
 			{
-				UtilityNetwork utilityNetwork = TryGetUtilityNetwork(childLayer);
-				if (utilityNetwork != null)
+				UtilityNetwork val3 = TryGetUtilityNetwork(layer2);
+				if (val3 != null)
 				{
-					return utilityNetwork;
+					return val3;
 				}
 			}
 		}
-		if (layer is FeatureLayer featureLayer)
+		FeatureLayer val4 = (FeatureLayer)(object)((layer is FeatureLayer) ? layer : null);
+		if (val4 != null)
 		{
-			using FeatureClass featureClass = featureLayer.GetFeatureClass();
-			return TryGetControllerUtilityNetwork(featureClass);
+			FeatureClass featureClass = val4.GetFeatureClass();
+			try
+			{
+				return TryGetControllerUtilityNetwork(featureClass);
+			}
+			finally
+			{
+				((IDisposable)featureClass)?.Dispose();
+			}
 		}
 		return null;
 	}
 
 	private static UtilityNetwork TryGetControllerUtilityNetwork(FeatureClass featureClass)
 	{
-		if (featureClass == null || !featureClass.IsControllerDatasetSupported())
+		if (featureClass == null || !((Table)featureClass).IsControllerDatasetSupported())
 		{
 			return null;
 		}
-		foreach (Dataset controllerDataset in featureClass.GetControllerDatasets())
+		foreach (Dataset controllerDataset in ((Table)featureClass).GetControllerDatasets())
 		{
-			if (controllerDataset is UtilityNetwork utilityNetwork)
+			UtilityNetwork val = (UtilityNetwork)(object)((controllerDataset is UtilityNetwork) ? controllerDataset : null);
+			if (val != null)
 			{
-				return utilityNetwork;
+				return val;
 			}
-			controllerDataset.Dispose();
+			((CoreObjectsBase)controllerDataset).Dispose();
 		}
 		return null;
 	}
 
 	private static AssociationRule ToAssociationRule(Rule rule)
 	{
-		IReadOnlyList<RuleElement> elements = rule.RuleElements;
-		if (elements == null || elements.Count < 2)
+		//IL_003b: Unknown result type (might be due to invalid IL or missing references)
+		IReadOnlyList<RuleElement> ruleElements = rule.RuleElements;
+		if (ruleElements == null || ruleElements.Count < 2)
 		{
 			return null;
 		}
-		RuleElement from = elements[0];
-		RuleElement to = elements[1];
-		return new AssociationRule
+		RuleElement val = ruleElements[0];
+		RuleElement val2 = ruleElements[1];
+		AssociationRule obj = new AssociationRule
 		{
-			AssociationType = GetAssociationTypeName(rule.Type),
-			FromTable = from.NetworkSource?.Name ?? string.Empty,
-			FromAssetGroup = from.AssetGroup?.Name ?? string.Empty,
-			FromAssetType = from.AssetType?.Name ?? string.Empty,
-			ToTable = to.NetworkSource?.Name ?? string.Empty,
-			ToAssetGroup = to.AssetGroup?.Name ?? string.Empty,
-			ToAssetType = to.AssetType?.Name ?? string.Empty
+			AssociationType = GetAssociationTypeName(rule.Type)
 		};
+		NetworkSource networkSource = val.NetworkSource;
+		obj.FromTable = ((networkSource != null) ? networkSource.Name : null) ?? string.Empty;
+		AssetGroup assetGroup = val.AssetGroup;
+		obj.FromAssetGroup = ((assetGroup != null) ? assetGroup.Name : null) ?? string.Empty;
+		AssetType assetType = val.AssetType;
+		obj.FromAssetType = ((assetType != null) ? assetType.Name : null) ?? string.Empty;
+		NetworkSource networkSource2 = val2.NetworkSource;
+		obj.ToTable = ((networkSource2 != null) ? networkSource2.Name : null) ?? string.Empty;
+		AssetGroup assetGroup2 = val2.AssetGroup;
+		obj.ToAssetGroup = ((assetGroup2 != null) ? assetGroup2.Name : null) ?? string.Empty;
+		AssetType assetType2 = val2.AssetType;
+		obj.ToAssetType = ((assetType2 != null) ? assetType2.Name : null) ?? string.Empty;
+		return obj;
 	}
 
 	private static string GetAssociationTypeName(RuleType ruleType)
 	{
-		if (ruleType == RuleType.Attachment)
+		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0003: Invalid comparison between Unknown and I4
+		//IL_0012: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0014: Invalid comparison between Unknown and I4
+		//IL_0023: Unknown result type (might be due to invalid IL or missing references)
+		//IL_0025: Invalid comparison between Unknown and I4
+		//IL_0034: Unknown result type (might be due to invalid IL or missing references)
+		if ((int)ruleType == 3)
 		{
 			return "Attachment";
 		}
-		if (ruleType == RuleType.Containment)
+		if ((int)ruleType == 2)
 		{
 			return "Containment";
 		}
-		if (ruleType == RuleType.JunctionJunctionConnectivity)
+		if ((int)ruleType == 1)
 		{
 			return "JunctionJunctionConnectivity";
 		}
@@ -157,14 +198,7 @@ internal static class AssociationRuleJsonRegenerator
 
 	private static string GetRuleKey(AssociationRule rule)
 	{
-		return string.Join("|",
-			Normalize(rule.AssociationType),
-			Normalize(rule.FromTable),
-			Normalize(rule.FromAssetGroup),
-			Normalize(rule.FromAssetType),
-			Normalize(rule.ToTable),
-			Normalize(rule.ToAssetGroup),
-			Normalize(rule.ToAssetType));
+		return string.Join("|", Normalize(rule.AssociationType), Normalize(rule.FromTable), Normalize(rule.FromAssetGroup), Normalize(rule.FromAssetType), Normalize(rule.ToTable), Normalize(rule.ToAssetGroup), Normalize(rule.ToAssetType));
 	}
 
 	private static string Normalize(string value)
@@ -173,13 +207,7 @@ internal static class AssociationRuleJsonRegenerator
 		{
 			return string.Empty;
 		}
-		return value.Replace(" ", string.Empty).Replace("-", string.Empty).Replace("_", string.Empty).ToUpperInvariant();
+		return value.Replace(" ", string.Empty).Replace("-", string.Empty).Replace("_", string.Empty)
+			.ToUpperInvariant();
 	}
-}
-
-internal sealed class AssociationRuleGenerationResult
-{
-	public string OutputPath { get; set; }
-
-	public int RuleCount { get; set; }
 }
