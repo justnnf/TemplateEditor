@@ -21,6 +21,8 @@ mono_crash.*
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/
+!Release/
+!Release/.gitkeep
 x64/
 x86/
 [Ww][Ii][Nn]32/
@@ -361,3 +363,10 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/Release/TemplateEditor.ArcPro.3.3.v.1.6.0.esriAddinX
+/Release/TemplateEditor.ArcPro.3.3.v.1.6.2.esriAddinX
+/Release/TemplateEditor.ArcPro.3.3.v.1.7.0.esriAddinX
+/Release/TemplateEditor.ArcPro.3.3.v.1.7.1.esriAddinX
+/Release/TemplateEditor.ArcPro.3.3.v.1.7.2.esriAddinX
+/Release/TemplateEditor.ArcPro.3.3.v.1.7.3.esriAddinX
+/Release/TemplateEditor.ArcPro.3.3.v.1.7.4.esriAddinX
