@@ -676,6 +676,7 @@ internal sealed class PlacementAttributeOverrideWindow : Window
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, PanelBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		DialogAppearance.ApplySquareButtonTemplate(style);
 		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsKeyboardFocusedProperty,
@@ -878,8 +879,8 @@ internal sealed class PlacementAttributeOverrideWindow : Window
 			Property = UIElement.IsMouseOverProperty,
 			Value = true
 		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(32, 128, 224))));
-		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(32, 128, 224))));
+		trigger.Setters.Add(new Setter(Control.BackgroundProperty, DialogAppearance.AccentHover));
+		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, DialogAppearance.AccentHover));
 		style.Triggers.Add(trigger);
 		return style;
 	}
@@ -938,13 +939,13 @@ internal sealed class PlacementAttributeOverrideWindow : Window
 		//IL_0000: Unknown result type (might be due to invalid IL or missing references)
 		//IL_0006: Invalid comparison between Unknown and I4
 		IsDarkTheme = (int)FrameworkApplication.ApplicationTheme == 1;
-		WindowBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243)));
-		SurfaceBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White);
-		PanelBorderBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 72)) : new SolidColorBrush(Color.FromRgb(208, 208, 208)));
-		TextBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(238, 238, 238)) : new SolidColorBrush(Color.FromRgb(32, 32, 32)));
-		SecondaryTextBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(205, 205, 205)) : new SolidColorBrush(Color.FromRgb(96, 96, 96)));
-		AccentBrush = new SolidColorBrush(Color.FromRgb(51, 153, byte.MaxValue));
-		HoverBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(238, 244, 250)));
+		WindowBackgroundBrush = DialogAppearance.Background;
+		SurfaceBackgroundBrush = DialogAppearance.InputBackground;
+		PanelBorderBrush = DialogAppearance.SectionBorder;
+		TextBrush = DialogAppearance.Foreground;
+		SecondaryTextBrush = DialogAppearance.SecondaryForeground;
+		AccentBrush = DialogAppearance.Accent;
+		HoverBrush = DialogAppearance.ButtonHoverBackground;
 		EditorBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(36, 36, 38)) : Brushes.White);
 		SelectedBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(35, 82, 130)) : new SolidColorBrush(Color.FromRgb(214, 234, 252)));
 		ComboGlyphBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(192, 192, 192)) : new SolidColorBrush(Color.FromRgb(90, 90, 90)));

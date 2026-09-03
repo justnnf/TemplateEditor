@@ -340,6 +340,8 @@ internal class EditorDockpaneViewModel : DockPane
 	protected EditorDockpaneViewModel()
 	{
 		LogService.Write("EditorDockpaneViewModel constructor starting.");
+		// Commands are bound by the generated WPF dockpane view; each one keeps UI
+		// state changes in this view model and delegates map edits to service classes.
 		SortCommand = new RelayCommand(SortTemplates);
 		ClearSearchCommand = new RelayCommand(delegate
 		{
@@ -543,6 +545,9 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private void LoadTemplatesFromConfig()
 	{
+		// The config JSON can describe simple templates, group templates, and simple
+		// templates that are only children of groups. The dockpane keeps separate
+		// lists so the tabs can show the user the right level of detail.
 		TemplateConfig templateConfig = AddinConfiguration.ReloadTemplates();
 		TemplateConfig templateConfig2 = templateConfig;
 		if (templateConfig2.SimpleTemplates == null)
@@ -732,10 +737,9 @@ internal class EditorDockpaneViewModel : DockPane
 	{
 		if (FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane") is EditorDockpaneViewModel editorDockpaneViewModel)
 		{
-			editorDockpaneViewModel.SetPlacementStatusCore(status);
-		}
-		DialogService.UpdatePlacementProgress(status);
-	}
+				editorDockpaneViewModel.SetPlacementStatusCore(status);
+				}
+			}
 
 	internal static void RefreshSettingsStatus()
 	{

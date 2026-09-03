@@ -303,7 +303,7 @@ public class EditorDockpaneView : UserControl
 			Background = GetPanelBackgroundBrush(),
 			BorderBrush = GetSubtleBorderBrush(),
 			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(4.0),
+			CornerRadius = new CornerRadius(0.0),
 			Padding = (compact ? new Thickness(6.0, 2.0, 6.0, 2.0) : new Thickness(8.0, 3.0, 8.0, 3.0)),
 			VerticalAlignment = VerticalAlignment.Center
 		};
@@ -321,7 +321,7 @@ public class EditorDockpaneView : UserControl
 			Background = GetPanelBackgroundBrush(),
 			BorderBrush = GetSubtleBorderBrush(),
 			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(4.0),
+			CornerRadius = new CornerRadius(0.0),
 			Padding = (compact ? new Thickness(6.0, 2.0, 6.0, 2.0) : new Thickness(8.0, 3.0, 8.0, 3.0)),
 			Margin = new Thickness(compact ? 8.0 : 12.0, 0.0, 0.0, 0.0),
 			VerticalAlignment = VerticalAlignment.Center
@@ -341,7 +341,7 @@ public class EditorDockpaneView : UserControl
 			Background = GetPanelBackgroundBrush(),
 			BorderBrush = GetSubtleBorderBrush(),
 			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(4.0),
+			CornerRadius = new CornerRadius(0.0),
 			Padding = (compact ? new Thickness(6.0, 2.0, 6.0, 2.0) : new Thickness(8.0, 3.0, 8.0, 3.0)),
 			Margin = new Thickness(compact ? 8.0 : 12.0, 0.0, 0.0, 0.0),
 			VerticalAlignment = VerticalAlignment.Center
@@ -360,7 +360,7 @@ public class EditorDockpaneView : UserControl
 			Background = GetPanelBackgroundBrush(),
 			BorderBrush = GetSubtleBorderBrush(),
 			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(4.0),
+			CornerRadius = new CornerRadius(0.0),
 			Padding = (compact ? new Thickness(6.0, 2.0, 6.0, 2.0) : new Thickness(8.0, 3.0, 8.0, 3.0)),
 			Margin = new Thickness(compact ? 8.0 : 12.0, 0.0, 0.0, 0.0),
 			VerticalAlignment = VerticalAlignment.Center
@@ -1170,7 +1170,7 @@ public class EditorDockpaneView : UserControl
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		ControlTemplate controlTemplate = new ControlTemplate(typeof(RadioButton));
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Border));
-		frameworkElementFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(4.0));
+		frameworkElementFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(0.0));
 		frameworkElementFactory.SetBinding(Border.BackgroundProperty, new Binding("Background")
 		{
 			RelativeSource = RelativeSource.TemplatedParent

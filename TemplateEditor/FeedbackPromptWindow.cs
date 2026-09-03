@@ -4,7 +4,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
-using ArcGIS.Desktop.Framework;
 
 namespace TemplateEditor;
 
@@ -12,33 +11,23 @@ internal sealed class FeedbackPromptWindow : Window
 {
 	private MessageBoxResult _result = MessageBoxResult.None;
 
-	private static bool IsDarkTheme
-	{
-		get
-		{
-			//IL_0000: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0006: Invalid comparison between Unknown and I4
-			return (int)FrameworkApplication.ApplicationTheme == 1;
-		}
-	}
-
 	private static Brush WindowBackgroundBrush => DialogAppearance.Background;
 
 	private static Brush ButtonBackgroundBrush => DialogAppearance.InputBackground;
 
-	private static Brush ButtonHoverBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 78)) : new SolidColorBrush(Color.FromRgb(230, 240, 252));
+	private static Brush ButtonHoverBackgroundBrush => DialogAppearance.ButtonHoverBackground;
 
-	private static Brush DisabledButtonBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(48, 48, 52)) : new SolidColorBrush(Color.FromRgb(235, 235, 235));
+	private static Brush DisabledButtonBackgroundBrush => DialogAppearance.ButtonBackground;
 
 	private static Brush PrimaryTextBrush => DialogAppearance.Foreground;
 
-	private static Brush SecondaryTextBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(156, 156, 156)) : new SolidColorBrush(Color.FromRgb(112, 112, 112));
+	private static Brush SecondaryTextBrush => DialogAppearance.SecondaryForeground;
 
 	private static Brush PromptBorderBrush => DialogAppearance.Border;
 
 	private static Brush AccentBrush => DialogAppearance.Accent;
 
-	private static Brush AccentHoverBrush => new SolidColorBrush(Color.FromRgb(32, 128, 224));
+	private static Brush AccentHoverBrush => DialogAppearance.AccentHover;
 
 	public FeedbackPromptWindow(string message, string title, MessageBoxButton buttons)
 		: this(message, title, GetButtons(buttons))
@@ -64,7 +53,7 @@ internal sealed class FeedbackPromptWindow : Window
 		base.Content = DialogAppearance.WithChrome(this, title, BuildContent(message, choices));
 		base.Loaded += delegate
 		{
-			PositionNearOwner();
+			WindowPlacementHelper.PositionNearOwnerBottomRight(this);
 		};
 	}
 
@@ -147,7 +136,7 @@ internal sealed class FeedbackPromptWindow : Window
 		{
 			RelativeSource = RelativeSource.TemplatedParent
 		});
-		frameworkElementFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(3.0));
+		frameworkElementFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(0.0));
 		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(ContentPresenter));
 		frameworkElementFactory2.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
 		frameworkElementFactory2.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
@@ -211,28 +200,4 @@ internal sealed class FeedbackPromptWindow : Window
 		return result;
 	}
 
-	private void PositionNearOwner()
-	{
-		//IL_0002: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
-		Rect ownerBounds = GetOwnerBounds();
-		base.Left = ClampToVirtualScreen(ownerBounds.Right - base.ActualWidth - 32.0, base.ActualWidth, horizontal: true);
-		base.Top = ClampToVirtualScreen(ownerBounds.Bottom - base.ActualHeight - 96.0, base.ActualHeight, horizontal: false);
-	}
-
-	private Rect GetOwnerBounds()
-	{
-		//IL_0035: Unknown result type (might be due to invalid IL or missing references)
-		//IL_006d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0070: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0068: Unknown result type (might be due to invalid IL or missing references)
-		return (Rect)((base.Owner != null && base.Owner.ActualWidth > 0.0 && base.Owner.ActualHeight > 0.0) ? new Rect(base.Owner.Left, base.Owner.Top, base.Owner.ActualWidth, base.Owner.ActualHeight) : SystemParameters.WorkArea);
-	}
-
-	private static double ClampToVirtualScreen(double value, double size, bool horizontal)
-	{
-		double num = (horizontal ? SystemParameters.VirtualScreenLeft : SystemParameters.VirtualScreenTop) + 8.0;
-		double val = num + (horizontal ? SystemParameters.VirtualScreenWidth : SystemParameters.VirtualScreenHeight) - size - 16.0;
-		return Math.Max(num, Math.Min(value, val));
-	}
 }

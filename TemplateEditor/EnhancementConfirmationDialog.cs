@@ -1,7 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using ArcGIS.Desktop.Framework;
 
 namespace TemplateEditor;
 
@@ -13,25 +12,15 @@ internal sealed class EnhancementConfirmationDialog : Window
 
 	private readonly string _cancelLabel;
 
-	private static bool IsDarkTheme
-	{
-		get
-		{
-			//IL_0000: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0006: Invalid comparison between Unknown and I4
-			return (int)FrameworkApplication.ApplicationTheme == 1;
-		}
-	}
+	private static Brush WindowBackgroundBrush => DialogAppearance.Background;
 
-	private static Brush WindowBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243));
+	private static Brush PrimaryTextBrush => DialogAppearance.Foreground;
 
-	private static Brush PrimaryTextBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(242, 242, 242)) : new SolidColorBrush(Color.FromRgb(32, 32, 32));
+	private static Brush ControlBorderBrush => DialogAppearance.ControlBorder;
 
-	private static Brush ControlBorderBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(96, 96, 100)) : new SolidColorBrush(Color.FromRgb(150, 150, 150));
+	private static Brush ButtonBackgroundBrush => DialogAppearance.ButtonBackground;
 
-	private static Brush ButtonBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(232, 232, 232));
-
-	private static Brush ButtonHoverBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 78)) : new SolidColorBrush(Color.FromRgb(225, 235, 245));
+	private static Brush ButtonHoverBrush => DialogAppearance.ButtonHoverBackground;
 
 	public EnhancementConfirmationDialog(string title, string message)
 		: this(title, message, "Yes", "No")
@@ -121,6 +110,7 @@ internal sealed class EnhancementConfirmationDialog : Window
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		DialogAppearance.ApplySquareButtonTemplate(style);
 		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,

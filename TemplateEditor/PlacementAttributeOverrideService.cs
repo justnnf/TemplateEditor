@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Windows;
 using ArcGIS.Core.Data;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Desktop.Mapping;
@@ -54,7 +54,7 @@ internal static class PlacementAttributeOverrideService
 		WriteIndented = true
 	};
 
-	private static readonly string FavouriteDirectoryPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FortisAlberta", "TemplateEditor");
+	private static readonly string FavouriteDirectoryPath = AddinConfiguration.UserDataDirectoryPath;
 
 	private static readonly string FavouriteFilePath = Path.Combine(FavouriteDirectoryPath, "placement-override-favourites.json");
 
@@ -140,7 +140,10 @@ internal static class PlacementAttributeOverrideService
 			DialogService.Show("No placement targets were found for the selected template.", "Template Editor");
 			return false;
 		}
-		PlacementAttributeOverrideWindow window = new PlacementAttributeOverrideWindow(editorModel);
+		PlacementAttributeOverrideWindow window = new PlacementAttributeOverrideWindow(editorModel)
+		{
+			Owner = Application.Current?.MainWindow
+		};
 		if (window.ShowDialog() != true)
 		{
 			return false;
@@ -347,6 +350,8 @@ internal static class PlacementAttributeOverrideService
 	{
 		try
 		{
+			// The override catalog is optional. If the user has not created one in
+			// local app data, placement still works without session override fields.
 			string text = ResolveCatalogFilePath();
 			if (string.IsNullOrWhiteSpace(text) || !File.Exists(text))
 			{
@@ -728,13 +733,9 @@ internal static class PlacementAttributeOverrideService
 
 	private static string ResolveCatalogFilePath()
 	{
-		string path = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? string.Empty;
-		string[] source = new string[2]
-		{
-			Path.Combine(path, "PlacementAttributeOverrides.json"),
-			Path.Combine(path, "TemplateEditor", "PlacementAttributeOverrides.json")
-		};
-		return source.FirstOrDefault(File.Exists);
+		// Override definitions live with the user's add-in data instead of inside
+		// the packaged add-in, keeping environment-specific field choices editable.
+		return Path.Combine(AddinConfiguration.UserDataDirectoryPath, "PlacementAttributeOverrides.json");
 	}
 
 	private static async Task<OverrideFieldSummary> SummarizeFieldAsync(IEnumerable<SimpleTemplate> templates, PlacementAttributeOverrideDefinition definition)

@@ -3,8 +3,9 @@ using System.Globalization;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Media;
-using ArcGIS.Desktop.Framework;
 
 namespace TemplateEditor;
 
@@ -20,27 +21,17 @@ internal sealed class ParallelCopyPromptDialog : Window
 
 	private int _previewVersion;
 
-	private static bool IsDarkTheme
-	{
-		get
-		{
-			//IL_0000: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0006: Invalid comparison between Unknown and I4
-			return (int)FrameworkApplication.ApplicationTheme == 1;
-		}
-	}
+	private static Brush WindowBackgroundBrush => DialogAppearance.Background;
 
-	private static Brush WindowBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243));
+	private static Brush SurfaceBrush => DialogAppearance.InputBackground;
 
-	private static Brush SurfaceBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White;
+	private static Brush PrimaryTextBrush => DialogAppearance.Foreground;
 
-	private static Brush PrimaryTextBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(242, 242, 242)) : new SolidColorBrush(Color.FromRgb(32, 32, 32));
+	private static Brush ControlBorderBrush => DialogAppearance.ControlBorder;
 
-	private static Brush ControlBorderBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(96, 96, 100)) : new SolidColorBrush(Color.FromRgb(150, 150, 150));
+	private static Brush ButtonBackgroundBrush => DialogAppearance.ButtonBackground;
 
-	private static Brush ButtonBackgroundBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(232, 232, 232));
-
-	private static Brush ButtonHoverBrush => IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 78)) : new SolidColorBrush(Color.FromRgb(225, 235, 245));
+	private static Brush ButtonHoverBrush => DialogAppearance.ButtonHoverBackground;
 
 	public double OffsetDistance { get; private set; }
 
@@ -50,10 +41,9 @@ internal sealed class ParallelCopyPromptDialog : Window
 	{
 		base.Title = "Create Parallel Copy";
 		base.Width = 360.0;
-		base.Height = 195.0;
-		base.MinHeight = 195.0;
+		base.SizeToContent = SizeToContent.Height;
 		base.ResizeMode = ResizeMode.NoResize;
-		base.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+		base.WindowStartupLocation = WindowStartupLocation.Manual;
 		base.Background = WindowBackgroundBrush;
 		base.Foreground = PrimaryTextBrush;
 		Grid grid = new Grid
@@ -135,7 +125,9 @@ internal sealed class ParallelCopyPromptDialog : Window
 			Content = "Left",
 			IsChecked = defaultLeftSide,
 			Foreground = PrimaryTextBrush,
-			Margin = new Thickness(0.0, 0.0, 18.0, 0.0)
+			Margin = new Thickness(0.0, 0.0, 6.0, 0.0),
+			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
+			Style = CreateSegmentedRadioButtonStyle()
 		};
 		_leftRadioButton.Checked += delegate
 		{
@@ -146,7 +138,9 @@ internal sealed class ParallelCopyPromptDialog : Window
 		{
 			Content = "Right",
 			IsChecked = !defaultLeftSide,
-			Foreground = PrimaryTextBrush
+			Foreground = PrimaryTextBrush,
+			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
+			Style = CreateSegmentedRadioButtonStyle()
 		};
 		_rightRadioButton.Checked += delegate
 		{
@@ -188,6 +182,7 @@ internal sealed class ParallelCopyPromptDialog : Window
 		base.Content = DialogAppearance.WithChrome(this, "Create Parallel Copy", grid);
 		base.Loaded += delegate
 		{
+			WindowPlacementHelper.PositionAwayFromMapCenter(this);
 			QueuePreviewRefresh();
 		};
 		base.Closed += delegate
@@ -227,6 +222,7 @@ internal sealed class ParallelCopyPromptDialog : Window
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		DialogAppearance.ApplySquareButtonTemplate(style);
 		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
@@ -235,6 +231,57 @@ internal sealed class ParallelCopyPromptDialog : Window
 		trigger.Setters.Add(new Setter(Control.BackgroundProperty, ButtonHoverBrush));
 		trigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
 		style.Triggers.Add(trigger);
+		return style;
+	}
+
+	private static Style CreateSegmentedRadioButtonStyle()
+	{
+		Style style = new Style(typeof(RadioButton));
+		style.Setters.Add(new Setter(Control.BackgroundProperty, ButtonBackgroundBrush));
+		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
+		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
+		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
+		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		ControlTemplate controlTemplate = new ControlTemplate(typeof(RadioButton));
+		FrameworkElementFactory border = new FrameworkElementFactory(typeof(Border));
+		border.SetBinding(Border.BackgroundProperty, new Binding("Background")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		border.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		border.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
+		content.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+		content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		content.SetBinding(FrameworkElement.MarginProperty, new Binding("Padding")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		border.AppendChild(content);
+		controlTemplate.VisualTree = border;
+		style.Setters.Add(new Setter(Control.TemplateProperty, controlTemplate));
+		Trigger selectedTrigger = new Trigger
+		{
+			Property = ToggleButton.IsCheckedProperty,
+			Value = true
+		};
+		selectedTrigger.Setters.Add(new Setter(Control.BackgroundProperty, DialogAppearance.Accent));
+		selectedTrigger.Setters.Add(new Setter(Control.BorderBrushProperty, DialogAppearance.Accent));
+		selectedTrigger.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+		style.Triggers.Add(selectedTrigger);
+		Trigger hoverTrigger = new Trigger
+		{
+			Property = UIElement.IsMouseOverProperty,
+			Value = true
+		};
+		hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, ButtonHoverBrush));
+		style.Triggers.Add(hoverTrigger);
 		return style;
 	}
 

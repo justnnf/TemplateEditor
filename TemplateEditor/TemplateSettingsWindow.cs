@@ -8,7 +8,6 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Media;
-using ArcGIS.Desktop.Framework;
 using Microsoft.Win32;
 
 namespace TemplateEditor;
@@ -38,8 +37,6 @@ internal sealed class TemplateSettingsWindow : Window
 			ValueTextBox = valueTextBox;
 		}
 	}
-
-	private static readonly bool IsDarkTheme;
 
 	private static readonly Brush WindowBackgroundBrush;
 
@@ -332,7 +329,7 @@ internal sealed class TemplateSettingsWindow : Window
 			Background = SurfaceBackgroundBrush,
 			BorderBrush = SectionBorderBrush,
 			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(0.0, 0.0, 4.0, 4.0),
+			CornerRadius = new CornerRadius(0.0),
 			MinHeight = 360.0
 		};
 		StackPanel stackPanel = new StackPanel
@@ -705,7 +702,7 @@ internal sealed class TemplateSettingsWindow : Window
 			Background = SurfaceBackgroundBrush,
 			BorderBrush = SectionBorderBrush,
 			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(4.0),
+			CornerRadius = new CornerRadius(0.0),
 			Child = stackPanel
 		};
 	}
@@ -1191,7 +1188,7 @@ internal sealed class TemplateSettingsWindow : Window
 		{
 			RelativeSource = RelativeSource.TemplatedParent
 		});
-		frameworkElementFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(3.0, 3.0, 0.0, 0.0));
+		frameworkElementFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(0.0));
 		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(ContentPresenter));
 		frameworkElementFactory2.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
 		frameworkElementFactory2.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
@@ -1421,7 +1418,7 @@ internal sealed class TemplateSettingsWindow : Window
 		FrameworkElementFactory frameworkElementFactory3 = new FrameworkElementFactory(typeof(TextBlock));
 		frameworkElementFactory3.Name = "CheckMark";
 		frameworkElementFactory3.SetValue(TextBlock.TextProperty, "✓");
-		frameworkElementFactory3.SetValue(TextBlock.ForegroundProperty, IsDarkTheme ? Brushes.White : Brushes.Black);
+		frameworkElementFactory3.SetValue(TextBlock.ForegroundProperty, PrimaryTextBrush);
 		frameworkElementFactory3.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
 		frameworkElementFactory3.SetValue(TextBlock.FontSizeProperty, 15.0);
 		frameworkElementFactory3.SetValue(TextBlock.LineHeightProperty, 16.0);
@@ -1469,6 +1466,7 @@ internal sealed class TemplateSettingsWindow : Window
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		DialogAppearance.ApplySquareButtonTemplate(style);
 		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
@@ -1508,19 +1506,16 @@ internal sealed class TemplateSettingsWindow : Window
 
 	static TemplateSettingsWindow()
 	{
-		//IL_0000: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Invalid comparison between Unknown and I4
-		IsDarkTheme = (int)FrameworkApplication.ApplicationTheme == 1;
-		WindowBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243)));
-		SurfaceBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White);
-		SectionBorderBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 72)) : new SolidColorBrush(Color.FromRgb(208, 208, 208)));
-		ControlBorderBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(104, 104, 104)) : new SolidColorBrush(Color.FromRgb(150, 150, 150)));
-		TabBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(52, 52, 56)) : new SolidColorBrush(Color.FromRgb(232, 232, 232)));
-		TabHoverBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(58, 58, 62)) : new SolidColorBrush(Color.FromRgb(238, 244, 250)));
+		WindowBackgroundBrush = DialogAppearance.Background;
+		SurfaceBackgroundBrush = DialogAppearance.InputBackground;
+		SectionBorderBrush = DialogAppearance.SectionBorder;
+		ControlBorderBrush = DialogAppearance.ControlBorder;
+		TabBackgroundBrush = DialogAppearance.ButtonBackground;
+		TabHoverBackgroundBrush = DialogAppearance.ButtonHoverBackground;
 		TabSelectedBackgroundBrush = SurfaceBackgroundBrush;
-		PrimaryTextBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(238, 238, 238)) : new SolidColorBrush(Color.FromRgb(32, 32, 32)));
-		SecondaryTextBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(178, 178, 178)) : new SolidColorBrush(Color.FromRgb(96, 96, 96)));
-		AccentBorderBrush = new SolidColorBrush(Color.FromRgb(51, 153, byte.MaxValue));
-		AccentButtonHoverBrush = new SolidColorBrush(Color.FromRgb(32, 128, 224));
+		PrimaryTextBrush = DialogAppearance.Foreground;
+		SecondaryTextBrush = DialogAppearance.SecondaryForeground;
+		AccentBorderBrush = DialogAppearance.Accent;
+		AccentButtonHoverBrush = DialogAppearance.AccentHover;
 	}
 }

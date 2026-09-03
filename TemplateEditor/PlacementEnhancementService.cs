@@ -1426,16 +1426,13 @@ internal static class PlacementEnhancementService
 	{
 		return await ((DispatcherObject)Application.Current).Dispatcher.InvokeAsync<TDialog>((Func<TDialog>)delegate
 		{
-			using (DialogService.SuspendPlacementProgressForPrompt())
+			TDialog val = createDialog();
+			Window window = Application.Current?.MainWindow;
+			if (window != null && val != window)
 			{
-				TDialog val = createDialog();
-				Window window = Application.Current?.MainWindow;
-				if (window != null && val != window)
-				{
-					val.Owner = window;
-				}
-				return (val.ShowDialog() == true) ? val : null;
+				val.Owner = window;
 			}
+			return (val.ShowDialog() == true) ? val : null;
 		});
 	}
 }

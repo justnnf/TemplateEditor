@@ -1,0 +1,16 @@
+<Image xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Stretch="Uniform">
+  <Image.Source>
+    <DrawingImage xmlns:PresentationOptions="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options" PresentationOptions:Freeze="True">
+      <DrawingImage.Drawing>
+        <DrawingGroup>
+          <DrawingGroup.Transform>
+            <ScaleTransform ScaleX="0.0625" ScaleY="0.0625" />
+          </DrawingGroup.Transform>
+          <GeometryDrawing Geometry="M0,0 L512,0 L512,512 L0,512 Z" />
+          <GeometryDrawing Brush="#FF7ED842" Geometry="F1 M256,0 C114.615,0 0,114.615 0,256 C0,397.385 114.615,512 256,512 C397.385,512 512,397.385 512,256 C512,114.615 397.385,0 256,0 Z" />
+          <GeometryDrawing Brush="#FF434242" Geometry="F1 M256,431.967 C158.97,431.967 80.033,353.028 80.033,256 C80.033,227.332 87.046,199.345 100.189,174.323 L75.045,157.684 L182.327,103.456 L174.353,223.399 L148.242,206.12 C141.039,221.637 137.201,238.63 137.201,255.999 C137.201,321.506 190.495,374.8 256.002,374.8 C321.509,374.8 374.803,321.506 374.803,255.999 C374.803,190.492 321.508,137.199 256.001,137.199 L256.001,80.033 C353.029,80.033 431.968,158.971 431.968,256 C431.968,353.029 353.028,431.967 256,431.967 Z" />
+        </DrawingGroup>
+      </DrawingImage.Drawing>
+    </DrawingImage>
+  </Image.Source>
+</Image>

@@ -56,7 +56,7 @@ internal sealed class FeedbackToastWindow : Window
 			Background = DialogAppearance.Background,
 			BorderBrush = GetBorderBrush(severity),
 			BorderThickness = new Thickness(2.0),
-			CornerRadius = new CornerRadius(8.0),
+			CornerRadius = new CornerRadius(0.0),
 			Padding = new Thickness(12.0),
 			Effect = new DropShadowEffect
 			{

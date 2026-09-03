@@ -1,308 +1,258 @@
-# Template Editor User Guide
+# Template Editor
 
-This guide explains how to use the Template Editor add-in in ArcGIS Pro.
+Template Editor is an ArcGIS Pro add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
 
-## What Template Editor Does
+The add-in does not ship with a customer-specific template configuration. Each user or team selects their own template JSON and can generate their own optional association-rule JSON from the active map.
 
-Template Editor helps you place configured utility templates in a map. A template can create:
+## Requirements
 
-- a single point, line, polygon, or table record
-- a group of related features and records
-- configured Utility Network associations between group parts
-- automatic structural attachment or containment associations when supported
-- optional line splits after placing features
-- optional parallel copies from selected lines
+- ArcGIS Pro 3.3.x
+- .NET 8 SDK for building from source
+- A template configuration JSON file for the templates you want to place
+- Optional: an ArcGIS Utility Network map if you use automatic associations, containment, structural attachment, or rule generation
 
-The add-in is driven by a template configuration JSON file. Users normally do not edit the add-in itself.
+## Add-In Commands
 
-## Opening Template Editor
+The ArcGIS Pro ribbon adds a `Templates` tab with three commands:
 
-1. Open ArcGIS Pro.
-2. Open the project and map where you want to place templates.
-3. Go to the `Templates` tab.
-4. Click `Open Editor`.
+- `Settings`: choose configuration files and workflow options.
+- `Open Editor`: open the Template Editor dockpane.
+- `Reload Config`: reload the selected template configuration JSON.
 
-If no template configuration file is selected, the add-in asks you to choose one.
+## First-Time Setup
 
-## Choosing or Changing the Template Config
+1. Build or install the add-in.
+2. Open ArcGIS Pro and the map where templates should be placed.
+3. Open the `Templates` tab.
+4. Click `Settings`.
+5. On the `General` tab, select your template configuration JSON file.
+6. Click `OK`.
+7. Click `Open Editor`.
 
-1. Go to the `Templates` tab.
-2. Click `Settings`.
-3. On the `General` tab, choose the template configuration JSON file.
-4. Optional: turn on `Validate template configuration before opening the editor`.
-5. Click `OK`.
-6. Click `Reload Config` or reopen the editor.
+User preferences are stored outside the add-in package at:
 
-Use `Reload Config` whenever the template JSON file has changed.
+```text
+%LOCALAPPDATA%\TemplateEditor\user-settings.json
+```
 
-## Main Editor Layout
+Logs and generated support files use the same neutral app-data folder:
 
-The Template Editor dockpane has:
+```text
+%LOCALAPPDATA%\TemplateEditor
+```
 
-- a search box
-- `Groups`, `Simple`, and `All` filters
-- a template count
-- a table with `Name`, `Type`, and `Description`
+## Configuration Files
 
-Click a column header to sort. Click it again to reverse the sort.
+### Template Config JSON
 
-## Searching
+The template config JSON is the primary input. It defines the simple templates, grouped templates, target layers/tables, default field values, configured geometry, and configured group associations that Template Editor can place.
 
-Type in the search box to filter templates.
+The add-in stores only the selected file path in user settings. The template JSON itself is not embedded in the add-in.
 
-Search checks:
+### Association Rules JSON
 
-- template name
-- type
-- description
-- group part names
+Association rules are optional. When present, they help the add-in decide which Utility Network associations are valid for automatic prompts and configured association creation.
 
-Matching text is highlighted.
+The default rule path is:
 
-Use the red `X` button to clear the search.
+```text
+%LOCALAPPDATA%\TemplateEditor\AllowedAssociationRules.json
+```
 
-## Template Views
+Users can also choose another rule JSON path in `Settings > Associations > Rule Catalog`.
 
-### Groups
+The source repository may contain a sample or working `TemplateEditor\AllowedAssociationRules.json`, but it is intentionally excluded from the `.esriAddinX` package. End users can generate their own rule JSON from their active map using the settings window.
 
-Shows group templates. These can be expanded.
+### Placement Attribute Overrides JSON
 
-Click the arrow beside a group to show its individual parts.
+Placement attribute override definitions are optional. They define which fields are available in the one-time placement override window and the session override settings.
 
-Selecting the group row places the entire group.
+The default override definition path is:
 
-Selecting a part row places only that one part of the group.
+```text
+%LOCALAPPDATA%\TemplateEditor\PlacementAttributeOverrides.json
+```
 
-### Simple
+The repository copy is not packaged with the add-in.
 
-Shows simple templates that are not part of a group.
+## Editor Dockpane
 
-### All
+The dockpane includes:
 
-Shows all templates in one flat list. Groups are not expandable in this view.
+- Search box with highlighted matches
+- `Groups`, `Simple`, and `All` views
+- Favorites and recent-template tracking
+- Sortable template columns
+- Placement status and configuration health indicators
+- Optional compact layout
 
-Use `Groups` when you need to see or select individual group parts.
+Use `Groups` when you need to expand a group and place one part. Use `All` when you want one flat list for quick searching.
 
-## Placing a Template
+## Placing Templates
 
-1. Select a template in the editor.
-2. The add-in activates the correct placement tool.
+1. Select a template in the dockpane.
+2. The add-in activates the matching placement tool.
 3. Click or sketch in the map.
 4. Finish the sketch.
-5. The add-in creates the feature, record, or group.
-6. The add-in returns to the select tool.
+5. The add-in creates the feature, table row, or group.
+6. Optional post-placement prompts run based on settings.
 
-The tool type depends on the template:
+Template type behavior:
 
-- point templates use a point cursor
-- line templates use a line sketch tool
-- polygon templates use a polygon sketch tool
-- table/non-spatial templates use a click-to-place tool
+- Point templates use a point placement cursor.
+- Line templates use a line sketch tool.
+- Polygon templates use a polygon sketch tool.
+- Non-spatial table templates run from the map click workflow and can prompt for association targets.
+- Group templates create all configured parts together.
+- Expanded group parts create only the selected part.
 
-## Placing a Full Group
+## Preview, Rotation, and Mirror
 
-Select the main group row, not one of its expanded parts.
+Configured group layouts can show a preview before placement. Point, line, and polygon placement tools keep preview state in sync with the selected template.
 
-When you place a full group, Template Editor creates all configured parts of the group and then attempts to create the configured associations between those parts.
-
-The group preview shows the full layout before placement.
-
-## Placing One Part of a Group
-
-Expand a group and select one of the numbered part rows.
-
-Only that selected part is created.
-
-Behavior by part type:
-
-- point part: places at the clicked point
-- line part: uses the line you sketch
-- polygon part: uses the configured polygon shape
-
-This is useful when you want one component from a group without creating the entire group.
-
-## Preview and Rotation
-
-Some templates show a preview before placement.
-
-For full groups, the preview shows the configured group layout.
-
-For individual group parts:
-
-- point and line parts rely on the normal placement/sketch feedback
-- polygon parts show the configured polygon preview
-
-Rotation controls:
+Keyboard controls:
 
 - Hold `R` and move the mouse to rotate a configured preview.
 - Release `R` to stop rotating.
 - Press `E` to reset rotation.
 
-## Automatic Associations
-
-Template Editor can help create Utility Network associations after placement.
-
-Depending on settings and the template, it may prompt for:
-
-- structural attachment
-- containment
-- configured group associations
-- non-spatial record association to a selected feature
-
-When prompted, review the message carefully and choose `Yes` only if the highlighted or selected feature is the correct association target.
-
-## SJO to Pole Attachments
-
-For SJO/framing/pole-link templates:
-
-1. Select one or more Pole features in the map.
-2. Select the SJO template or group part.
-3. Place it.
-4. When prompted, choose whether to create structural attachments to the selected Pole features.
-
-If you choose `Yes`, the add-in creates one SJO for each selected Pole and attempts to create structural attachment associations.
-
-If no selected Pole is found, the add-in warns you and creates the SJO without attachment.
-
-## Non-Spatial Records
-
-Some templates create records in a table instead of map features.
-
-For non-spatial records:
-
-1. Select the feature that should contain or relate to the record, if applicable.
-2. Select the record template.
-3. Click in the map to place/run the template.
-4. Follow the association prompt.
-
-If no valid selected feature or association rule is found, the add-in may ask whether to create the record without associations.
+The dockpane also supports placement mirror modes where configured geometry needs to be flipped before placement.
 
 ## Line Splitting
 
-After placing certain point or line templates, the add-in may ask whether to split an underlying line.
+Template Editor can prompt to split underlying lines after placement.
 
-Examples:
+Supported cases include:
 
-- a point is placed on top of a line
-- a new line endpoint lands on an existing line
+- Point templates placed on eligible target lines
+- Line endpoints placed on eligible target lines
+- Configured group line parts with start/end split behavior
 
-If more than one possible line is found, the add-in asks you to choose the target.
+Settings control candidate distance, eligible placement groups, eligible target groups, duplicate prompt suppression, interior-only splitting, and whether the add-in always asks or auto-splits when only one candidate exists.
 
 ## Parallel Copy
 
-When placing a line template, the add-in may offer to create a parallel copy from a selected line.
+When placing a line template, Template Editor can create a parallel copy from selected line features.
 
-To use it:
+The workflow supports:
 
-1. Select an existing line feature.
-2. Select a line template in Template Editor.
-3. If prompted, choose parallel copy.
-4. Enter the offset distance.
-5. Choose the side.
+- Default offset distance
+- Left/right side selection
+- Remembering the last distance and side
+- Multi-segment selected-line spans
+- Optional connected-span enforcement
+- Optional automatic creation when selected lines exist
 
-The add-in creates the new line template using the offset geometry.
+The parallel-copy prompt opens near the lower-right of the ArcGIS Pro window and sizes itself to its content so controls are not clipped.
 
-## Settings Summary
+## Utility Network Associations
 
-Open `Settings` from the `Templates` tab.
+Template Editor can create or prompt for several association types:
 
-Important settings:
+- Configured group associations
+- Structural attachment
+- Containment in structure points
+- Containment in structure boundaries or lines
+- Junction-junction connectivity
+- Non-spatial record associations
 
-- template configuration file
-- configuration validation
-- line split prompts
-- parallel copy prompts
-- automatic association prompts
-- association search distance
-- eligible placement and target groups
-- candidate highlighting
+Association behavior is controlled in `Settings > Associations`.
 
-If a workflow is not prompting, check settings first.
+Prompt modes:
 
-## Reloading Templates
+- `Always ask`
+- `Auto-create when one candidate`
+- `Review multiple only`
+- `Never create`
 
-Click `Reload Config` after the template configuration JSON changes.
+Configured group associations can run in:
 
-If the editor is open, it refreshes the list.
+- `Fast`: batch configured associations into one edit operation.
+- `Debug`: create associations one at a time to isolate exact failures.
 
-If the editor is closed, it reloads the config and shows a confirmation.
+## Placement Attribute Overrides
+
+Template Editor supports two override scopes:
+
+- Session overrides: configured in Settings and applied across placements.
+- One-time placement overrides: opened from the template context workflow and applied only to the next placement.
+
+Override definitions are loaded from the optional app-data JSON file. Presets for one-time overrides are saved in:
+
+```text
+%LOCALAPPDATA%\TemplateEditor\placement-override-favourites.json
+```
+
+## Settings Tabs
+
+The settings window is organized into:
+
+- `General`: template config path and validation.
+- `Line Split`: split prompting, candidate limits, target groups, and target names.
+- `Parallel Copy`: offset defaults, multi-segment behavior, and selected-line automation.
+- `Associations`: prompt modes, search distances, fallback groups, and rule catalog generation.
+- `Attribute Overrides`: session-level placement attribute overrides.
+- `Interface`: compact layout, recent template count, map hint colors, and diagnostics.
 
 ## Troubleshooting
 
-### The editor does not open
+### The Editor Does Not Open
 
-Check that the template configuration file exists and is selected in `Settings`.
+Check that a template configuration JSON is selected in `Settings > General` and that the file still exists.
 
-If validation is enabled, fix any validation messages before opening the editor.
+If validation is enabled, resolve validation errors before opening the editor.
 
-### A template is missing
+### A Template Is Missing
 
-Check:
+Check that:
 
-- the search box is clear
-- the correct view is selected: `Groups`, `Simple`, or `All`
-- the template exists in the configuration file
-- click `Reload Config`
+- The search box is clear.
+- The correct view is selected.
+- The template exists in the selected config JSON.
+- `Reload Config` has been run after editing the JSON.
 
-### I cannot see group parts
+### Group Parts Are Not Visible
 
-Switch to `Groups` view and click the arrow beside a group.
+Switch to `Groups` view and expand the group row. Group parts are not expanded in the `All` view.
 
-Group parts are not shown in `All` view.
-
-### A group part placed the wrong geometry
-
-Expected behavior:
-
-- selected point part places at the cursor
-- selected line part uses your sketched line
-- selected polygon part uses the configured polygon
-- full group placement uses all configured offsets and shapes
-
-If this does not match what you see, reload the config and reselect the template.
-
-### SJO did not attach to a Pole
+### Associations Are Not Prompting
 
 Check:
 
-- the Pole feature was selected before placing
-- you selected the correct SJO template or group part
-- you answered `Yes` to the structural attachment prompt
-- the Pole layer is selectable
-- automatic association prompts are enabled
+- Association prompts are enabled.
+- The target layer is selectable and present in the map.
+- A valid association rule exists or fallback target settings match the map.
+- Search distances are large enough for the placement.
+- The selected prompt mode allows prompting.
 
-### A non-spatial record did not associate
+### Split Prompts Are Not Appearing
 
 Check:
 
-- the target feature was selected before placement
-- the template has a matching association rule
-- automatic association prompts are enabled
-- you answered `Yes` to the association prompt
+- Line split prompts are enabled.
+- The placed template group is listed as eligible.
+- The target line group or subtype/layer name is listed as eligible.
+- The split search distance is large enough.
+- Interior-only splitting is not filtering out endpoint candidates.
 
-### The cursor looks wrong
+### Parallel Copy Is Not Offered
 
-Close and reopen ArcGIS Pro after rebuilding or reinstalling the add-in.
+Check:
 
-If it still looks wrong, the custom cursor files may not be installed with the add-in package.
+- The selected template is a line template.
+- At least one source line is selected.
+- Parallel copy prompts are enabled.
+- Multi-segment settings match the selected geometry.
 
-### Placement failed
+### Placement Fails
 
 Common causes:
 
-- required field missing from the template
-- invalid subtype or domain value
-- target layer/table not present in the map
-- Utility Network association rule does not allow the requested association
-- selected feature is not a valid association target
+- Missing target layer or table
+- Invalid subtype or domain value
+- Required field missing from defaults
+- Utility Network rule does not allow the requested association
+- Selected feature is not a valid target
+- The active map is connected to `DEFAULT` and default-version placement prevention is enabled
 
-Read the error message, correct the template or map selection, then try again.
-
-## Best Practices
-
-- Reload config after changing the JSON.
-- Use `Groups` view when placing grouped equipment.
-- Use expanded group parts only when you intentionally want one part.
-- Select association targets before placing templates that depend on selection.
-- Keep validation enabled when editing or testing template configurations.
-- Watch prompts carefully; they control whether optional associations and line splits happen.
+Read the popup details, adjust the template/config/map selection, and try again.

@@ -1,0 +1,20 @@
+<Image xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Stretch="Uniform">
+  <Image.Source>
+    <DrawingImage xmlns:PresentationOptions="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options" PresentationOptions:Freeze="True">
+      <DrawingImage.Drawing>
+        <DrawingGroup>
+          <DrawingGroup.Transform>
+            <ScaleTransform ScaleX="0.031496063" ScaleY="0.031496063" />
+          </DrawingGroup.Transform>
+          <GeometryDrawing Geometry="M0,0 L508,0 L508,508 L0,508 Z" />
+          <GeometryDrawing Brush="#FF007EB2" Geometry="F1 M254,0 C394.28,0 508,113.72 508,254 C508,394.28 394.28,508 254,508 C113.72,508 0,394.28 0,254 C0,113.72 113.72,0 254,0 Z" />
+          <GeometryDrawing Brush="#FFE6E9EE" Geometry="F1 M342.4,149.6 C342.4,162 344.8,173.2 348.4,182 L152,182 C134,182 119.6,167.6 119.6,149.6 C119.6,131.6 134,117.2 152,117.2 L348.4,117.2 C344.8,125.6 342.4,137.2 342.4,149.6 Z" />
+          <GeometryDrawing Brush="#FF434242" Geometry="F1 M356.8,386.4 L356.8,186 C356.8,183.6 355.2,182 352.8,182 L152,182 C133.6,182 118.8,166.8 119.6,148.4 C120.4,130.8 135.2,117.2 152.8,117.2 L352.8,117.2 C355.2,117.2 356.8,115.6 356.8,113.2 C356.8,110.8 355.2,109.2 352.8,109.2 L152,109.2 C129.6,109.2 111.6,127.2 111.6,149.6 L111.6,353.2 C111.6,378.8 132.4,399.6 158,399.6 L344.8,399.6 C351.2,399.2 356.8,393.6 356.8,386.4 Z" />
+          <GeometryDrawing Brush="#FF8BC7F9" Geometry="F1 M150,117.2 C133.6,118.8 120.4,131.6 119.6,148.4 C118.8,166 132.4,180.8 150,182 L150,398.4 C128.4,394.8 111.6,375.6 111.6,352.8 L111.6,149.6 C111.6,128 128.8,110.4 150,109.2 L150,117.2 Z" />
+          <GeometryDrawing Brush="#FFFFF358" Geometry="F1 M271.6,182 L254,182 L254,244 L271.6,232.8 L289.2,244 L289.2,182 Z" />
+          <GeometryDrawing Brush="#FFE6E9EE" Geometry="F1 M176.4,289.6 L330,289.6 L330,297.2 L176.4,297.2 Z M176.4,309.2 L330,309.2 L330,316.8 L176.4,316.8 Z M176.4,329.2 L330,329.2 L330,336.8 L176.4,336.8 Z M176.4,348.8 L330,348.8 L330,356.4 L176.4,356.4 Z" />
+        </DrawingGroup>
+      </DrawingImage.Drawing>
+    </DrawingImage>
+  </Image.Source>
+</Image>

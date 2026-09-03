@@ -15,7 +15,7 @@ internal class SketchPolygonTool : PreviewSketchTool
 		base.SketchType = (SketchGeometryType)4;
 		base.SketchOutputMode = (SketchOutputMode)1;
 		base.UseSnapping = true;
-		base.Cursor = ToolCursorLoader.Load("cursor_polygon.cur");
+		base.Cursor = ToolCursorLoader.Load("polygonCursor.cur");
 	}
 
 	protected override Task OnToolActivateAsync(bool active)

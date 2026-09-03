@@ -1,14 +1,11 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using ArcGIS.Desktop.Framework;
 
 namespace TemplateEditor;
 
 internal sealed class TextEntryPromptWindow : Window
 {
-	private static readonly bool IsDarkTheme;
-
 	private static readonly Brush WindowBackgroundBrush;
 
 	private static readonly Brush SurfaceBackgroundBrush;
@@ -25,14 +22,13 @@ internal sealed class TextEntryPromptWindow : Window
 
 	public string EnteredText => _textBox.Text?.Trim();
 
-	private TextEntryPromptWindow(string title, string prompt, string initialValue)
+	private TextEntryPromptWindow(string title, string prompt, string initialValue, bool openAwayFromMapCenter)
 	{
 		base.Title = title;
 		base.Width = 420.0;
-		base.Height = 180.0;
 		base.MinWidth = 380.0;
-		base.MinHeight = 170.0;
-		base.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+		base.SizeToContent = SizeToContent.Height;
+		base.WindowStartupLocation = openAwayFromMapCenter ? WindowStartupLocation.Manual : WindowStartupLocation.CenterOwner;
 		base.Background = WindowBackgroundBrush;
 		base.Foreground = TextBrush;
 		base.FontFamily = new FontFamily("Segoe UI");
@@ -86,14 +82,18 @@ internal sealed class TextEntryPromptWindow : Window
 		base.Content = DialogAppearance.WithChrome(this, title, dockPanel);
 		base.Loaded += delegate
 		{
+			if (openAwayFromMapCenter)
+			{
+				WindowPlacementHelper.PositionAwayFromMapCenter(this);
+			}
 			_textBox.Focus();
 			_textBox.SelectAll();
 		};
 	}
 
-	public static string ShowPrompt(string title, string prompt, string initialValue, Window owner)
+	public static string ShowPrompt(string title, string prompt, string initialValue, Window owner, bool openAwayFromMapCenter = false)
 	{
-		TextEntryPromptWindow textEntryPromptWindow = new TextEntryPromptWindow(title, prompt, initialValue)
+		TextEntryPromptWindow textEntryPromptWindow = new TextEntryPromptWindow(title, prompt, initialValue, openAwayFromMapCenter)
 		{
 			Owner = owner
 		};
@@ -113,29 +113,30 @@ internal sealed class TextEntryPromptWindow : Window
 
 	private static Button CreateButton(string label, bool primary)
 	{
+		Style style = new Style(typeof(Button));
+		style.Setters.Add(new Setter(Control.BackgroundProperty, primary ? AccentBrush : SurfaceBackgroundBrush));
+		style.Setters.Add(new Setter(Control.ForegroundProperty, primary ? Brushes.White : TextBrush));
+		style.Setters.Add(new Setter(Control.BorderBrushProperty, primary ? AccentBrush : BorderBrushColor));
+		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
+		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		DialogAppearance.ApplySquareButtonTemplate(style);
 		return new Button
 		{
 			Content = label,
 			Width = 82.0,
 			Height = 28.0,
-			Background = (primary ? AccentBrush : SurfaceBackgroundBrush),
-			Foreground = (primary ? Brushes.White : TextBrush),
-			BorderBrush = (primary ? AccentBrush : BorderBrushColor),
-			BorderThickness = new Thickness(1.0),
-			Padding = new Thickness(10.0, 0.0, 10.0, 0.0)
+			Padding = new Thickness(10.0, 0.0, 10.0, 0.0),
+			Style = style
 		};
 	}
 
 	static TextEntryPromptWindow()
 	{
-		//IL_0000: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Invalid comparison between Unknown and I4
-		IsDarkTheme = (int)FrameworkApplication.ApplicationTheme == 1;
-		WindowBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(243, 243, 243)));
-		SurfaceBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(31, 31, 31)) : Brushes.White);
-		BorderBrushColor = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(72, 72, 72)) : new SolidColorBrush(Color.FromRgb(208, 208, 208)));
-		TextBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(238, 238, 238)) : new SolidColorBrush(Color.FromRgb(32, 32, 32)));
-		SecondaryTextBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(205, 205, 205)) : new SolidColorBrush(Color.FromRgb(96, 96, 96)));
-		AccentBrush = new SolidColorBrush(Color.FromRgb(51, 153, byte.MaxValue));
+		WindowBackgroundBrush = DialogAppearance.Background;
+		SurfaceBackgroundBrush = DialogAppearance.InputBackground;
+		BorderBrushColor = DialogAppearance.SectionBorder;
+		TextBrush = DialogAppearance.Foreground;
+		SecondaryTextBrush = DialogAppearance.SecondaryForeground;
+		AccentBrush = DialogAppearance.Accent;
 	}
 }

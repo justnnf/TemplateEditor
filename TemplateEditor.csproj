@@ -18,77 +18,57 @@
     <NoWarn>CA1416</NoWarn>
     <AddInName>TemplateEditor</AddInName>
     <AddInDescription>Template editor tools</AddInDescription>
-    <AddInImage>Images\MapBadgeIcons\AddInDesktopMap.png</AddInImage>
-    <AddInAuthor>FortisAlberta</AddInAuthor>
-    <AddInCompany>FortisAlberta</AddInCompany>
-    <AddInVersion>1.7.5</AddInVersion>
+    <AddInImage>Images\AddInDesktopMap.png</AddInImage>
+    <AddInAuthor>TemplateEditor</AddInAuthor>
+    <AddInCompany>TemplateEditor</AddInCompany>
+    <AddInVersion>1.7.9</AddInVersion>
     <ArcGISProReleaseVersion>3.3</ArcGISProReleaseVersion>
     <ReleaseDirectory>$(MSBuildProjectDirectory)\Release\</ReleaseDirectory>
   </PropertyGroup>
 
   <ItemGroup>
     <None Remove="Config.daml" />
+    <Content Remove="TemplateEditor\AllowedAssociationRules.json" />
+    <Content Remove="TemplateEditor\PlacementAttributeOverrides.json" />
+    <None Update="TemplateEditor\AllowedAssociationRules.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
+    <None Update="TemplateEditor\PlacementAttributeOverrides.json">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="Config.daml" />
-    <Content Include="DarkImages\AddInDesktop16.png" />
-    <Content Include="DarkImages\AddInDesktop32.png" />
-    <Content Include="DarkImages\ConfigSettings16.png" />
-    <Content Include="DarkImages\ConfigSettings32.png" />
-    <Content Include="DarkImages\ReloadConfig16.png" />
-    <Content Include="DarkImages\ReloadConfig32.png" />
-    <Content Include="DarkImages\TemplateEditor16.png" />
-    <Content Include="DarkImages\TemplateEditor32.png" />
-    <Content Include="Images\AddInDesktop16.png" />
-    <Content Include="Images\AddInDesktop32.png" />
-    <Content Include="Images\MapBadgeIcons\AddInDesktopMap16.png" />
-    <Content Include="Images\MapBadgeIcons\AddInDesktopMap32.png" />
-    <Content Include="Images\MapBadgeIcons\AddInDesktopMap.png" />
-    <Content Include="Images\MapBadgeIcons\ConfigSettingsMap16.png" />
-    <Content Include="Images\MapBadgeIcons\ConfigSettingsMap32.png" />
-    <Content Include="Images\MapBadgeIcons\ConfigSettingsMap.png" />
-    <Content Include="Images\MapBadgeIcons\ReloadConfigMap16.png" />
-    <Content Include="Images\MapBadgeIcons\ReloadConfigMap32.png" />
-    <Content Include="Images\MapBadgeIcons\ReloadConfigMap.png" />
-    <Content Include="Images\MapBadgeIcons\TemplateEditorMap16.png" />
-    <Content Include="Images\MapBadgeIcons\TemplateEditorMap32.png" />
-    <Content Include="Images\MapBadgeIcons\TemplateEditorMap.png" />
-    <Content Include="Images\ConfigSettings16.png" />
-    <Content Include="Images\ConfigSettings32.png" />
-    <Content Include="TemplateEditor.dll.config">
+    <Content Include="Images\AddInDesktopMap.png" />
+    <Content Include="Images\SettingsVectorIcon16.xaml" />
+    <Content Include="Images\SettingsVectorIcon32.xaml" />
+    <Content Include="Images\ReloadVectorIcon16.xaml" />
+    <Content Include="Images\ReloadVectorIcon32.xaml" />
+    <Content Include="Images\TemplatesVectorIcon16.xaml" />
+    <Content Include="Images\TemplatesVectorIcon32.xaml" />
+    <Content Include="DarkImages\SettingsVectorIcon16.xaml" />
+    <Content Include="DarkImages\SettingsVectorIcon32.xaml" />
+    <Content Include="DarkImages\ReloadVectorIcon16.xaml" />
+    <Content Include="DarkImages\ReloadVectorIcon32.xaml" />
+    <Content Include="DarkImages\TemplatesVectorIcon16.xaml" />
+    <Content Include="DarkImages\TemplatesVectorIcon32.xaml" />
+    <Content Include="Images\lineCursor.cur">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Images\ReloadConfig16.png" />
-    <Content Include="Images\ReloadConfig32.png" />
-    <Content Include="Images\TemplateEditor16.png" />
-    <Content Include="Images\TemplateEditor32.png" />
-    <Content Include="Images\cursor_line.cur">
+    <Content Include="Images\pointCursor.cur">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Images\cursor_point.cur">
+    <Content Include="Images\polygonCursor.cur">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Images\cursor_polygon.cur">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Images\cursor_row.cur">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="TemplateEditor\AllowedAssociationRules.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="TemplateEditor\PlacementAttributeOverrides.json">
+    <Content Include="Images\tableCursor.cur">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
 
   <ItemGroup>
     <None Include=".github\copilot-instructions.md" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="System.Configuration.ConfigurationManager" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>

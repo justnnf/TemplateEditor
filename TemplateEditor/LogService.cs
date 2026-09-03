@@ -9,7 +9,7 @@ internal static class LogService
 
 	private static readonly object SyncRoot = new object();
 
-	private static string LogDirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FortisAlberta", "TemplateEditor");
+	private static string LogDirectoryPath => AddinConfiguration.UserDataDirectoryPath;
 
 	private static string LogFilePath => Path.Combine(LogDirectoryPath, "template-editor.log");
 

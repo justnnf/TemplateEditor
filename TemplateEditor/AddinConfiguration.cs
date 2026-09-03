@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Configuration;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text.Json;
 using Microsoft.Win32;
 
@@ -18,26 +16,16 @@ internal static class AddinConfiguration
 		public TemplateEditorSettings Settings { get; set; }
 	}
 
-	private const string TemplateConfigFilePathKey = "TemplateConfigFilePath";
-
-	private const string LegacyTemplateConfigFilePathKey = "FramingConfigFilePath";
-
-	private const string ValidateConfigKey = "ValidateConfig";
-
-	private const string FeatureLayerGroupNamesKey = "FeatureLayerGroupNames";
+	private const string DefaultFeatureLayerGroupNames = "ELECTRICDEVICE,ELECTRICLINE,ELECTRICJUNCTION,STRUCTUREJUNCTION,STRUCTUREBOUNDARY,STRUCTURELINE,FIBER OPTIC";
 
 	private static readonly JsonSerializerOptions _settingsJsonOptions = new JsonSerializerOptions
 	{
 		WriteIndented = true
 	};
 
-	private static string UserSettingsDirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FortisAlberta", "TemplateEditor");
+	internal static string UserDataDirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TemplateEditor");
 
-	private static string LegacyUserSettingsDirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FortisAlberta", "FramingEditor");
-
-	private static string UserSettingsFilePath => Path.Combine(UserSettingsDirectoryPath, "user-settings.json");
-
-	private static string LegacyUserSettingsFilePath => Path.Combine(LegacyUserSettingsDirectoryPath, "user-settings.json");
+	private static string UserSettingsFilePath => Path.Combine(UserDataDirectoryPath, "user-settings.json");
 
 	public static string DefaultTemplateConfigFilePath { get; private set; }
 
@@ -92,7 +80,7 @@ internal static class AddinConfiguration
 
 	public static void Initialize()
 	{
-		LoadPackagedDefaults();
+		LoadBuiltInDefaults();
 		PlacementAttributeOverrideService.Initialize();
 		LoadUserSettings();
 		if (GroupFeatureLayerNames == null)
@@ -216,37 +204,24 @@ internal static class AddinConfiguration
 		}
 	}
 
-	private static void LoadPackagedDefaults()
+	private static void LoadBuiltInDefaults()
 	{
-		string text = Assembly.GetExecutingAssembly().Location + ".config";
-		GroupFeatureLayerNames = new List<string>();
+		// These values used to live in TemplateEditor.dll.config. Keeping immutable
+		// startup defaults in code avoids shipping a second add-in config file, while
+		// user choices continue to persist in the add-in's local application data folder.
 		Settings = new TemplateEditorSettings();
-		if (!File.Exists(text))
-		{
-			return;
-		}
-		ExeConfigurationFileMap fileMap = new ExeConfigurationFileMap
-		{
-			ExeConfigFilename = text
-		};
-		Configuration configuration = ConfigurationManager.OpenMappedExeConfiguration(fileMap, ConfigurationUserLevel.None);
-		DefaultTemplateConfigFilePath = GetAppSetting(configuration, "TemplateConfigFilePath") ?? GetAppSetting(configuration, "FramingConfigFilePath");
+		DefaultTemplateConfigFilePath = string.Empty;
 		Settings.TemplateConfigFilePath = DefaultTemplateConfigFilePath;
-		Settings.ValidateConfig = bool.TryParse(GetAppSetting(configuration, "ValidateConfig"), out var result) & result;
-		string appSetting = GetAppSetting(configuration, "FeatureLayerGroupNames");
-		if (!string.IsNullOrWhiteSpace(appSetting))
-		{
-			GroupFeatureLayerNames = (from name in appSetting.Split(',')
-				select name.Trim() into name
-				where !string.IsNullOrWhiteSpace(name)
-				select name).ToList();
-		}
+		Settings.ValidateConfig = false;
+		GroupFeatureLayerNames = ParseCsv(DefaultFeatureLayerGroupNames).ToList();
 		Settings.Normalize();
 	}
 
 	private static void LoadUserSettings()
 	{
-		string text = (File.Exists(UserSettingsFilePath) ? UserSettingsFilePath : LegacyUserSettingsFilePath);
+		// User settings overlay the built-in defaults. If the saved JSON is corrupt,
+		// it is moved aside so a bad preference file cannot prevent the add-in from loading.
+		string text = UserSettingsFilePath;
 		if (File.Exists(text))
 		{
 			UserSettingsEnvelope userSettingsEnvelope;
@@ -291,9 +266,11 @@ internal static class AddinConfiguration
 
 	private static void SaveUserSettings()
 	{
+		// Settings are written atomically so an ArcGIS Pro crash or machine shutdown
+		// cannot leave a half-written JSON file behind.
 		try
 		{
-			Directory.CreateDirectory(UserSettingsDirectoryPath);
+			Directory.CreateDirectory(UserDataDirectoryPath);
 			UserSettingsEnvelope value = new UserSettingsEnvelope
 			{
 				TemplateConfigFilePath = Settings.TemplateConfigFilePath,
@@ -305,6 +282,14 @@ internal static class AddinConfiguration
 		{
 			LogService.LogException("User settings could not be saved; the current session will continue without persisting this change.", exception);
 		}
+	}
+
+	private static IEnumerable<string> ParseCsv(string csv)
+	{
+		return from name in (csv ?? string.Empty).Split(',')
+			select name.Trim() into name
+			where !string.IsNullOrWhiteSpace(name)
+			select name;
 	}
 
 	private static TemplateConfig LoadTemplateConfig(string configFilePath)
@@ -335,8 +320,4 @@ internal static class AddinConfiguration
 		return templateConfig;
 	}
 
-	private static string GetAppSetting(Configuration configuration, string key)
-	{
-		return configuration.AppSettings.Settings[key]?.Value;
-	}
 }

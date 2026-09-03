@@ -17,7 +17,7 @@ internal static class OffsetPlacementSession
 
 	public static bool Begin()
 	{
-		string text = TextEntryPromptWindow.ShowPrompt("Place at Offset", "Offset distance in metres. Click the line insert point, then move the mouse around the distance ring to choose the direction and click to place.", (DistanceMeters > 0.0) ? DistanceMeters.ToString("0.###", CultureInfo.CurrentCulture) : "1", Application.Current?.MainWindow);
+		string text = TextEntryPromptWindow.ShowPrompt("Place at Offset", "Offset distance in metres. Click the line insert point, then move the mouse around the distance ring to choose the direction and click to place.", (DistanceMeters > 0.0) ? DistanceMeters.ToString("0.###", CultureInfo.CurrentCulture) : "1", Application.Current?.MainWindow, openAwayFromMapCenter: true);
 		if (!double.TryParse(text, NumberStyles.Float, CultureInfo.CurrentCulture, out var result) || result <= 0.0)
 		{
 			if (text != null)

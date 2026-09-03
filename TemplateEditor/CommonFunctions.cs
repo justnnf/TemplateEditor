@@ -260,6 +260,8 @@ internal static class CommonFunctions
 
 	public static async Task<bool> CreateFeatures(Geometry sketchGeometry, double rotationDegrees = 0.0, MapPoint splitPointOverride = null)
 	{
+		// Placement is staged: validate the request, build one edit operation,
+		// execute it, then run associations and post-placement enhancements.
 		if (sketchGeometry == null)
 		{
 			EditorDockpaneViewModel.SetPlacementStatus("Ready. Please select a template to place.");
@@ -276,7 +278,6 @@ internal static class CommonFunctions
 			return false;
 		}
 		PlacementAttributeOverrideService.BeginPlacement();
-		DialogService.BeginPlacementProgress("Template Editor", "Preparing " + selectedTemplate.DisplayName + " for placement...");
 		try
 		{
 			EditorDockpaneViewModel.SetPlacementStatus("Preparing " + selectedTemplate.DisplayName + ": checking the target version and placement options...");
@@ -335,7 +336,6 @@ internal static class CommonFunctions
 		}
 		finally
 		{
-			DialogService.EndPlacementProgress();
 			PlacementAttributeOverrideService.EndPlacementAttempt();
 			EditorDockpaneViewModel.RefreshSettingsStatus();
 		}
@@ -568,6 +568,8 @@ internal static class CommonFunctions
 
 	private static async Task<bool> TryPlaceWithFallbacksAsync(string templateName, Geometry sketchGeometry, bool isSimpleTemplate, string originalErrorMessage, double rotationDegrees)
 	{
+		// Fallbacks let the user keep the core feature placement when optional
+		// configured associations or defaults are what caused ArcGIS to reject it.
 		if (DialogService.Show("Template placement failed.\n\n" + CleanErrorMessage(originalErrorMessage) + "\n\nYou can retry without configured associations, or cancel placement.", "Template Editor", new DialogButtonChoice("Place Without Associations", MessageBoxResult.Yes, isPrimary: true), new DialogButtonChoice("Cancel", MessageBoxResult.No, isPrimary: false, isCancel: true)) == MessageBoxResult.Yes)
 		{
 			EditorDockpaneViewModel.SetPlacementStatus("Retrying " + templateName + ": placing without configured associations...");
@@ -643,6 +645,8 @@ internal static class CommonFunctions
 
 	private static async Task<PlacementBuildResult> BuildPlacementOperationAsync(string templateName, Geometry sketchGeometry, bool isSimpleTemplate, PlacementOptions options, double rotationDegrees, MapPoint splitPointOverride = null)
 	{
+		// Build first, execute later. The returned feature info tokens are resolved
+		// after execution and then used to create utility-network associations.
 		TemplateConfig templates = GetLoadedTemplateConfigOrThrow();
 		EditOperation operation = new EditOperation
 		{
@@ -698,6 +702,8 @@ internal static class CommonFunctions
 		}
 		foreach (SimpleTemplateReference simpleTemplateRef in groupTemplate.SimpleTemplates)
 		{
+			// FeatureId is the bridge between each generated row/feature and the
+			// association definitions in the group template JSON.
 			SimpleTemplate template = AddinConfiguration.Templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, simpleTemplateRef.Name, StringComparison.OrdinalIgnoreCase));
 			if (template == null)
 			{
@@ -841,6 +847,8 @@ internal static class CommonFunctions
 
 	private static async Task ExecuteConfiguredAssociationsFastAsync(PlacementBuildResult placement, ConfiguredAssociationResult result)
 	{
+		// Fast mode batches valid associations into one edit operation. If the batch
+		// fails, Debug mode can isolate the individual association that failed.
 		List<ExistingAssociationPair> queuedPairs = new List<ExistingAssociationPair>();
 		Dictionary<int, FeatureInfo> featureInfoById = new Dictionary<int, FeatureInfo>(placement.FeatureInfos.Count);
 		foreach (FeatureInfo info in placement.FeatureInfos)
@@ -898,6 +906,8 @@ internal static class CommonFunctions
 
 	private static async Task ExecuteConfiguredAssociationsWithDiagnosticsAsync(PlacementBuildResult placement, ConfiguredAssociationResult result)
 	{
+		// Debug mode runs associations one at a time so diagnostics can name the
+		// exact from/to FeatureId pair ArcGIS rejected.
 		Dictionary<int, FeatureInfo> featureInfoById = new Dictionary<int, FeatureInfo>(placement.FeatureInfos.Count);
 		foreach (FeatureInfo info in placement.FeatureInfos)
 		{
@@ -2166,6 +2176,8 @@ internal static class CommonFunctions
 
 	public static async Task<string> ValidateConfiguration()
 	{
+		// Validation moves from cheap structural checks to map/schema checks so the
+		// user sees the root configuration issue before downstream noise.
 		TemplateConfig templates = GetLoadedTemplateConfigOrThrow();
 		string message = null;
 		List<string> errors = new List<string>();

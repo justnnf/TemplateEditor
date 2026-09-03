@@ -15,7 +15,7 @@ internal class SketchPolylineTool : PreviewSketchTool
 		base.SketchType = (SketchGeometryType)3;
 		base.SketchOutputMode = (SketchOutputMode)1;
 		base.UseSnapping = true;
-		base.Cursor = ToolCursorLoader.Load("cursor_line.cur");
+		base.Cursor = ToolCursorLoader.Load("lineCursor.cur");
 	}
 
 	protected override Task OnToolActivateAsync(bool active)

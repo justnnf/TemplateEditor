@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text.Json;
 using ArcGIS.Core.Data.UtilityNetwork;
 
@@ -22,7 +21,7 @@ internal sealed class AssociationRuleCatalog
 
 	public bool IsAvailable => _isAvailable;
 
-	public static string RuleFilePath => ResolveRuleFilePath(preferExisting: true);
+	public static string RuleFilePath => ResolveRuleFilePath();
 
 	private AssociationRuleCatalog(List<AssociationRule> rules, bool isAvailable = true)
 	{
@@ -131,7 +130,9 @@ internal sealed class AssociationRuleCatalog
 	{
 		try
 		{
-			string path = ResolveRuleFilePath(preferExisting: true);
+			// Missing rule JSON is allowed. Without a rule catalog the add-in falls
+			// back to permissive association filtering and settings-window fallbacks.
+			string path = ResolveRuleFilePath();
 			if (!File.Exists(path))
 			{
 				return new AssociationRuleCatalog(new List<AssociationRule>());
@@ -148,20 +149,16 @@ internal sealed class AssociationRuleCatalog
 		}
 	}
 
-	private static string ResolveRuleFilePath(bool preferExisting)
+	private static string ResolveRuleFilePath()
 	{
 		string text = AddinConfiguration.Settings?.AssociationRulesJsonPath;
 		if (!string.IsNullOrWhiteSpace(text))
 		{
 			return AtomicFileService.NormalizeJsonFilePath(text);
 		}
-		string directoryName = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-		string text2 = Path.Combine(directoryName, "TemplateEditor", "AllowedAssociationRules.json");
-		string text3 = Path.Combine(directoryName, "AllowedAssociationRules.json");
-		if (!preferExisting || File.Exists(text2))
-		{
-			return text2;
-		}
-		return File.Exists(text3) ? text3 : text2;
+		// Rule files are intentionally not packaged with the add-in. When the user
+		// regenerates rules from the settings window, this app-data path becomes the
+		// default location without changing the installed add-in contents.
+		return Path.Combine(AddinConfiguration.UserDataDirectoryPath, "AllowedAssociationRules.json");
 	}
 }
