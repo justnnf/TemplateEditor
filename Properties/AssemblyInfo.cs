@@ -9,3 +9,4 @@ using System.Runtime.Versioning;
 [assembly: AssemblyTitle("Template Editor")]
 [assembly: TargetPlatform("Windows10.0")]
 [assembly: SupportedOSPlatform("Windows10.0")]
+[assembly: InternalsVisibleTo("TemplateEditor.Tests")]

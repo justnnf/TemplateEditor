@@ -59,12 +59,6 @@ internal static class AssociationRuleJsonRegenerator
 			{
 				List<AssociationRule> rules = (from @group in (from rule in definition.GetRules().Where(delegate(Rule rule)
 						{
-							//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-							//IL_0007: Invalid comparison between Unknown and I4
-							//IL_000a: Unknown result type (might be due to invalid IL or missing references)
-							//IL_0010: Invalid comparison between Unknown and I4
-							//IL_0013: Unknown result type (might be due to invalid IL or missing references)
-							//IL_0019: Invalid comparison between Unknown and I4
 							return (int)rule.Type == 3 || (int)rule.Type == 2 || (int)rule.Type == 1;
 						}).Select(ToAssociationRule)
 						where rule != null
@@ -145,7 +139,6 @@ internal static class AssociationRuleJsonRegenerator
 
 	private static AssociationRule ToAssociationRule(Rule rule)
 	{
-		//IL_003b: Unknown result type (might be due to invalid IL or missing references)
 		IReadOnlyList<RuleElement> ruleElements = rule.RuleElements;
 		if (ruleElements == null || ruleElements.Count < 2)
 		{
@@ -174,13 +167,6 @@ internal static class AssociationRuleJsonRegenerator
 
 	private static string GetAssociationTypeName(RuleType ruleType)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0003: Invalid comparison between Unknown and I4
-		//IL_0012: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0014: Invalid comparison between Unknown and I4
-		//IL_0023: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0025: Invalid comparison between Unknown and I4
-		//IL_0034: Unknown result type (might be due to invalid IL or missing references)
 		if ((int)ruleType == 3)
 		{
 			return "Attachment";

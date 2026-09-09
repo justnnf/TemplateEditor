@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <None Remove="Config.daml" />
+	<Compile Remove="TemplateEditor.Tests\**\*.cs" />
     <Content Remove="TemplateEditor\AllowedAssociationRules.json" />
     <Content Remove="TemplateEditor\PlacementAttributeOverrides.json" />
     <None Update="TemplateEditor\AllowedAssociationRules.json">
@@ -129,12 +130,15 @@
 
   <Target Name="StampAddInPackageVersion" AfterTargets="PackageArcGISContents" Condition="'$(_ArcGISExtension)' != '' And Exists('$(_ArcGISPackageFile)')">
     <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\Tools\Set-AddInManifestVersion.ps1&quot; -PackagePath &quot;$(_ArcGISPackageFile)&quot; -Version &quot;$(AddInVersion)&quot;" />
+  </Target>
+
+  <Target Name="DeployArcGISAddIn" DependsOnTargets="Build;StampAddInPackageVersion" Condition="'$(_ArcGISExtension)' != '' And Exists('$(_ArcGISPackageFile)')">
     <Exec Command="RegisterAddIn.exe &quot;$(_ArcGISPackageFile)&quot; /s" WorkingDirectory="$(ArcGISFolder)" Condition="Exists('$(ArcGISFolder)RegisterAddIn.exe')" />
     <Copy SourceFiles="$(_ArcGISPackageFile)" DestinationFolder="$(ArcGISAddInInstallFolder)" />
     <Message Text="Updated the installed add-in package to version $(AddInVersion)" Importance="High" />
   </Target>
 
-  <Target Name="CopyAddInToReleaseFolder" AfterTargets="StampAddInPackageVersion" Condition="'$(_ArcGISExtension)' != '' And Exists('$(_ArcGISPackageFile)')">
+  <Target Name="PublishArcGISAddIn" DependsOnTargets="Build;StampAddInPackageVersion" Condition="'$(_ArcGISExtension)' != '' And Exists('$(_ArcGISPackageFile)')">
     <PropertyGroup>
       <ReleaseAddInFileName>$(AssemblyName).ArcPro.$(ArcGISProReleaseVersion).v.$(AddInVersion)$(_ArcGISExtension)</ReleaseAddInFileName>
     </PropertyGroup>

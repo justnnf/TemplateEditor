@@ -936,8 +936,6 @@ internal sealed class PlacementAttributeOverrideWindow : Window
 
 	static PlacementAttributeOverrideWindow()
 	{
-		//IL_0000: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Invalid comparison between Unknown and I4
 		IsDarkTheme = (int)FrameworkApplication.ApplicationTheme == 1;
 		WindowBackgroundBrush = DialogAppearance.Background;
 		SurfaceBackgroundBrush = DialogAppearance.InputBackground;

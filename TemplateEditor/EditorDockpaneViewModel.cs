@@ -314,10 +314,6 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private static string GetToolIdForGeometryType(GeometryType templateGeometryType)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0017: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0040: Unknown result type (might be due to invalid IL or missing references)
 		if (GeometryTypeHelper.IsTable(templateGeometryType))
 		{
 			return "TemplateEditor_AddRowTool";
@@ -373,11 +369,11 @@ internal class EditorDockpaneViewModel : DockPane
 		ActivateMirrorPlacementCommand = new RelayCommand(ActivateMirrorPlacement);
 		PlaceWithOverridesCommand = new RelayCommand(delegate(object parameter)
 		{
-			PlaceWithOverridesAsync(parameter);
+			TaskObservationService.Forget(PlaceWithOverridesAsync(parameter), "One-time placement override setup failed.");
 		});
 		PlaceAtOffsetCommand = new RelayCommand(delegate(object parameter)
 		{
-			PlaceAtOffsetAsync(parameter);
+			TaskObservationService.Forget(PlaceAtOffsetAsync(parameter), "Offset placement setup failed.");
 		});
 		try
 		{

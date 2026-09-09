@@ -29,6 +29,15 @@ The ArcGIS Pro ribbon adds a `Templates` tab with three commands:
 6. Click `OK`.
 7. Click `Open Editor`.
 
+## Building, Packaging, and Deployment
+
+`dotnet build TemplateEditor.csproj` compiles the add-in and creates a package in the build output without changing the installed add-in or the `Release` folder.
+
+Use an explicit MSBuild target when needed:
+
+- `dotnet msbuild TemplateEditor.csproj -target:DeployArcGISAddIn` registers and installs the current package for ArcGIS Pro.
+- `dotnet msbuild TemplateEditor.csproj -target:PublishArcGISAddIn` copies the current package to `Release` with its versioned filename.
+
 User preferences are stored outside the add-in package at:
 
 ```text

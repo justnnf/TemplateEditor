@@ -66,7 +66,6 @@ internal abstract class PreviewSketchTool : MapTool
 
 	protected override void OnToolMouseMove(MapViewMouseEventArgs args)
 	{
-		//IL_001e: Unknown result type (might be due to invalid IL or missing references)
 		if (_resetRotationOnNextMouseMove)
 		{
 			ResetPreviewState(clearRotation: true);
@@ -77,8 +76,6 @@ internal abstract class PreviewSketchTool : MapTool
 
 	private void HandlePreviewMouseMove(Point clientPoint)
 	{
-		//IL_0022: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002e: Unknown result type (might be due to invalid IL or missing references)
 		if (_isPreviewSuspended)
 		{
 			if (_isSuspendedForPlacement)
@@ -93,7 +90,6 @@ internal abstract class PreviewSketchTool : MapTool
 
 	protected override void OnToolKeyDown(MapViewKeyEventArgs args)
 	{
-		//IL_003a: Unknown result type (might be due to invalid IL or missing references)
 		if (!_isPreviewSuspended)
 		{
 			if (Keyboard.IsKeyDown((Key)48))
@@ -229,8 +225,6 @@ internal abstract class PreviewSketchTool : MapTool
 
 	private void BeginRotateMode(Point clientPoint)
 	{
-		//IL_001b: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001c: Unknown result type (might be due to invalid IL or missing references)
 		if (!_rotationAnchorClientPoint.HasValue)
 		{
 			_rotationAnchorClientPoint = _lastClientPoint ?? clientPoint;
@@ -265,8 +259,6 @@ internal abstract class PreviewSketchTool : MapTool
 		Point currentClientPoint = _lastClientPoint.Value;
 		await QueuedTask.Run((Action)delegate
 		{
-			//IL_0014: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0021: Unknown result type (might be due to invalid IL or missing references)
 			MapView active = MapView.Active;
 			if (active != null)
 			{
@@ -293,7 +285,6 @@ internal abstract class PreviewSketchTool : MapTool
 
 	private void RefreshPreview()
 	{
-		//IL_0018: Unknown result type (might be due to invalid IL or missing references)
 		if (_lastClientPoint.HasValue)
 		{
 			QueuePreviewUpdate(_lastClientPoint.Value);
@@ -308,7 +299,6 @@ internal abstract class PreviewSketchTool : MapTool
 
 	private void QueuePreviewUpdate(Point clientPoint, bool force = false)
 	{
-		//IL_0069: Unknown result type (might be due to invalid IL or missing references)
 		if (!_isPreviewSuspended && !_isPreviewUpdateQueued)
 		{
 			if ((DateTime.UtcNow - _lastPreviewUpdateStartedUtc).TotalMilliseconds < 33.0)
@@ -351,25 +341,10 @@ internal abstract class PreviewSketchTool : MapTool
 
 	private async Task UpdatePreviewAsync(Point clientPoint, int previewGeneration)
 	{
-		//IL_0019: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001a: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
 			await QueuedTask.Run((Action)delegate
 			{
-				//IL_0063: Unknown result type (might be due to invalid IL or missing references)
-				//IL_0068: Unknown result type (might be due to invalid IL or missing references)
-				//IL_008e: Unknown result type (might be due to invalid IL or missing references)
-				//IL_0110: Unknown result type (might be due to invalid IL or missing references)
-				//IL_01c6: Unknown result type (might be due to invalid IL or missing references)
-				//IL_01cb: Unknown result type (might be due to invalid IL or missing references)
-				//IL_01e0: Unknown result type (might be due to invalid IL or missing references)
-				//IL_01eb: Unknown result type (might be due to invalid IL or missing references)
-				//IL_01f7: Unknown result type (might be due to invalid IL or missing references)
-				//IL_0203: Unknown result type (might be due to invalid IL or missing references)
-				//IL_020f: Unknown result type (might be due to invalid IL or missing references)
-				//IL_021b: Unknown result type (might be due to invalid IL or missing references)
-				//IL_0236: Expected O, but got Unknown
 				if (!_isPreviewSuspended && previewGeneration == Volatile.Read(in _previewGeneration))
 				{
 					MapView active = MapView.Active;

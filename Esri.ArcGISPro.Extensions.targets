@@ -51,15 +51,6 @@
     <Delete Files="$(_ArcGISPackageFile)" />
     <ZipDirectory SourceDirectory="$(ZipIntermediatePath)" DestinationFile="$(_ArcGISPackageFile)" Overwrite="true" />
     <Message Text="Packaged $(_ArcGISPackageFile)" Importance="High" />
-    <Message Text="Registering $(_ArcGISPackageFile) with $(ArcGISFolder)RegisterAddIn.exe" Importance="High" Condition="Exists('$(ArcGISFolder)RegisterAddIn.exe')" />
-    <Message Text="Unable to register add-in because RegisterAddIn.exe was not found. ArcGISFolder='$(ArcGISFolder)'" Importance="High" Condition="!Exists('$(ArcGISFolder)RegisterAddIn.exe')" />
-    <Exec IgnoreExitCode="true" WorkingDirectory="$(ArcGISFolder)" Command="RegisterAddIn.exe &quot;$(_ArcGISPackageFile)&quot; /s" Condition="Exists('$(ArcGISFolder)RegisterAddIn.exe')">
-      <Output TaskParameter="ExitCode" PropertyName="_ArcGISRegisterAddInExitCode" />
-    </Exec>
-    <Message Text="RegisterAddIn.exe exit code: $(_ArcGISRegisterAddInExitCode)" Importance="High" Condition="'$(_ArcGISRegisterAddInExitCode)' != ''" />
-    <MakeDir Directories="$(ArcGISAddInInstallFolder)" />
-    <Copy SourceFiles="$(_ArcGISPackageFile)" DestinationFolder="$(ArcGISAddInInstallFolder)" />
-    <Message Text="Installed $(_ArcGISPackageFile) to $(ArcGISAddInInstallFolder)" Importance="High" />
     <RemoveDir Directories="$(ZipIntermediatePath)" Condition="Exists('$(ZipIntermediatePath)')" />
   </Target>
 
@@ -69,6 +60,5 @@
     </PropertyGroup>
 
     <Delete Files="$(_ArcGISPackageFile)" />
-    <Delete Files="$(ArcGISAddInInstallFolder)$(AssemblyName)$(_ArcGISExtension)" />
   </Target>
 </Project>

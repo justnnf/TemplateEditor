@@ -16,14 +16,11 @@ internal sealed class ExistingAssociationPair
 		[CompilerGenerated]
 		get
 		{
-			//IL_0001: Unknown result type (might be due to invalid IL or missing references)
 			return _003CAssociationType_003Ek__BackingField;
 		}
 		[CompilerGenerated]
 		set
 		{
-			//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0002: Unknown result type (might be due to invalid IL or missing references)
 			_003CAssociationType_003Ek__BackingField = value;
 		}
 	}
@@ -38,8 +35,6 @@ internal sealed class ExistingAssociationPair
 
 	public bool Matches(AssociationType associationType, MapMember firstMember, long firstObjectID, MapMember secondMember, long secondObjectID)
 	{
-		//IL_0002: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
 		if (AssociationType != associationType || firstMember == null || secondMember == null || firstObjectID <= 0 || secondObjectID <= 0)
 		{
 			return false;

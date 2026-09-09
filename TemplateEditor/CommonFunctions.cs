@@ -204,12 +204,6 @@ internal static class CommonFunctions
 
 	private static GeometryType GetConfiguredSketchGeometryType(SimpleTemplateReference simpleTemplateRef)
 	{
-		//IL_003f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0047: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0056: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0057: Unknown result type (might be due to invalid IL or missing references)
-		//IL_004f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_005a: Unknown result type (might be due to invalid IL or missing references)
 		string text = simpleTemplateRef?.SketchType?.ToUpperInvariant();
 		if (1 == 0)
 		{
@@ -246,16 +240,36 @@ internal static class CommonFunctions
 		{
 			return (GeometryType)0;
 		}
-		FeatureLayer layer = MapMemberLookupService.GetFeatureLayerByName(simpleTemplate.SubtypeLayer, simpleTemplate.GroupLayer);
+		FeatureLayer layer = await MapMemberLookupService.GetFeatureLayerByNameAsync(simpleTemplate.SubtypeLayer, simpleTemplate.GroupLayer);
 		if (layer == null)
 		{
 			throw new InvalidOperationException($"Layer '{simpleTemplate.GroupLayer}/{simpleTemplate.SubtypeLayer}' was not found for template '{simpleTemplate.Name}'.");
 		}
 		return await QueuedTask.Run<GeometryType>((Func<GeometryType>)delegate
 		{
-			//IL_0010: Unknown result type (might be due to invalid IL or missing references)
-			return layer.GetFeatureClass().GetDefinition().GetShapeType();
+			return GetFeatureLayerShapeType(layer);
 		}, TaskCreationOptions.None);
+	}
+
+	private static GeometryType GetFeatureLayerShapeType(FeatureLayer layer)
+	{
+		FeatureClass featureClass = layer?.GetFeatureClass();
+		try
+		{
+			FeatureClassDefinition definition = featureClass?.GetDefinition();
+			try
+			{
+				return (definition != null) ? definition.GetShapeType() : (GeometryType)0;
+			}
+			finally
+			{
+				((IDisposable)definition)?.Dispose();
+			}
+		}
+		finally
+		{
+			((IDisposable)featureClass)?.Dispose();
+		}
 	}
 
 	public static async Task<bool> CreateFeatures(Geometry sketchGeometry, double rotationDegrees = 0.0, MapPoint splitPointOverride = null)
@@ -743,7 +757,6 @@ internal static class CommonFunctions
 
 	private static bool TryBuildConfiguredAssociationPair(AssociationObject association, FeatureInfo fromInfo, FeatureInfo toInfo, out ExistingAssociationPair pair, out string failure)
 	{
-		//IL_010c: Unknown result type (might be due to invalid IL or missing references)
 		pair = null;
 		failure = null;
 		if (fromInfo == null || toInfo == null)
@@ -860,11 +873,6 @@ internal static class CommonFunctions
 		}
 		string errorMessage = await QueuedTask.Run<string>((Func<string>)delegate
 		{
-			//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0006: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0012: Unknown result type (might be due to invalid IL or missing references)
-			//IL_001e: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0027: Expected O, but got Unknown
 			EditOperation val = new EditOperation
 			{
 				Name = "Create template associations",
@@ -951,11 +959,6 @@ internal static class CommonFunctions
 	{
 		return await QueuedTask.Run<string>((Func<string>)delegate
 		{
-			//IL_003f: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0044: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0050: Unknown result type (might be due to invalid IL or missing references)
-			//IL_005c: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0065: Expected O, but got Unknown
 			AssociationDescription val = CreateAssociationDescription(association, fromInfo, toInfo);
 			if (val == null)
 			{
@@ -1058,11 +1061,6 @@ internal static class CommonFunctions
 		}
 		await QueuedTask.Run((Action)delegate
 		{
-			//IL_003d: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0042: Unknown result type (might be due to invalid IL or missing references)
-			//IL_005c: Expected O, but got Unknown
-			//IL_007f: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0086: Expected O, but got Unknown
 			foreach (PlacedFeatureContext createdFeature2 in createdFeatures)
 			{
 				if (createdFeature2.Layer != null && createdFeature2.ObjectID > 0)
@@ -1230,13 +1228,6 @@ internal static class CommonFunctions
 
 	private static AssociationDescription CreateTableAssociationDescription(AssociationObject assoc, bool isReversed, RowHandle selectedHandle, RowHandle rowHandle)
 	{
-		//IL_006b: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0071: Expected O, but got Unknown
-		//IL_0076: Unknown result type (might be due to invalid IL or missing references)
-		//IL_007c: Expected O, but got Unknown
-		//IL_0091: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0085: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0097: Expected O, but got Unknown
 		RowHandle val = (isReversed ? rowHandle : selectedHandle);
 		RowHandle val2 = (isReversed ? selectedHandle : rowHandle);
 		int num = (isReversed ? assoc.ToTerminal : assoc.FromTerminal);
@@ -1427,8 +1418,6 @@ internal static class CommonFunctions
 			Inspector inspector = new Inspector();
 			await QueuedTask.Run((Action)delegate
 			{
-				//IL_0012: Unknown result type (might be due to invalid IL or missing references)
-				//IL_0027: Expected O, but got Unknown
 				inspector.Load((MapMember)layer, objectId);
 				assetType = Convert.ToInt32(inspector["ASSETTYPE"], CultureInfo.InvariantCulture);
 			}, TaskCreationOptions.None);
@@ -1443,18 +1432,6 @@ internal static class CommonFunctions
 
 	private static Geometry CreateGeometryForTemplate(SimpleTemplateReference template, Geometry sketchGeometry, double rotationDegrees = 0.0)
 	{
-		//IL_001d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0023: Expected O, but got Unknown
-		//IL_0035: Unknown result type (might be due to invalid IL or missing references)
-		//IL_003b: Expected O, but got Unknown
-		//IL_0062: Unknown result type (might be due to invalid IL or missing references)
-		//IL_006c: Expected O, but got Unknown
-		//IL_009e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a4: Expected O, but got Unknown
-		//IL_00c8: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00d2: Expected O, but got Unknown
-		//IL_0104: Unknown result type (might be due to invalid IL or missing references)
-		//IL_010a: Expected O, but got Unknown
 		if (template.Location != null)
 		{
 			MapPoint anchorPoint = (MapPoint)sketchGeometry;
@@ -1558,10 +1535,6 @@ internal static class CommonFunctions
 
 	private static void AddPreviewGraphicForTemplateReference(List<PreviewOverlayGraphic> graphics, SimpleTemplateReference templateRef, SimpleTemplate template, MapPoint anchorPoint, double rotationDegrees, CIMSymbolReference pointSymbol, CIMSymbolReference lineSymbol, CIMSymbolReference polygonSymbol, bool useAllConfiguredGeometry)
 	{
-		//IL_003f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_004b: Expected O, but got Unknown
-		//IL_0073: Unknown result type (might be due to invalid IL or missing references)
-		//IL_007f: Expected O, but got Unknown
 		if (templateRef != null && template != null)
 		{
 			if (useAllConfiguredGeometry && (templateRef.Location != null || templateRef.Line != null || templateRef.Polygon != null))
@@ -1588,8 +1561,6 @@ internal static class CommonFunctions
 
 	private static Geometry CreateGeometryForSimpleTemplate(SimpleTemplate template, MapPoint anchorPoint, double rotationDegrees)
 	{
-		//IL_0043: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0049: Expected O, but got Unknown
 		List<MapPoint> list = template.Geometry.Select((List<double> n) => CreateMapPoint(anchorPoint, n, rotationDegrees)).ToList();
 		return (Geometry)PolygonBuilderEx.CreatePolygon((IEnumerable<MapPoint>)list, ((Geometry)anchorPoint).SpatialReference);
 	}
@@ -1639,7 +1610,6 @@ internal static class CommonFunctions
 
 	private static bool IsSimplePointTemplate(SimpleTemplate template)
 	{
-		//IL_0093: Unknown result type (might be due to invalid IL or missing references)
 		if (!IsFeatureLayerTemplate(template))
 		{
 			return false;
@@ -1657,7 +1627,7 @@ internal static class CommonFunctions
 		{
 			return false;
 		}
-		bool flag = GeometryTypeHelper.IsPoint(featureLayerByName.GetFeatureClass().GetDefinition().GetShapeType());
+		bool flag = GeometryTypeHelper.IsPoint(GetFeatureLayerShapeType(featureLayerByName));
 		lock (_simplePointTemplateCacheLock)
 		{
 			_simplePointTemplateCache[key] = flag;
@@ -1706,19 +1676,6 @@ internal static class CommonFunctions
 
 	private static AssociationDescription CreateAssociationDescription(AssociationObject association, FeatureInfo fromInfo, FeatureInfo toInfo)
 	{
-		//IL_007a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0080: Expected O, but got Unknown
-		//IL_0085: Unknown result type (might be due to invalid IL or missing references)
-		//IL_008b: Expected O, but got Unknown
-		//IL_00a9: Unknown result type (might be due to invalid IL or missing references)
-		//IL_009f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b4: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00ba: Expected O, but got Unknown
-		//IL_00af: Expected O, but got Unknown
-		//IL_00bf: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00c5: Expected O, but got Unknown
-		//IL_00ca: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00d0: Expected O, but got Unknown
 		RowHandle val = CreateRowHandle(fromInfo);
 		RowHandle val2 = CreateRowHandle(toInfo);
 		AssociationDescription result = null;
@@ -1748,10 +1705,6 @@ internal static class CommonFunctions
 
 	private static RowHandle CreateRowHandle(FeatureInfo featureInfo)
 	{
-		//IL_0035: Unknown result type (might be due to invalid IL or missing references)
-		//IL_003b: Expected O, but got Unknown
-		//IL_0027: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002d: Expected O, but got Unknown
 		if (featureInfo.MapMember != null && featureInfo.ObjectID > 0)
 		{
 			return new RowHandle(featureInfo.MapMember, featureInfo.ObjectID);
@@ -1769,7 +1722,7 @@ internal static class CommonFunctions
 		RowToken token;
 		if (AddinConfiguration.GroupFeatureLayerNames.Contains(template.GroupLayer.ToUpperInvariant()))
 		{
-			FeatureLayer layer = MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
+			FeatureLayer layer = await MapMemberLookupService.GetFeatureLayerByNameAsync(template.SubtypeLayer, template.GroupLayer);
 			if (layer == null)
 			{
 				throw new InvalidOperationException($"Layer '{template.GroupLayer}/{template.SubtypeLayer}' was not found for template '{template.Name}'.");
@@ -1778,7 +1731,7 @@ internal static class CommonFunctions
 		}
 		else
 		{
-			StandaloneTable table = MapMemberLookupService.GetTableByName(template.SubtypeLayer, template.GroupLayer);
+			StandaloneTable table = await MapMemberLookupService.GetTableByNameAsync(template.SubtypeLayer, template.GroupLayer);
 			if (table == null)
 			{
 				throw new InvalidOperationException($"Table '{template.GroupLayer}/{template.SubtypeLayer}' was not found for template '{template.Name}'.");
@@ -1959,23 +1912,6 @@ internal static class CommonFunctions
 
 	private static object ConvertValueToFieldType(Field field, object value, Subtype subtype)
 	{
-		//IL_0021: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0027: Invalid comparison between Unknown and I4
-		//IL_002a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0032: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0039: Invalid comparison between Unknown and I4
-		//IL_00ad: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b4: Invalid comparison between Unknown and I4
-		//IL_006e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0075: Invalid comparison between Unknown and I4
-		//IL_00ea: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00f0: Invalid comparison between Unknown and I4
-		//IL_00f3: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00f9: Invalid comparison between Unknown and I4
-		//IL_012f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0135: Invalid comparison between Unknown and I4
-		//IL_0168: Unknown result type (might be due to invalid IL or missing references)
-		//IL_016e: Invalid comparison between Unknown and I4
 		value = GetObjectValue(value);
 		if (value == null)
 		{
@@ -2139,16 +2075,6 @@ internal static class CommonFunctions
 
 	private static object FormatSymbolRotationFieldValue(double degrees, object templateValue, Field field)
 	{
-		//IL_0024: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002b: Invalid comparison between Unknown and I4
-		//IL_002e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0034: Invalid comparison between Unknown and I4
-		//IL_0037: Unknown result type (might be due to invalid IL or missing references)
-		//IL_003d: Invalid comparison between Unknown and I4
-		//IL_005c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0062: Invalid comparison between Unknown and I4
-		//IL_0065: Unknown result type (might be due to invalid IL or missing references)
-		//IL_006b: Invalid comparison between Unknown and I4
 		if (templateValue is string)
 		{
 			return degrees.ToString("0.######", CultureInfo.InvariantCulture);
@@ -2166,7 +2092,6 @@ internal static class CommonFunctions
 
 	private static object GetCodedDomainValue(Domain domain, object configFieldValue)
 	{
-		//IL_001a: Unknown result type (might be due to invalid IL or missing references)
 		if (configFieldValue == null)
 		{
 			return null;
@@ -2181,6 +2106,13 @@ internal static class CommonFunctions
 		TemplateConfig templates = GetLoadedTemplateConfigOrThrow();
 		string message = null;
 		List<string> errors = new List<string>();
+		List<SimpleTemplate> configuredSimpleTemplates = templates.SimpleTemplates ?? new List<SimpleTemplate>();
+		List<GroupTemplate> configuredGroupTemplates = templates.GroupTemplates ?? new List<GroupTemplate>();
+		ValidateTemplateStructure(configuredSimpleTemplates, configuredGroupTemplates, errors);
+		if (errors.Count > 0)
+		{
+			return string.Join("\n", errors);
+		}
 		foreach (SimpleTemplate template in templates.SimpleTemplates)
 		{
 			string error = ValidateLayerOrTableName(template);
@@ -2213,11 +2145,11 @@ internal static class CommonFunctions
 		}
 		if (errors.Count == 0)
 		{
-			List<string> simpleTemplateNames = templates.SimpleTemplates.Select((SimpleTemplate n) => n.Name.ToUpper()).ToList();
+			HashSet<string> simpleTemplateNames = new HashSet<string>(templates.SimpleTemplates.Select((SimpleTemplate n) => n.Name), StringComparer.OrdinalIgnoreCase);
 			foreach (GroupTemplate groupTemplate in templates.GroupTemplates)
 			{
 				List<string> invalidTemplateNames = (from n in groupTemplate.SimpleTemplates
-					select n.Name.ToUpper() into n
+					select n.Name into n
 					where !simpleTemplateNames.Contains(n)
 					select n).ToList();
 				if (invalidTemplateNames.Count > 0)
@@ -2256,7 +2188,7 @@ internal static class CommonFunctions
 			{
 				foreach (SimpleTemplateReference templateRef in groupTemplate4.SimpleTemplates)
 				{
-					SimpleTemplate template4 = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => n.Name == templateRef.Name);
+					SimpleTemplate template4 = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, templateRef.Name, StringComparison.OrdinalIgnoreCase));
 					string error6 = await ValidateGeometry(groupTemplate4, templateRef, template4);
 					if (error6 != null)
 					{
@@ -2285,6 +2217,50 @@ internal static class CommonFunctions
 			message = string.Join("\n", errors);
 		}
 		return message;
+	}
+
+	internal static void ValidateTemplateStructure(IReadOnlyList<SimpleTemplate> simpleTemplates, IReadOnlyList<GroupTemplate> groupTemplates, List<string> errors)
+	{
+		foreach (SimpleTemplate template in simpleTemplates)
+		{
+			if (template == null)
+			{
+				errors.Add("Template configuration contains a null simple template.");
+			}
+			else if (string.IsNullOrWhiteSpace(template.Name))
+			{
+				errors.Add("Template configuration contains a simple template without a Name.");
+			}
+		}
+		foreach (IGrouping<string, SimpleTemplate> duplicate in simpleTemplates.Where((SimpleTemplate template) => !string.IsNullOrWhiteSpace(template?.Name)).GroupBy((SimpleTemplate template) => template.Name, StringComparer.OrdinalIgnoreCase).Where((IGrouping<string, SimpleTemplate> group) => group.Count() > 1))
+		{
+			errors.Add("Template configuration contains duplicate simple template name '" + duplicate.Key + "'.");
+		}
+		foreach (GroupTemplate groupTemplate in groupTemplates)
+		{
+			if (groupTemplate == null)
+			{
+				errors.Add("Template configuration contains a null group template.");
+				continue;
+			}
+			if (string.IsNullOrWhiteSpace(groupTemplate.Name))
+			{
+				errors.Add("Template configuration contains a group template without a Name.");
+			}
+			if (groupTemplate.SimpleTemplates == null || groupTemplate.SimpleTemplates.Count == 0)
+			{
+				errors.Add("Group template '" + (groupTemplate.Name ?? "(unnamed)") + "' does not contain any simple templates.");
+				continue;
+			}
+			if (groupTemplate.SimpleTemplates.Any((SimpleTemplateReference reference) => reference == null || string.IsNullOrWhiteSpace(reference.Name)))
+			{
+				errors.Add("Group template '" + (groupTemplate.Name ?? "(unnamed)") + "' contains a simple template reference without a Name.");
+			}
+		}
+		foreach (IGrouping<string, GroupTemplate> duplicate2 in groupTemplates.Where((GroupTemplate template) => !string.IsNullOrWhiteSpace(template?.Name)).GroupBy((GroupTemplate template) => template.Name, StringComparer.OrdinalIgnoreCase).Where((IGrouping<string, GroupTemplate> group) => group.Count() > 1))
+		{
+			errors.Add("Template configuration contains duplicate group template name '" + duplicate2.Key + "'.");
+		}
 	}
 
 	private static string ValidateLayerOrTableName(SimpleTemplate template)
@@ -2325,7 +2301,7 @@ internal static class CommonFunctions
 		bool isFeatureLayer = AddinConfiguration.GroupFeatureLayerNames.Contains(template.GroupLayer.ToUpper());
 		if (isFeatureLayer)
 		{
-			FeatureLayer layer = MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
+			FeatureLayer layer = await MapMemberLookupService.GetFeatureLayerByNameAsync(template.SubtypeLayer, template.GroupLayer);
 			if (layer == null)
 			{
 				return $"Group layer/subtype layer {template.GroupLayer}/{template.SubtypeLayer} does not exist in the map ({template.Name}).";
@@ -2339,7 +2315,7 @@ internal static class CommonFunctions
 		}
 		else
 		{
-			StandaloneTable table = MapMemberLookupService.GetTableByName(template.SubtypeLayer, template.GroupLayer);
+			StandaloneTable table = await MapMemberLookupService.GetTableByNameAsync(template.SubtypeLayer, template.GroupLayer);
 			if (table == null)
 			{
 				return $"Group table/subtype table {template.GroupLayer}/{template.SubtypeLayer} does not exist in the map ({template.Name}).";
@@ -2540,16 +2516,6 @@ internal static class CommonFunctions
 
 	private static void CheckValueAgainstFieldType(SimpleTemplate template, Field field, List<string> fieldErrors)
 	{
-		//IL_0027: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002e: Invalid comparison between Unknown and I4
-		//IL_0031: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0037: Invalid comparison between Unknown and I4
-		//IL_003a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0040: Invalid comparison between Unknown and I4
-		//IL_0057: Unknown result type (might be due to invalid IL or missing references)
-		//IL_005d: Invalid comparison between Unknown and I4
-		//IL_0060: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0066: Invalid comparison between Unknown and I4
 		string text = GetObjectValue(template.DefaultFieldValues[field.Name])?.ToString();
 		bool flag = true;
 		if ((int)field.FieldType == 13 || (int)field.FieldType == 1 || (int)field.FieldType == 0)
@@ -2583,9 +2549,7 @@ internal static class CommonFunctions
 			GeometryType geometryType = (GeometryType)0;
 			await QueuedTask.Run((Action)delegate
 			{
-				//IL_0012: Unknown result type (might be due to invalid IL or missing references)
-				//IL_0017: Unknown result type (might be due to invalid IL or missing references)
-				geometryType = layer.GetFeatureClass().GetDefinition().GetShapeType();
+				geometryType = GetFeatureLayerShapeType(layer);
 			}, TaskCreationOptions.None);
 			if (templateRef.SketchType != null)
 			{

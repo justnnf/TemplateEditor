@@ -36,7 +36,6 @@ internal sealed class AssociationRuleCatalog
 
 	public bool Allows(AssociationType associationType, FeatureLayerInfo containerOrTarget, FeatureLayerInfo contentOrCreated)
 	{
-		//IL_004d: Unknown result type (might be due to invalid IL or missing references)
 		if (!_isAvailable)
 		{
 			return false;
@@ -55,7 +54,6 @@ internal sealed class AssociationRuleCatalog
 
 	public HashSet<string> GetAllowedCounterpartTables(AssociationType associationType, FeatureLayerInfo knownSide, bool knownSideIsFrom)
 	{
-		//IL_001c: Unknown result type (might be due to invalid IL or missing references)
 		if (!HasRules || knownSide == null)
 		{
 			return null;
@@ -90,12 +88,6 @@ internal sealed class AssociationRuleCatalog
 
 	private static string GetRuleAssociationTypeName(AssociationType associationType)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0003: Invalid comparison between Unknown and I4
-		//IL_0012: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0014: Invalid comparison between Unknown and I4
-		//IL_0023: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0025: Invalid comparison between Unknown and I4
 		if ((int)associationType == 3)
 		{
 			return "Attachment";

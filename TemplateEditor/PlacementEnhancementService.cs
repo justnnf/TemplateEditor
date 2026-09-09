@@ -64,6 +64,54 @@ internal static class PlacementEnhancementService
 
 	private static readonly object CacheLock = new object();
 
+	private static GeometryType GetFeatureLayerShapeType(FeatureLayer layer)
+	{
+		FeatureClass featureClass = layer?.GetFeatureClass();
+		try
+		{
+			FeatureClassDefinition definition = featureClass?.GetDefinition();
+			try
+			{
+				return (definition != null) ? definition.GetShapeType() : (GeometryType)0;
+			}
+			finally
+			{
+				((IDisposable)definition)?.Dispose();
+			}
+		}
+		finally
+		{
+			((IDisposable)featureClass)?.Dispose();
+		}
+	}
+
+	internal static Task ClearMetadataCacheAsync()
+	{
+		if (QueuedTask.OnWorker)
+		{
+			ClearMetadataCache();
+			return Task.CompletedTask;
+		}
+		return QueuedTask.Run((Action)ClearMetadataCache, TaskCreationOptions.None);
+	}
+
+	private static void ClearMetadataCache()
+	{
+		lock (CacheLock)
+		{
+			foreach (LayerMetadata metadata in LayerMetadataCache.Values)
+			{
+				foreach (Field field in metadata.Fields ?? Enumerable.Empty<Field>())
+				{
+					((IDisposable)field)?.Dispose();
+				}
+				((IDisposable)metadata.Definition)?.Dispose();
+			}
+			LayerMetadataCache.Clear();
+			FacilityIdFieldCache.Clear();
+		}
+	}
+
 	public static async Task ApplyPostPlacementEnhancementsAsync(IReadOnlyList<PlacedFeatureContext> createdFeatures, IReadOnlyList<ExistingAssociationPair> existingAssociations = null)
 	{
 		if (createdFeatures == null || createdFeatures.Count == 0)
@@ -129,8 +177,7 @@ internal static class PlacementEnhancementService
 		string groupName = createdFeature.Template?.GroupLayer?.ToUpperInvariant();
 		GeometryType createdShapeType = await QueuedTask.Run<GeometryType>((Func<GeometryType>)delegate
 		{
-			//IL_0015: Unknown result type (might be due to invalid IL or missing references)
-			return createdFeature.Layer.GetFeatureClass().GetDefinition().GetShapeType();
+			return GetFeatureLayerShapeType(createdFeature.Layer);
 		}, TaskCreationOptions.None);
 		if (GeometryTypeHelper.IsPoint(createdShapeType))
 		{
@@ -305,8 +352,7 @@ internal static class PlacementEnhancementService
 		bool useRuleCatalogSearchScope = AssociationRuleCatalog.Current.HasRules;
 		bool createdFeatureIsLine = GeometryTypeHelper.IsPolyline(await QueuedTask.Run<GeometryType>((Func<GeometryType>)delegate
 		{
-			//IL_0015: Unknown result type (might be due to invalid IL or missing references)
-			return createdFeature.Layer.GetFeatureClass().GetDefinition().GetShapeType();
+			return GetFeatureLayerShapeType(createdFeature.Layer);
 		}, TaskCreationOptions.None));
 		if (string.Equals(settings.AssociationPromptMode, "Never", StringComparison.OrdinalIgnoreCase))
 		{
@@ -354,8 +400,6 @@ internal static class PlacementEnhancementService
 
 	private static async Task<List<FeatureCandidate>> FindSelectedAssociationCandidatesAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, AssociationType associationType, string labelPrefix)
 	{
-		//IL_0020: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0021: Unknown result type (might be due to invalid IL or missing references)
 		if (!AssociationRuleCatalog.Current.HasRules || createdFeature?.Layer == null)
 		{
 			return new List<FeatureCandidate>();
@@ -368,13 +412,6 @@ internal static class PlacementEnhancementService
 		HashSet<string> createdFeatureKeys = BuildCreatedFeatureKeySet(featuresCreatedByOperation);
 		return await QueuedTask.Run<List<FeatureCandidate>>((Func<List<FeatureCandidate>>)delegate
 		{
-			//IL_006d: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0072: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0082: Expected O, but got Unknown
-			//IL_0091: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0098: Expected O, but got Unknown
-			//IL_00ae: Unknown result type (might be due to invalid IL or missing references)
-			//IL_01a6: Unknown result type (might be due to invalid IL or missing references)
 			List<FeatureCandidate> list = new List<FeatureCandidate>();
 			MapView active = MapView.Active;
 			object obj;
@@ -442,7 +479,6 @@ internal static class PlacementEnhancementService
 	{
 		return (from @group in (first ?? Enumerable.Empty<FeatureCandidate>()).Concat(second ?? Enumerable.Empty<FeatureCandidate>()).GroupBy<FeatureCandidate, string>(delegate(FeatureCandidate candidate)
 			{
-				//IL_004e: Unknown result type (might be due to invalid IL or missing references)
 				DefaultInterpolatedStringHandler defaultInterpolatedStringHandler = new DefaultInterpolatedStringHandler(2, 3);
 				FeatureLayer layer = candidate.Layer;
 				defaultInterpolatedStringHandler.AppendFormatted((layer != null) ? ((MapMember)layer).URI : null);
@@ -465,7 +501,6 @@ internal static class PlacementEnhancementService
 		}
 		return candidates.Where((FeatureCandidate candidate) => !existingAssociations.Any(delegate(ExistingAssociationPair existingAssociation)
 		{
-			//IL_0007: Unknown result type (might be due to invalid IL or missing references)
 			return existingAssociation.Matches(candidate.AssociationType, (MapMember)(object)createdFeature.Layer, createdFeature.ObjectID, (MapMember)(object)candidate.Layer, candidate.ObjectID);
 		})).ToList();
 	}
@@ -617,8 +652,6 @@ internal static class PlacementEnhancementService
 
 	private static async Task<List<FeatureCandidate>> FindAssociationCandidatesAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, IEnumerable<string> targetGroups, IEnumerable<string> targetLayerNames, double searchDistance, AssociationType associationType, string labelPrefix, bool createdFeatureIsAssociationSource = false, Func<Geometry, bool> geometryPredicate = null)
 	{
-		//IL_0036: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0038: Unknown result type (might be due to invalid IL or missing references)
 		Geometry searchGeometry = await CreateSearchGeometryAsync(createdFeature.Geometry, searchDistance);
 		bool useRuleCatalogSearchScope = AssociationRuleCatalog.Current.HasRules;
 		if (!AssociationRuleCatalog.Current.IsAvailable)
@@ -649,7 +682,6 @@ internal static class PlacementEnhancementService
 		HashSet<string> createdFeatureKeys = BuildCreatedFeatureKeySet(featuresCreatedByOperation);
 		List<FeatureCandidate> candidates = await FindFeatureCandidatesAsync(targetGroups, targetLayerNames, searchGeometry, createdFeature.Geometry, delegate(FeatureLayer layer, Feature feature, Geometry geometry)
 		{
-			//IL_002c: Unknown result type (might be due to invalid IL or missing references)
 			return (geometryPredicate == null || geometryPredicate(geometry)) && !IsFeatureInSet(createdFeatureKeys, layer, ((Row)feature).GetObjectID()) && IsAllowedAssociationCandidate(associationType, layer, feature, createdFeatureInfo, createdFeatureIsAssociationSource);
 		}, labelPrefix, useRuleCatalogSearchScope, int.MaxValue, layerContextPredicate);
 		foreach (FeatureCandidate candidate in candidates)
@@ -683,11 +715,6 @@ internal static class PlacementEnhancementService
 		}
 		return await QueuedTask.Run<FeatureLayerInfo>((Func<FeatureLayerInfo>)delegate
 		{
-			//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0006: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0025: Expected O, but got Unknown
-			//IL_0053: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0059: Expected O, but got Unknown
 			QueryFilter val = new QueryFilter
 			{
 				ObjectIDs = new List<long> { createdFeature.ObjectID }
@@ -718,8 +745,6 @@ internal static class PlacementEnhancementService
 
 	private static bool IsAllowedAssociationCandidate(AssociationType associationType, FeatureLayer candidateLayer, Feature candidateFeature, FeatureLayerInfo createdFeatureInfo, bool createdFeatureIsAssociationSource)
 	{
-		//IL_003a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002f: Unknown result type (might be due to invalid IL or missing references)
 		AssociationRuleCatalog current = AssociationRuleCatalog.Current;
 		if (!current.HasRules || createdFeatureInfo == null || candidateFeature == null)
 		{
@@ -783,9 +808,8 @@ internal static class PlacementEnhancementService
 		{
 			return null;
 		}
-		Subtype subtype = FeatureInfoCache.GetSubtype(definition, feature, (definition != null) ? ((Definition)definition).GetName() : null);
-		string cacheKeyPrefix = ((definition != null) ? ((Definition)definition).GetName() : null) + ":" + val.Name + ":";
-		string text = FeatureInfoCache.GetDomainDescription(val.GetDomain(subtype), obj, cacheKeyPrefix) ?? FeatureInfoCache.GetDomainDescription(val.GetDomain((Subtype)null), obj, cacheKeyPrefix);
+		Subtype subtype = FeatureInfoCache.GetSubtype(definition, feature);
+		string text = FeatureInfoCache.GetDomainDescription(val.GetDomain(subtype), obj) ?? FeatureInfoCache.GetDomainDescription(val.GetDomain((Subtype)null), obj);
 		return string.IsNullOrWhiteSpace(text) ? Convert.ToString(obj) : text;
 	}
 
@@ -941,12 +965,6 @@ internal static class PlacementEnhancementService
 		}
 		return await QueuedTask.Run<List<FeatureCandidate>>((Func<List<FeatureCandidate>>)delegate
 		{
-			//IL_00ae: Unknown result type (might be due to invalid IL or missing references)
-			//IL_00b3: Unknown result type (might be due to invalid IL or missing references)
-			//IL_00bc: Unknown result type (might be due to invalid IL or missing references)
-			//IL_00c6: Expected O, but got Unknown
-			//IL_0144: Unknown result type (might be due to invalid IL or missing references)
-			//IL_014b: Expected O, but got Unknown
 			int capacity = Math.Min(maxCandidates, 100);
 			List<FeatureCandidate> list = new List<FeatureCandidate>(capacity);
 			foreach (LayerSearchContext item in layerContexts)
@@ -1148,11 +1166,6 @@ internal static class PlacementEnhancementService
 	{
 		await QueuedTask.Run((Action)delegate
 		{
-			//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0006: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0012: Unknown result type (might be due to invalid IL or missing references)
-			//IL_001e: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0027: Expected O, but got Unknown
 			EditOperation val = new EditOperation
 			{
 				Name = "Split underlying line",
@@ -1171,21 +1184,6 @@ internal static class PlacementEnhancementService
 	{
 		await QueuedTask.Run((Action)delegate
 		{
-			//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0006: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0012: Unknown result type (might be due to invalid IL or missing references)
-			//IL_001e: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0027: Expected O, but got Unknown
-			//IL_003d: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0043: Expected O, but got Unknown
-			//IL_0059: Unknown result type (might be due to invalid IL or missing references)
-			//IL_005f: Expected O, but got Unknown
-			//IL_008a: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0090: Invalid comparison between Unknown and I4
-			//IL_00c1: Unknown result type (might be due to invalid IL or missing references)
-			//IL_00c9: Unknown result type (might be due to invalid IL or missing references)
-			//IL_00d0: Expected O, but got Unknown
-			//IL_00b4: Unknown result type (might be due to invalid IL or missing references)
 			EditOperation val = new EditOperation
 			{
 				Name = "Create association",

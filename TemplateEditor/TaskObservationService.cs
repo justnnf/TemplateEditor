@@ -9,7 +9,7 @@ internal static class TaskObservationService
 	{
 		if (task != null)
 		{
-			ObserveAsync(task, context);
+			_ = ObserveAsync(task, context);
 		}
 	}
 

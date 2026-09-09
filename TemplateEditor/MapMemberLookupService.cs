@@ -14,6 +14,11 @@ internal static class MapMemberLookupService
 		return RunOnMct(() => GetFeatureLayerByNameCore(subtypeLayerName, groupLayerName));
 	}
 
+	public static Task<FeatureLayer> GetFeatureLayerByNameAsync(string subtypeLayerName, string groupLayerName)
+	{
+		return RunOnMctAsync(() => GetFeatureLayerByNameCore(subtypeLayerName, groupLayerName));
+	}
+
 	private static FeatureLayer GetFeatureLayerByNameCore(string subtypeLayerName, string groupLayerName)
 	{
 		if (subtypeLayerName != null)
@@ -49,6 +54,11 @@ internal static class MapMemberLookupService
 	public static StandaloneTable GetTableByName(string subtypeLayerName, string groupLayerName)
 	{
 		return RunOnMct(() => GetTableByNameCore(subtypeLayerName, groupLayerName));
+	}
+
+	public static Task<StandaloneTable> GetTableByNameAsync(string subtypeLayerName, string groupLayerName)
+	{
+		return RunOnMctAsync(() => GetTableByNameCore(subtypeLayerName, groupLayerName));
 	}
 
 	private static StandaloneTable GetTableByNameCore(string subtypeLayerName, string groupLayerName)
@@ -135,7 +145,6 @@ internal static class MapMemberLookupService
 
 	private static string GetOwningGroupNameCore(FeatureLayer layer)
 	{
-		//IL_0029: Unknown result type (might be due to invalid IL or missing references)
 		if (layer == null)
 		{
 			return null;
@@ -150,5 +159,14 @@ internal static class MapMemberLookupService
 			return action();
 		}
 		return QueuedTask.Run<T>(action, TaskCreationOptions.None).GetAwaiter().GetResult();
+	}
+
+	private static Task<T> RunOnMctAsync<T>(Func<T> action)
+	{
+		if (QueuedTask.OnWorker)
+		{
+			return Task.FromResult(action());
+		}
+		return QueuedTask.Run<T>(action, TaskCreationOptions.None);
 	}
 }

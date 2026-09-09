@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -183,6 +184,8 @@ internal sealed class TemplateSettingsWindow : Window
 	private readonly Button _regenerateAssociationRulesButton;
 
 	private readonly List<PlacementOverrideEditorRow> _sessionOverrideRows = new List<PlacementOverrideEditorRow>();
+
+	private bool _isLoadingAttributeOverrideEditor;
 
 	public TemplateEditorSettings Settings { get; }
 
@@ -533,25 +536,60 @@ internal sealed class TemplateSettingsWindow : Window
 			TextWrapping = TextWrapping.Wrap,
 			Margin = new Thickness(0.0, 0.0, 0.0, 12.0)
 		});
-		_sessionOverrideRows.Clear();
-		IReadOnlyList<PlacementAttributeOverrideEditorState> readOnlyList = PlacementAttributeOverrideService.BuildSessionEditorStates(Settings.SessionAttributeOverrides);
+		StackPanel editorPanel = new StackPanel();
+		editorPanel.Children.Add(new TextBlock
+		{
+			Text = "Loading placement override fields...",
+			Foreground = SecondaryTextBrush
+		});
+		stackPanel.Children.Add(editorPanel);
+		stackPanel.Loaded += delegate
+		{
+			if (_isLoadingAttributeOverrideEditor)
+			{
+				return;
+			}
+			_isLoadingAttributeOverrideEditor = true;
+			TaskObservationService.Forget(LoadAttributeOverrideEditorAsync(editorPanel), "Placement override editor fields could not be loaded.");
+		};
+		return stackPanel;
+	}
+
+	private async Task LoadAttributeOverrideEditorAsync(StackPanel editorPanel)
+	{
+		try
+		{
+			IReadOnlyList<PlacementAttributeOverrideEditorState> readOnlyList = await PlacementAttributeOverrideService.BuildSessionEditorStatesAsync(Settings.SessionAttributeOverrides);
+			_sessionOverrideRows.Clear();
+			editorPanel.Children.Clear();
 		if (readOnlyList.Count == 0)
 		{
-			stackPanel.Children.Add(new TextBlock
+			editorPanel.Children.Add(new TextBlock
 			{
 				Text = "No packaged placement override fields are currently available.",
 				Foreground = SecondaryTextBrush,
 				TextWrapping = TextWrapping.Wrap
 			});
-			return stackPanel;
+			return;
 		}
 		foreach (PlacementAttributeOverrideEditorState item in readOnlyList)
 		{
 			PlacementOverrideEditorRow placementOverrideEditorRow = CreatePlacementOverrideEditorRow(item);
 			_sessionOverrideRows.Add(placementOverrideEditorRow);
-			stackPanel.Children.Add(placementOverrideEditorRow.Container);
+			editorPanel.Children.Add(placementOverrideEditorRow.Container);
 		}
-		return stackPanel;
+		}
+		catch (Exception ex)
+		{
+			LogService.LogException("Placement override editor fields could not be loaded.", ex);
+			editorPanel.Children.Clear();
+			editorPanel.Children.Add(new TextBlock
+			{
+				Text = "Placement override fields could not be loaded. See the Template Editor log for details.",
+				Foreground = SecondaryTextBrush,
+				TextWrapping = TextWrapping.Wrap
+			});
+		}
 	}
 
 	private UIElement BuildTemplateConfigSection()

@@ -122,10 +122,10 @@ internal static class PlacementAttributeOverrideService
 		return string.Join(" | ", list);
 	}
 
-	public static IReadOnlyList<PlacementAttributeOverrideEditorState> BuildSessionEditorStates(IEnumerable<PlacementAttributeOverrideValue> selectedValues = null)
+	public static async Task<IReadOnlyList<PlacementAttributeOverrideEditorState>> BuildSessionEditorStatesAsync(IEnumerable<PlacementAttributeOverrideValue> selectedValues = null)
 	{
 		List<PlacementAttributeOverrideValue> selectedValues2 = NormalizeOverrides(selectedValues ?? AddinConfiguration.Settings?.SessionAttributeOverrides);
-		return BuildEditorStatesAsync(GetAllSimpleTemplates(), selectedValues2, includeUnavailableDefinitions: true).GetAwaiter().GetResult();
+		return await BuildEditorStatesAsync(GetAllSimpleTemplates(), selectedValues2, includeUnavailableDefinitions: true);
 	}
 
 	public static async Task<bool> ConfigureOneTimePlacementOverridesAsync(DisplayTemplate template)

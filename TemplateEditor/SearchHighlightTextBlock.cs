@@ -130,14 +130,6 @@ internal sealed class SearchHighlightTextBlock : TextBlock
 
 	static SearchHighlightTextBlock()
 	{
-		//IL_0025: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002f: Expected O, but got Unknown
-		//IL_002a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0034: Expected O, but got Unknown
-		//IL_005e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0068: Expected O, but got Unknown
-		//IL_0063: Unknown result type (might be due to invalid IL or missing references)
-		//IL_006d: Expected O, but got Unknown
 		HighlightTextProperty = DependencyProperty.Register("HighlightText", typeof(string), typeof(SearchHighlightTextBlock), new PropertyMetadata((object)string.Empty, new PropertyChangedCallback(OnDisplayTextChanged)));
 		SearchTextProperty = DependencyProperty.Register("SearchText", typeof(string), typeof(SearchHighlightTextBlock), new PropertyMetadata((object)string.Empty, new PropertyChangedCallback(OnDisplayTextChanged)));
 	}

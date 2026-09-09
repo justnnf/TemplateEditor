@@ -128,11 +128,6 @@ internal static class ParallelCopyService
 
 	private static List<Polyline> GetSelectedPolylines(IEnumerable<FeatureLayer> layers)
 	{
-		//IL_003e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0043: Unknown result type (might be due to invalid IL or missing references)
-		//IL_004d: Expected O, but got Unknown
-		//IL_0064: Unknown result type (might be due to invalid IL or missing references)
-		//IL_006b: Expected O, but got Unknown
 		List<Polyline> list = new List<Polyline>();
 		foreach (FeatureLayer item in layers ?? Enumerable.Empty<FeatureLayer>())
 		{
@@ -287,7 +282,7 @@ internal static class ParallelCopyService
 			throw new InvalidOperationException("The selected line must contain a valid geometry.");
 		}
 		double num = ConvertMetersToSourceUnits(sourceLine, offsetDistance);
-		Geometry val = GeometryEngine.Instance.Offset((Geometry)(object)sourceLine, num, (OffsetType)8, Math.Abs(num));
+		Geometry val = GeometryEngine.Instance.Offset((Geometry)(object)sourceLine, num, OffsetType.Miter, Math.Abs(num));
 		Polyline val2 = (Polyline)(object)((val is Polyline) ? val : null);
 		if (val2 != null && !((Geometry)val2).IsEmpty)
 		{

@@ -117,10 +117,6 @@ public class EditorDockpaneView : UserControl
 
 	private static UIElement BuildFailureContent(Exception ex)
 	{
-		//IL_0052: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0058: Invalid comparison between Unknown and I4
-		//IL_00b1: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b7: Invalid comparison between Unknown and I4
 		return new Border
 		{
 			Margin = new Thickness(10.0),
@@ -736,10 +732,6 @@ public class EditorDockpaneView : UserControl
 
 	private void OnPreviewKeyDown(object sender, KeyEventArgs e)
 	{
-		//IL_001c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0022: Invalid comparison between Unknown and I4
-		//IL_0050: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0057: Invalid comparison between Unknown and I4
 		if (base.DataContext is EditorDockpaneViewModel editorDockpaneViewModel)
 		{
 			if ((int)e.Key == 6 && editorDockpaneViewModel.ActivateSelectedTemplateCommand.CanExecute(null))
@@ -822,9 +814,6 @@ public class EditorDockpaneView : UserControl
 
 	private void OnGroupToggleButtonClick(object sender, RoutedEventArgs e)
 	{
-		//IL_00b2: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b7: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00bc: Unknown result type (might be due to invalid IL or missing references)
 		ListView itemsControl = listViewUnits;
 		object originalSource = e.OriginalSource;
 		ListViewItem listViewItem = ItemsControl.ContainerFromElement(itemsControl, (DependencyObject)((originalSource is DependencyObject) ? originalSource : null)) as ListViewItem;
@@ -856,9 +845,6 @@ public class EditorDockpaneView : UserControl
 
 	private void RestoreExpandedGroupPosition(DisplayTemplate template, double originalVerticalOffset, double originalGroupY)
 	{
-		//IL_005a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_005f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0064: Unknown result type (might be due to invalid IL or missing references)
 		ScrollViewer scrollViewer = FindVisualChild<ScrollViewer>((DependencyObject)(object)listViewUnits);
 		ListViewItem listViewItem = listViewUnits.ItemContainerGenerator.ContainerFromItem(template) as ListViewItem;
 		if (scrollViewer != null && listViewItem != null)
@@ -976,56 +962,36 @@ public class EditorDockpaneView : UserControl
 
 	private static Brush GetTableHeaderForeground()
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Invalid comparison between Unknown and I4
 		return ((int)FrameworkApplication.ApplicationTheme == 1) ? Brushes.White : SystemColors.ControlTextBrush;
 	}
 
 	private static Brush GetPrimaryForegroundBrush()
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Invalid comparison between Unknown and I4
 		return ((int)FrameworkApplication.ApplicationTheme == 1) ? new SolidColorBrush(Color.FromRgb(238, 238, 238)) : new SolidColorBrush(Color.FromRgb(32, 32, 32));
 	}
 
 	private static Brush GetMutedForegroundBrush()
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Invalid comparison between Unknown and I4
 		return ((int)FrameworkApplication.ApplicationTheme == 1) ? new SolidColorBrush(Color.FromRgb(174, 174, 174)) : new SolidColorBrush(Color.FromRgb(96, 96, 96));
 	}
 
 	private static Brush GetPanelBackgroundBrush()
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Invalid comparison between Unknown and I4
 		return ((int)FrameworkApplication.ApplicationTheme == 1) ? new SolidColorBrush(Color.FromRgb(45, 45, 48)) : new SolidColorBrush(Color.FromRgb(247, 247, 247));
 	}
 
 	private static Brush GetTableBackgroundBrush()
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Invalid comparison between Unknown and I4
 		return ((int)FrameworkApplication.ApplicationTheme == 1) ? new SolidColorBrush(Color.FromRgb(28, 28, 28)) : Brushes.White;
 	}
 
 	private static Brush GetSubtleBorderBrush()
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Invalid comparison between Unknown and I4
 		return ((int)FrameworkApplication.ApplicationTheme == 1) ? new SolidColorBrush(Color.FromRgb(86, 86, 86)) : new SolidColorBrush(Color.FromRgb(196, 196, 196));
 	}
 
 	private static Style CreateTemplateListItemStyle(bool compact)
 	{
-		//IL_0275: Unknown result type (might be due to invalid IL or missing references)
-		//IL_027b: Invalid comparison between Unknown and I4
-		//IL_02ed: Unknown result type (might be due to invalid IL or missing references)
-		//IL_02f3: Invalid comparison between Unknown and I4
-		//IL_03a9: Unknown result type (might be due to invalid IL or missing references)
-		//IL_03af: Invalid comparison between Unknown and I4
-		//IL_0421: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0427: Invalid comparison between Unknown and I4
 		Style style = new Style(typeof(ListViewItem));
 		style.Setters.Add(new Setter(Control.ForegroundProperty, GetPrimaryForegroundBrush()));
 		style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
@@ -1161,8 +1127,6 @@ public class EditorDockpaneView : UserControl
 
 	private static Style CreateSegmentedRadioButtonStyle()
 	{
-		//IL_01d5: Unknown result type (might be due to invalid IL or missing references)
-		//IL_01db: Invalid comparison between Unknown and I4
 		Style style = new Style(typeof(RadioButton));
 		style.Setters.Add(new Setter(Control.BackgroundProperty, GetPanelBackgroundBrush()));
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, GetSubtleBorderBrush()));

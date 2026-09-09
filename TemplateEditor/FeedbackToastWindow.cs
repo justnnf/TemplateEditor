@@ -28,9 +28,6 @@ internal sealed class FeedbackToastWindow : Window
 		base.Content = BuildContent(title, message, detail, severity);
 		base.Loaded += delegate
 		{
-			//IL_0016: Unknown result type (might be due to invalid IL or missing references)
-			//IL_001b: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0035: Expected O, but got Unknown
 			PositionNearOwner();
 			DispatcherTimer timer = new DispatcherTimer
 			{
@@ -117,8 +114,6 @@ internal sealed class FeedbackToastWindow : Window
 
 	private void PositionNearOwner()
 	{
-		//IL_0002: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
 		Rect ownerBounds = GetOwnerBounds();
 		base.Left = ClampToVirtualScreen(ownerBounds.Right - base.ActualWidth - 24.0, base.ActualWidth, horizontal: true);
 		base.Top = ClampToVirtualScreen(ownerBounds.Bottom - base.ActualHeight - 24.0, base.ActualHeight, horizontal: false);
@@ -126,10 +121,6 @@ internal sealed class FeedbackToastWindow : Window
 
 	private Rect GetOwnerBounds()
 	{
-		//IL_0035: Unknown result type (might be due to invalid IL or missing references)
-		//IL_006d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0070: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0068: Unknown result type (might be due to invalid IL or missing references)
 		return (Rect)((base.Owner != null && base.Owner.ActualWidth > 0.0 && base.Owner.ActualHeight > 0.0) ? new Rect(base.Owner.Left, base.Owner.Top, base.Owner.ActualWidth, base.Owner.ActualHeight) : SystemParameters.WorkArea);
 	}
 

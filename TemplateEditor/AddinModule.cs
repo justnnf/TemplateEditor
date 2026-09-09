@@ -30,6 +30,7 @@ internal class AddinModule : Module
 
 	private void OnProjectOpened(ProjectEventArgs args)
 	{
+		TaskObservationService.Forget(PlacementEnhancementService.ClearMetadataCacheAsync(), "Could not clear cached map metadata after opening a project.");
 		DockPane val = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane");
 		if (val != null && val.IsVisible)
 		{
@@ -40,6 +41,7 @@ internal class AddinModule : Module
 	protected override bool CanUnload()
 	{
 		ProjectOpenedEvent.Unsubscribe((Action<ProjectEventArgs>)OnProjectOpened);
+		TaskObservationService.Forget(PlacementEnhancementService.ClearMetadataCacheAsync(), "Could not clear cached map metadata while unloading the add-in.");
 		return true;
 	}
 }
