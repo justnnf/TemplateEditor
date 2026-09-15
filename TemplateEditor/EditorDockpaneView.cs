@@ -16,6 +16,30 @@ namespace TemplateEditor;
 
 public class EditorDockpaneView : UserControl
 {
+	private sealed class StatusBrushConverter : IValueConverter
+	{
+		public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+		{
+			string status = value as string ?? string.Empty;
+			if (status.IndexOf("fail", StringComparison.OrdinalIgnoreCase) >= 0 || status.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				return new SolidColorBrush(Color.FromRgb(218, 54, 51));
+			}
+			if (status.IndexOf("missing", StringComparison.OrdinalIgnoreCase) >= 0 || status.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0 || status.IndexOf("choose", StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				return new SolidColorBrush(Color.FromRgb(224, 154, 35));
+			}
+			return new SolidColorBrush(Color.FromRgb(52, 168, 83));
+		}
+
+		public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+		{
+			return Binding.DoNothing;
+		}
+	}
+
+	private static readonly IValueConverter StatusBrush = new StatusBrushConverter();
+
 	internal ListView listViewUnits;
 
 	private GridViewColumn _nameColumn;
@@ -50,7 +74,7 @@ public class EditorDockpaneView : UserControl
 
 	private readonly Dictionary<string, (double HorizontalOffset, double VerticalOffset)> _scrollOffsetsByView = new Dictionary<string, (double, double)>(StringComparer.OrdinalIgnoreCase);
 
-	private string _currentTemplateViewKey = "Groups";
+	private string _currentTemplateViewKey = "All";
 
 	private bool _lastCompactLayout;
 
@@ -99,7 +123,7 @@ public class EditorDockpaneView : UserControl
 			UIElement element = CreateFilterPanel(flag);
 			Grid.SetRow(element, 0);
 			grid.Children.Add(element);
-			ListView element2 = CreateTemplateList(flag);
+			UIElement element2 = CreateTemplateListHost(flag);
 			Grid.SetRow(element2, 1);
 			grid.Children.Add(element2);
 			UIElement element3 = CreateStatusFooter(flag);
@@ -178,7 +202,7 @@ public class EditorDockpaneView : UserControl
 		};
 		TextBox searchBox = new TextBox
 		{
-			Padding = (compact ? new Thickness(24.0, 3.0, 20.0, 3.0) : new Thickness(28.0, 5.0, 24.0, 5.0)),
+			Padding = (compact ? new Thickness(24.0, 3.0, 92.0, 3.0) : new Thickness(28.0, 5.0, 110.0, 5.0)),
 			BorderBrush = GetSubtleBorderBrush(),
 			Background = GetPanelBackgroundBrush(),
 			Foreground = GetPrimaryForegroundBrush()
@@ -226,6 +250,16 @@ public class EditorDockpaneView : UserControl
 			UpdatePlaceholderVisibility();
 		};
 		grid2.Children.Add(placeholder);
+		TextBlock resultCount = new TextBlock
+		{
+			Foreground = GetMutedForegroundBrush(),
+			Margin = new Thickness(0, 0, 28, 0),
+			HorizontalAlignment = HorizontalAlignment.Right,
+			VerticalAlignment = VerticalAlignment.Center,
+			IsHitTestVisible = false
+		};
+		resultCount.SetBinding(TextBlock.TextProperty, new Binding("TemplateCount"));
+		grid2.Children.Add(resultCount);
 		Button button = new Button
 		{
 			Content = "×",
@@ -246,23 +280,32 @@ public class EditorDockpaneView : UserControl
 		button.SetBinding(ButtonBase.CommandProperty, new Binding("ClearSearchCommand"));
 		button.Style = CreateClearSearchButtonStyle();
 		grid2.Children.Add(button);
-		WrapPanel wrapPanel = new WrapPanel
+		WrapPanel primaryFilters = new WrapPanel
 		{
 			Orientation = Orientation.Horizontal,
 			Margin = new Thickness(0.0)
 		};
-		wrapPanel.Children.Add(CreateRadioButton("Groups", "ShowGroupTemplates", compact));
-		wrapPanel.Children.Add(CreateRadioButton("Simple", "ShowSimpleTemplates", compact));
-		wrapPanel.Children.Add(CreateRadioButton("All", "ShowAllTemplates", compact));
-		wrapPanel.Children.Add(CreateRadioButton("Favourites", "ShowFavouriteTemplates", compact));
-		wrapPanel.Children.Add(CreateRadioButton("Recent", "ShowRecentTemplates", compact));
-		wrapPanel.VerticalAlignment = VerticalAlignment.Center;
+		primaryFilters.Children.Add(CreateRadioButton("All", "ShowAllTemplates", compact));
+		primaryFilters.Children.Add(CreateRadioButton("Groups", "ShowGroupTemplates", compact));
+		primaryFilters.Children.Add(CreateRadioButton("Simple", "ShowSimpleTemplates", compact));
+		primaryFilters.VerticalAlignment = VerticalAlignment.Center;
+		WrapPanel savedFilters = new WrapPanel
+		{
+			Orientation = Orientation.Horizontal,
+			Margin = new Thickness(compact ? 4 : 8, 0, 0, 0),
+			VerticalAlignment = VerticalAlignment.Center
+		};
+		savedFilters.Children.Add(CreateRadioButton("★ Favourites", "ShowFavouriteTemplates", compact, "Favourites"));
+		savedFilters.Children.Add(CreateRadioButton("◷ Recent", "ShowRecentTemplates", compact, "Recent"));
+		StackPanel filterGroups = new StackPanel { Orientation = Orientation.Horizontal };
+		filterGroups.Children.Add(primaryFilters);
+		filterGroups.Children.Add(savedFilters);
 		DockPanel dockPanel = new DockPanel
 		{
 			LastChildFill = true
 		};
-		DockPanel.SetDock(wrapPanel, Dock.Left);
-		dockPanel.Children.Add(wrapPanel);
+		DockPanel.SetDock(filterGroups, Dock.Left);
+		dockPanel.Children.Add(filterGroups);
 		dockPanel.Children.Add(grid2);
 		grid.Children.Add(dockPanel);
 		return grid;
@@ -274,103 +317,87 @@ public class EditorDockpaneView : UserControl
 
 	private static UIElement CreateStatusFooter(bool compact)
 	{
-		Grid grid = new Grid
+		Border footer = new Border
 		{
-			Margin = (compact ? new Thickness(0.0, 4.0, 0.0, 0.0) : new Thickness(0.0, 8.0, 0.0, 0.0))
-		};
-		grid.ColumnDefinitions.Add(new ColumnDefinition
-		{
-			Width = new GridLength(1.0, GridUnitType.Star)
-		});
-		grid.ColumnDefinitions.Add(new ColumnDefinition
-		{
-			Width = GridLength.Auto
-		});
-		grid.ColumnDefinitions.Add(new ColumnDefinition
-		{
-			Width = GridLength.Auto
-		});
-		grid.ColumnDefinitions.Add(new ColumnDefinition
-		{
-			Width = GridLength.Auto
-		});
-		Border border = new Border
-		{
+			Margin = compact ? new Thickness(0, 4, 0, 0) : new Thickness(0, 8, 0, 0),
+			Padding = compact ? new Thickness(6, 2, 6, 2) : new Thickness(7, 2, 7, 2),
 			Background = GetPanelBackgroundBrush(),
 			BorderBrush = GetSubtleBorderBrush(),
-			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(0.0),
-			Padding = (compact ? new Thickness(6.0, 2.0, 6.0, 2.0) : new Thickness(8.0, 3.0, 8.0, 3.0)),
+			BorderThickness = new Thickness(1),
+			MinHeight = 28
+		};
+		DockPanel panel = new DockPanel { LastChildFill = true };
+		StackPanel details = new StackPanel
+		{
+			Orientation = Orientation.Horizontal,
+			HorizontalAlignment = HorizontalAlignment.Right
+		};
+		TextBlock count = CreateFooterText("TemplateCount");
+		TextBlock config = CreateFooterText("ConfigurationHealthStatus");
+		TextBlock options = CreateFooterText("PlacementOptionsStatus");
+		details.Children.Add(count);
+		details.Children.Add(CreateFooterSeparator());
+		details.Children.Add(config);
+		details.Children.Add(CreateFooterSeparator());
+		details.Children.Add(options);
+		DockPanel.SetDock(details, Dock.Right);
+		panel.Children.Add(details);
+		StackPanel status = new StackPanel
+		{
+			Orientation = Orientation.Horizontal,
 			VerticalAlignment = VerticalAlignment.Center
 		};
-		TextBlock textBlock = new TextBlock
+		TextBlock statusIndicator = new TextBlock
+		{
+			Text = "●",
+			Margin = new Thickness(0, 0, 6, 0),
+			VerticalAlignment = VerticalAlignment.Center
+		};
+		statusIndicator.SetBinding(TextBlock.ForegroundProperty, new Binding("PlacementStatus") { Converter = StatusBrush });
+		status.Children.Add(statusIndicator);
+		TextBlock placement = new TextBlock
 		{
 			Foreground = GetPrimaryForegroundBrush(),
 			TextTrimming = TextTrimming.CharacterEllipsis,
 			VerticalAlignment = VerticalAlignment.Center
 		};
-		textBlock.SetBinding(TextBlock.TextProperty, new Binding("PlacementStatus"));
-		border.Child = textBlock;
-		grid.Children.Add(border);
-		Border border2 = new Border
+		placement.SetBinding(TextBlock.TextProperty, new Binding("PlacementStatus"));
+		status.Children.Add(placement);
+		panel.Children.Add(status);
+		footer.Child = panel;
+		return footer;
+
+		static TextBlock CreateFooterText(string bindingPath)
 		{
-			Background = GetPanelBackgroundBrush(),
-			BorderBrush = GetSubtleBorderBrush(),
-			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(0.0),
-			Padding = (compact ? new Thickness(6.0, 2.0, 6.0, 2.0) : new Thickness(8.0, 3.0, 8.0, 3.0)),
-			Margin = new Thickness(compact ? 8.0 : 12.0, 0.0, 0.0, 0.0),
-			VerticalAlignment = VerticalAlignment.Center
-		};
-		TextBlock textBlock2 = new TextBlock
+			TextBlock text = new TextBlock { Foreground = GetMutedForegroundBrush(), VerticalAlignment = VerticalAlignment.Center };
+			text.SetBinding(TextBlock.TextProperty, new Binding(bindingPath));
+			return text;
+		}
+
+		static TextBlock CreateFooterSeparator()
+		{
+			return new TextBlock { Text = "·", Foreground = GetMutedForegroundBrush(), Margin = new Thickness(8, 0, 8, 0) };
+		}
+	}
+
+	private UIElement CreateTemplateListHost(bool compact)
+	{
+		Grid host = new Grid();
+		host.Children.Add(CreateTemplateList(compact));
+		TextBlock emptyState = new TextBlock
 		{
 			Foreground = GetMutedForegroundBrush(),
+			TextAlignment = TextAlignment.Center,
+			TextWrapping = TextWrapping.Wrap,
+			HorizontalAlignment = HorizontalAlignment.Center,
 			VerticalAlignment = VerticalAlignment.Center,
-			ToolTip = "Template configuration and association-rule availability"
+			Margin = new Thickness(24),
+			IsHitTestVisible = false
 		};
-		textBlock2.SetBinding(TextBlock.TextProperty, new Binding("ConfigurationHealthStatus"));
-		border2.Child = textBlock2;
-		Grid.SetColumn(border2, 1);
-		grid.Children.Add(border2);
-		Border border3 = new Border
-		{
-			Background = GetPanelBackgroundBrush(),
-			BorderBrush = GetSubtleBorderBrush(),
-			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(0.0),
-			Padding = (compact ? new Thickness(6.0, 2.0, 6.0, 2.0) : new Thickness(8.0, 3.0, 8.0, 3.0)),
-			Margin = new Thickness(compact ? 8.0 : 12.0, 0.0, 0.0, 0.0),
-			VerticalAlignment = VerticalAlignment.Center
-		};
-		TextBlock textBlock3 = new TextBlock
-		{
-			Foreground = GetMutedForegroundBrush(),
-			VerticalAlignment = VerticalAlignment.Center
-		};
-		textBlock3.SetBinding(TextBlock.TextProperty, new Binding("TemplateCount"));
-		border3.Child = textBlock3;
-		Grid.SetColumn(border3, 2);
-		grid.Children.Add(border3);
-		Border border4 = new Border
-		{
-			Background = GetPanelBackgroundBrush(),
-			BorderBrush = GetSubtleBorderBrush(),
-			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(0.0),
-			Padding = (compact ? new Thickness(6.0, 2.0, 6.0, 2.0) : new Thickness(8.0, 3.0, 8.0, 3.0)),
-			Margin = new Thickness(compact ? 8.0 : 12.0, 0.0, 0.0, 0.0),
-			VerticalAlignment = VerticalAlignment.Center
-		};
-		TextBlock textBlock4 = new TextBlock
-		{
-			Foreground = GetMutedForegroundBrush(),
-			VerticalAlignment = VerticalAlignment.Center
-		};
-		textBlock4.SetBinding(TextBlock.TextProperty, new Binding("PlacementOptionsStatus"));
-		border4.Child = textBlock4;
-		Grid.SetColumn(border4, 3);
-		grid.Children.Add(border4);
-		return grid;
+		emptyState.SetBinding(TextBlock.TextProperty, new Binding("EmptyStateMessage"));
+		emptyState.SetBinding(UIElement.VisibilityProperty, new Binding("HasTemplates") { Converter = new InverseBooleanToVisibilityConverter() });
+		host.Children.Add(emptyState);
+		return host;
 	}
 
 	private ListView CreateTemplateList(bool compact)
@@ -383,7 +410,8 @@ public class EditorDockpaneView : UserControl
 			Background = GetTableBackgroundBrush(),
 			BorderBrush = GetSubtleBorderBrush(),
 			Foreground = GetPrimaryForegroundBrush(),
-			ItemContainerStyle = CreateTemplateListItemStyle(compact)
+			ItemContainerStyle = CreateTemplateListItemStyle(compact),
+			AlternationCount = 2
 		};
 		ScrollViewer.SetHorizontalScrollBarVisibility((DependencyObject)(object)listViewUnits, ScrollBarVisibility.Auto);
 		ScrollViewer.SetVerticalScrollBarVisibility((DependencyObject)(object)listViewUnits, ScrollBarVisibility.Auto);
@@ -461,7 +489,7 @@ public class EditorDockpaneView : UserControl
 		_descriptionColumn = new GridViewColumn
 		{
 			Header = CreateSortableHeader("Description", "Description"),
-			CellTemplate = CreateTextCellTemplate("Description"),
+			CellTemplate = CreateTextCellTemplate("Description", trimOverflow: true),
 			Width = 360.0
 		};
 		listViewUnits.View = new GridView
@@ -472,6 +500,13 @@ public class EditorDockpaneView : UserControl
 		{
 			QueueAutoSizeColumns();
 		};
+		listViewUnits.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(delegate (object sender, ScrollChangedEventArgs args)
+		{
+			if (Math.Abs(args.VerticalChange) > 0.01)
+			{
+				QueueAutoSizeColumns();
+			}
+		}));
 		listViewUnits.SizeChanged += delegate
 		{
 			QueueAutoSizeColumns();
@@ -747,7 +782,7 @@ public class EditorDockpaneView : UserControl
 		}
 	}
 
-	private static DataTemplate CreateTextCellTemplate(string bindingPath)
+	private static DataTemplate CreateTextCellTemplate(string bindingPath, bool trimOverflow = false)
 	{
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(SearchHighlightTextBlock));
 		frameworkElementFactory.SetBinding(SearchHighlightTextBlock.HighlightTextProperty, new Binding(bindingPath));
@@ -757,7 +792,7 @@ public class EditorDockpaneView : UserControl
 		});
 		frameworkElementFactory.SetBinding(FrameworkElement.ToolTipProperty, new Binding(bindingPath));
 		frameworkElementFactory.SetValue(TextBlock.TextWrappingProperty, TextWrapping.NoWrap);
-		frameworkElementFactory.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.None);
+		frameworkElementFactory.SetValue(TextBlock.TextTrimmingProperty, trimOverflow ? TextTrimming.CharacterEllipsis : TextTrimming.None);
 		frameworkElementFactory.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 12.0, 0.0));
 		return new DataTemplate
 		{
@@ -771,8 +806,9 @@ public class EditorDockpaneView : UserControl
 		frameworkElementFactory.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 12.0, 0.0));
 		frameworkElementFactory.SetValue(DockPanel.LastChildFillProperty, true);
 		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(Button));
-		frameworkElementFactory2.SetValue(FrameworkElement.WidthProperty, 18.0);
-		frameworkElementFactory2.SetValue(FrameworkElement.HeightProperty, 18.0);
+		frameworkElementFactory2.SetValue(FrameworkElement.WidthProperty, 22.0);
+		frameworkElementFactory2.SetValue(FrameworkElement.HeightProperty, 22.0);
+		frameworkElementFactory2.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
 		frameworkElementFactory2.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 4.0, 0.0));
 		frameworkElementFactory2.SetValue(Control.PaddingProperty, new Thickness(0.0));
 		frameworkElementFactory2.SetValue(Control.BackgroundProperty, Brushes.Transparent);
@@ -865,9 +901,20 @@ public class EditorDockpaneView : UserControl
 		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		ControlTemplate controlTemplate = new ControlTemplate(typeof(Button));
-		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(ContentPresenter));
+		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(System.Windows.Shapes.Path));
 		frameworkElementFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
 		frameworkElementFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		frameworkElementFactory.SetValue(FrameworkElement.WidthProperty, 10.0);
+		frameworkElementFactory.SetValue(FrameworkElement.HeightProperty, 10.0);
+		frameworkElementFactory.SetValue(System.Windows.Shapes.Shape.StretchProperty, Stretch.Uniform);
+		frameworkElementFactory.SetBinding(System.Windows.Shapes.Path.DataProperty, new Binding("Content")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
+		frameworkElementFactory.SetBinding(System.Windows.Shapes.Shape.FillProperty, new Binding("Foreground")
+		{
+			RelativeSource = RelativeSource.TemplatedParent
+		});
 		controlTemplate.VisualTree = frameworkElementFactory;
 		style.Setters.Add(new Setter(Control.TemplateProperty, controlTemplate));
 		Trigger trigger = new Trigger
@@ -904,14 +951,46 @@ public class EditorDockpaneView : UserControl
 	{
 		if (listViewUnits?.Items != null && _nameColumn != null && _typeColumn != null && _descriptionColumn != null)
 		{
-			DisplayTemplate[] source = listViewUnits.Items.OfType<DisplayTemplate>().ToArray();
-			double width = MeasureColumnWidth("Name", source.SelectMany(GetNameColumnText), 0.0) + 36.0;
-			double width2 = MeasureColumnWidth("Template Type", source.Select((DisplayTemplate template) => template.TemplateType), 0.0);
-			double width3 = MeasureColumnWidth("Description", source.Select((DisplayTemplate template) => template.Description), 0.0);
-			_nameColumn.Width = width;
-			_typeColumn.Width = width2;
-			_descriptionColumn.Width = width3;
+			List<DisplayTemplate> visibleTemplates = GetTemplatesInViewport();
+			double availableWidth = Math.Max(360, listViewUnits.ActualWidth - 24);
+			// Begin with balanced proportional widths. A column grows beyond that
+			// baseline only when its currently visible rows need more room; expanding
+			// a group therefore accounts for child names without widening collapsed views.
+			double naturalNameWidth = MeasureColumnWidth("Name", visibleTemplates.SelectMany(GetNameColumnText), 0) + 42;
+			double naturalTypeWidth = MeasureColumnWidth("Template Type", visibleTemplates.Select(template => template.TemplateType), 0);
+			_nameColumn.Width = Math.Max(availableWidth * 0.28, naturalNameWidth);
+			_typeColumn.Width = Math.Max(availableWidth * 0.24, naturalTypeWidth);
+			// Description never drives horizontal growth. Long values are truncated
+			// with an ellipsis and remain available through the existing tooltip.
+			_descriptionColumn.Width = Math.Max(240, availableWidth - _nameColumn.Width - _typeColumn.Width);
 		}
+	}
+
+	private List<DisplayTemplate> GetTemplatesInViewport()
+	{
+		List<DisplayTemplate> visibleTemplates = new List<DisplayTemplate>();
+		for (int index = 0; index < listViewUnits.Items.Count; index++)
+		{
+			if (!(listViewUnits.ItemContainerGenerator.ContainerFromIndex(index) is ListViewItem row) || !(row.DataContext is DisplayTemplate template))
+			{
+				continue;
+			}
+
+			try
+			{
+				double rowTop = row.TransformToAncestor(listViewUnits).Transform(new Point()).Y;
+				if (rowTop + row.ActualHeight >= 0 && rowTop <= listViewUnits.ActualHeight)
+				{
+					visibleTemplates.Add(template);
+				}
+			}
+			catch (InvalidOperationException)
+			{
+				// Containers can detach during virtualization; the next queued layout
+				// pass will measure their replacements.
+			}
+		}
+		return visibleTemplates;
 	}
 
 	private double MeasureColumnWidth(string header, IEnumerable<string> values, double minimumWidth)
@@ -999,6 +1078,7 @@ public class EditorDockpaneView : UserControl
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0.0)));
 		style.Setters.Add(new Setter(Control.PaddingProperty, compact ? new Thickness(3.0, 0.0, 3.0, 0.0) : new Thickness(4.0, 2.0, 4.0, 2.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		style.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, compact ? 24.0 : 30.0));
 		ControlTemplate controlTemplate = new ControlTemplate(typeof(ListViewItem));
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Border));
 		frameworkElementFactory.SetBinding(Border.BackgroundProperty, new Binding("Background")
@@ -1034,6 +1114,16 @@ public class EditorDockpaneView : UserControl
 		};
 		trigger.Setters.Add(new Setter(Control.BackgroundProperty, ((int)FrameworkApplication.ApplicationTheme == 1) ? new SolidColorBrush(Color.FromRgb(40, 48, 56)) : new SolidColorBrush(Color.FromRgb(232, 242, 252))));
 		style.Triggers.Add(trigger);
+		Trigger alternatingRowTrigger = new Trigger
+		{
+			Property = ItemsControl.AlternationIndexProperty,
+			Value = 1
+		};
+		alternatingRowTrigger.Setters.Add(new Setter(Control.BackgroundProperty,
+			((int)FrameworkApplication.ApplicationTheme == 1)
+				? new SolidColorBrush(Color.FromRgb(33, 33, 33))
+				: new SolidColorBrush(Color.FromRgb(248, 250, 252))));
+		style.Triggers.Insert(0, alternatingRowTrigger);
 		Trigger trigger2 = new Trigger
 		{
 			Property = ListBoxItem.IsSelectedProperty,
@@ -1046,7 +1136,7 @@ public class EditorDockpaneView : UserControl
 		style.Triggers.Add(trigger2);
 		MultiTrigger multiTrigger = new MultiTrigger
 		{
-			Conditions = 
+			Conditions =
 			{
 				new Condition(ListBoxItem.IsSelectedProperty, true),
 				new Condition(UIElement.IsMouseOverProperty, true)
@@ -1106,12 +1196,13 @@ public class EditorDockpaneView : UserControl
 		return style;
 	}
 
-	private RadioButton CreateRadioButton(string text, string bindingPath, bool compact)
+	private RadioButton CreateRadioButton(string text, string bindingPath, bool compact, string viewKey = null)
 	{
 		RadioButton radioButton = new RadioButton
 		{
 			Content = text,
-			Tag = text,
+			Tag = viewKey ?? text,
+			GroupName = "TemplateView",
 			Margin = new Thickness(0.0, 0.0, compact ? 4.0 : 6.0, 0.0),
 			Padding = (compact ? new Thickness(8.0, 3.0, 8.0, 3.0) : new Thickness(10.0, 4.0, 10.0, 4.0)),
 			Foreground = GetPrimaryForegroundBrush(),

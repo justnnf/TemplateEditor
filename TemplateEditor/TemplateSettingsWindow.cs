@@ -39,6 +39,18 @@ internal sealed class TemplateSettingsWindow : Window
 		}
 	}
 
+	private sealed class AttributeDefinitionEditorRow
+	{
+		public PlacementAttributeFieldOption SelectedField { get; set; }
+
+		public Border Container { get; set; }
+
+		public ComboBox FieldComboBox { get; set; }
+
+		public ComboBox DomainComboBox { get; set; }
+
+	}
+
 	private static readonly Brush WindowBackgroundBrush;
 
 	private static readonly Brush SurfaceBackgroundBrush;
@@ -153,6 +165,16 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly TextBox _hintSplitCandidateColorHexTextBox;
 
+	private readonly TextBox _previewFillColorHexTextBox;
+
+	private readonly TextBox _previewOutlineColorHexTextBox;
+
+	private readonly StackPanel _attributeDefinitionRowsPanel = new StackPanel();
+
+	private readonly List<AttributeDefinitionEditorRow> _attributeDefinitionRows = new List<AttributeDefinitionEditorRow>();
+
+	private IReadOnlyList<PlacementAttributeFieldOption> _availableAttributeFields = Array.Empty<PlacementAttributeFieldOption>();
+
 	private readonly TextBox _structuralAttachmentSearchDistanceTextBox;
 
 	private readonly TextBox _junctionJunctionConnectivitySearchDistanceTextBox;
@@ -185,7 +207,15 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly List<PlacementOverrideEditorRow> _sessionOverrideRows = new List<PlacementOverrideEditorRow>();
 
-	private bool _isLoadingAttributeOverrideEditor;
+	private readonly StackPanel _sessionOverrideRowsPanel = new StackPanel();
+
+	private bool _isLoadingAttributeDefinitions;
+
+	private bool _attributeDefinitionsLoadedSuccessfully;
+
+	private int _sessionOverrideRefreshVersion;
+
+	private bool _sessionOverridesLoaded;
 
 	public TemplateEditorSettings Settings { get; }
 
@@ -258,6 +288,8 @@ internal sealed class TemplateSettingsWindow : Window
 		_hintSourceColorHexTextBox = CreateTextBox(Settings.HintSourceColorHex);
 		_hintAssociationTargetColorHexTextBox = CreateTextBox(Settings.HintAssociationTargetColorHex);
 		_hintSplitCandidateColorHexTextBox = CreateTextBox(Settings.HintSplitCandidateColorHex);
+		_previewFillColorHexTextBox = CreateTextBox(Settings.PreviewFillColorHex);
+		_previewOutlineColorHexTextBox = CreateTextBox(Settings.PreviewOutlineColorHex);
 		_structuralAttachmentSearchDistanceTextBox = CreateTextBox(Settings.StructuralAttachmentSearchDistance.ToString("0.###"));
 		_junctionJunctionConnectivitySearchDistanceTextBox = CreateTextBox(Settings.JunctionJunctionConnectivitySearchDistance.ToString("0.###"));
 		_containmentPointSearchDistanceTextBox = CreateTextBox(Settings.ContainmentPointSearchDistance.ToString("0.###"));
@@ -515,15 +547,309 @@ internal sealed class TemplateSettingsWindow : Window
 		StackPanel stackPanel = CreateTabPanel();
 		stackPanel.Children.Add(CreateGroupBox("Dockpane Layout", CreateFormGrid(("Use compact dockpane layout", _useCompactDockpaneLayoutCheckBox), ("Maximum recent templates", _maxRecentTemplatesTextBox))));
 		stackPanel.Children.Add(CreateGroupBox("Map Feedback", CreateCheckBoxPanel(_highlightSplitCandidatesCheckBox, _highlightAssociationCandidatesCheckBox, _showAutomaticStepDiagnosticsCheckBox)));
-		stackPanel.Children.Add(CreateGroupBox("Hint Colors", CreateFormGrid(("Placed/source feature color (HEX)", _hintSourceColorHexTextBox), ("Association target color (HEX)", _hintAssociationTargetColorHexTextBox), ("Split candidate color (HEX)", _hintSplitCandidateColorHexTextBox))));
+		stackPanel.Children.Add(CreateGroupBox("Hint Colors", CreateFormGrid(
+			("Placed/source feature color", CreateColorSelector(_hintSourceColorHexTextBox, "#00FF50")),
+			("Association target color", CreateColorSelector(_hintAssociationTargetColorHexTextBox, "#FF0000")),
+			("Split candidate color", CreateColorSelector(_hintSplitCandidateColorHexTextBox, "#FF0000")))));
+		stackPanel.Children.Add(CreateGroupBox("Template Preview Colors", CreateFormGrid(
+			("Preview fill/line color", CreateColorSelector(_previewFillColorHexTextBox, "#DE7BCF")),
+			("Preview outline color", CreateColorSelector(_previewOutlineColorHexTextBox, "#0085CA")))));
 		return WrapTab(stackPanel);
+	}
+
+	/// <summary>
+	/// Combines exact HEX entry with the familiar Windows picker. The swatch is
+	/// updated while typing so an invalid value is visible before settings are saved.
+	/// </summary>
+	private static ContentControl CreateColorSelector(TextBox hexTextBox, string defaultHex)
+	{
+		string lastValidHex = TryParseHexColor(hexTextBox.Text, out _) ? hexTextBox.Text.Trim() : defaultHex;
+		Button swatchButton = new Button
+		{
+			Width = 34,
+			MinHeight = 28,
+			Margin = new Thickness(8, 0, 0, 0),
+			ToolTip = "Choose color",
+			Style = CreateButtonStyle()
+		};
+		Button chooseButton = new Button
+		{
+			Content = "Choose...",
+			MinWidth = 82,
+			Margin = new Thickness(8, 0, 0, 0),
+			Padding = new Thickness(10, 4, 10, 4),
+			Style = CreateButtonStyle()
+		};
+		Button resetButton = new Button
+		{
+			Content = "Reset",
+			MinWidth = 62,
+			Margin = new Thickness(8, 0, 0, 0),
+			Padding = new Thickness(10, 4, 10, 4),
+			Style = CreateButtonStyle()
+		};
+
+		void UpdateSwatch()
+		{
+			if (TryParseHexColor(hexTextBox.Text, out Color color))
+			{
+				lastValidHex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+				swatchButton.Background = new SolidColorBrush(color);
+				hexTextBox.BorderBrush = ControlBorderBrush;
+			}
+			else
+			{
+				swatchButton.Background = Brushes.Transparent;
+				hexTextBox.BorderBrush = Brushes.IndianRed;
+			}
+		}
+
+		void ChooseColor()
+		{
+			using System.Windows.Forms.ColorDialog dialog = new System.Windows.Forms.ColorDialog
+			{
+				AllowFullOpen = true,
+				FullOpen = true,
+				AnyColor = true
+			};
+			if (TryParseHexColor(hexTextBox.Text, out Color currentColor))
+			{
+				dialog.Color = System.Drawing.Color.FromArgb(currentColor.R, currentColor.G, currentColor.B);
+			}
+			if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+			{
+				hexTextBox.Text = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+			}
+		}
+
+		hexTextBox.TextChanged += delegate { UpdateSwatch(); };
+		hexTextBox.LostKeyboardFocus += delegate
+		{
+			if (!TryParseHexColor(hexTextBox.Text, out _))
+			{
+				hexTextBox.Text = lastValidHex;
+			}
+		};
+		swatchButton.Click += delegate { ChooseColor(); };
+		chooseButton.Click += delegate { ChooseColor(); };
+		resetButton.Click += delegate { hexTextBox.Text = defaultHex; };
+
+		DockPanel panel = new DockPanel { LastChildFill = true };
+		DockPanel.SetDock(resetButton, Dock.Right);
+		DockPanel.SetDock(chooseButton, Dock.Right);
+		DockPanel.SetDock(swatchButton, Dock.Right);
+		panel.Children.Add(resetButton);
+		panel.Children.Add(chooseButton);
+		panel.Children.Add(swatchButton);
+		panel.Children.Add(hexTextBox);
+		UpdateSwatch();
+		return new ContentControl { Content = panel };
+	}
+
+	private static bool TryParseHexColor(string value, out Color color)
+	{
+		string hex = (value ?? string.Empty).Trim().TrimStart('#');
+		if (hex.Length == 6 && byte.TryParse(hex.Substring(0, 2), System.Globalization.NumberStyles.HexNumber, null, out byte red)
+			&& byte.TryParse(hex.Substring(2, 2), System.Globalization.NumberStyles.HexNumber, null, out byte green)
+			&& byte.TryParse(hex.Substring(4, 2), System.Globalization.NumberStyles.HexNumber, null, out byte blue))
+		{
+			color = Color.FromRgb(red, green, blue);
+			return true;
+		}
+
+		color = Colors.Transparent;
+		return false;
 	}
 
 	private UIElement BuildAttributeOverridesTab()
 	{
 		StackPanel stackPanel = CreateTabPanel();
+		StackPanel definitionsPanel = new StackPanel();
+		definitionsPanel.Children.Add(new TextBlock
+		{
+			Text = "Choose fields discovered in the configured Utility Network template layers. Domains are populated automatically from the selected field.",
+			Foreground = SecondaryTextBrush,
+			TextWrapping = TextWrapping.Wrap,
+			Margin = new Thickness(0, 0, 0, 8)
+		});
+		Grid columnHeaders = new Grid { Margin = new Thickness(8, 0, 8, 4) };
+		columnHeaders.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
+		columnHeaders.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
+		columnHeaders.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+		string[] headerLabels = { "Field", "Domain" };
+		for (int column = 0; column < headerLabels.Length; column++)
+		{
+			TextBlock header = CreateLabel(headerLabels[column]);
+			Grid.SetColumn(header, column);
+			columnHeaders.Children.Add(header);
+		}
+		definitionsPanel.Children.Add(columnHeaders);
+		_attributeDefinitionRowsPanel.Children.Add(new TextBlock
+		{
+			Text = "Loading available fields and domains...",
+			Foreground = SecondaryTextBrush
+		});
+		definitionsPanel.Children.Add(_attributeDefinitionRowsPanel);
+		Button addFieldButton = new Button
+		{
+			Content = "Add override field",
+			HorizontalAlignment = HorizontalAlignment.Left,
+			Margin = new Thickness(0, 8, 0, 0),
+			Padding = new Thickness(12, 5, 12, 5),
+			Style = CreateButtonStyle()
+		};
+		addFieldButton.Click += delegate { AddAttributeDefinitionRow(null); };
+		definitionsPanel.Children.Add(addFieldButton);
+		definitionsPanel.Loaded += delegate
+		{
+			if (_isLoadingAttributeDefinitions)
+			{
+				return;
+			}
+			_isLoadingAttributeDefinitions = true;
+			TaskObservationService.Forget(LoadAttributeDefinitionEditorAsync(), "Available attribute fields could not be loaded.");
+		};
+		stackPanel.Children.Add(CreateGroupBox("Available Override Fields", definitionsPanel));
 		stackPanel.Children.Add(CreateGroupBox("Session Overrides", BuildAttributeOverrideSection()));
 		return WrapTab(stackPanel);
+	}
+
+	private async Task LoadAttributeDefinitionEditorAsync()
+	{
+		try
+		{
+			List<PlacementAttributeFieldOption> fields = (await PlacementAttributeOverrideService.GetAvailableFieldOptionsAsync()).ToList();
+			// Keep saved fields visible when their source layer is not currently loaded.
+			foreach (PlacementAttributeOverrideDefinition definition in Settings.AttributeOverrideDefinitions ?? new List<PlacementAttributeOverrideDefinition>())
+			{
+				PlacementAttributeFieldOption existingField = fields.FirstOrDefault(field => string.Equals(field.FieldName, definition.FieldName, StringComparison.OrdinalIgnoreCase));
+				if (existingField == null)
+				{
+					fields.Add(new PlacementAttributeFieldOption
+					{
+						FieldName = definition.FieldName,
+						Alias = definition.Label,
+						DomainNames = string.IsNullOrWhiteSpace(definition.DomainName) ? new List<string>() : new List<string> { definition.DomainName }
+					});
+				}
+				else if (!string.IsNullOrWhiteSpace(definition.DomainName) && !existingField.DomainNames.Contains(definition.DomainName, StringComparer.OrdinalIgnoreCase))
+				{
+					// A saved subtype-specific domain may not be discoverable from the
+					// currently loaded template, so keep it available for selection.
+					existingField.DomainNames.Add(definition.DomainName);
+					existingField.DomainNames.Sort(StringComparer.OrdinalIgnoreCase);
+				}
+			}
+
+			_availableAttributeFields = fields;
+			_attributeDefinitionRows.Clear();
+			_attributeDefinitionRowsPanel.Children.Clear();
+			foreach (PlacementAttributeOverrideDefinition definition in Settings.AttributeOverrideDefinitions ?? new List<PlacementAttributeOverrideDefinition>())
+			{
+				AddAttributeDefinitionRow(definition);
+			}
+			if (_attributeDefinitionRows.Count == 0)
+			{
+				AddAttributeDefinitionRow(null);
+			}
+			_attributeDefinitionsLoadedSuccessfully = true;
+			await RefreshSessionOverrideEditorAsync();
+		}
+		catch (Exception exception)
+		{
+			LogService.LogException("Available attribute fields could not be loaded.", exception);
+			_attributeDefinitionRowsPanel.Children.Clear();
+			_attributeDefinitionRowsPanel.Children.Add(new TextBlock
+			{
+				Text = "Fields could not be read from the configured layers. See the Template Editor log for details.",
+				Foreground = SecondaryTextBrush,
+				TextWrapping = TextWrapping.Wrap
+			});
+		}
+	}
+
+	private void AddAttributeDefinitionRow(PlacementAttributeOverrideDefinition definition)
+	{
+		ComboBox fieldComboBox = new ComboBox
+		{
+			ItemsSource = _availableAttributeFields,
+			DisplayMemberPath = nameof(PlacementAttributeFieldOption.DisplayName),
+			MinWidth = 220,
+			Style = CreateComboBoxStyle(),
+			ItemContainerStyle = CreateComboBoxItemStyle()
+		};
+		ComboBox domainComboBox = new ComboBox
+		{
+			MinWidth = 180,
+			Style = CreateComboBoxStyle(),
+			ItemContainerStyle = CreateComboBoxItemStyle()
+		};
+		Button removeButton = new Button
+		{
+			Content = "Remove",
+			Padding = new Thickness(10, 4, 10, 4),
+			Style = CreateButtonStyle()
+		};
+		Grid grid = new Grid();
+		grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
+		grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.0, GridUnitType.Star) });
+		grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+		Control[] controls = { fieldComboBox, domainComboBox, removeButton };
+		for (int column = 0; column < controls.Length; column++)
+		{
+			controls[column].Margin = new Thickness(0, 0, column == controls.Length - 1 ? 0 : 8, 0);
+			Grid.SetColumn(controls[column], column);
+			grid.Children.Add(controls[column]);
+		}
+		Border container = new Border
+		{
+			BorderBrush = SectionBorderBrush,
+			BorderThickness = new Thickness(1),
+			Padding = new Thickness(8),
+			Margin = new Thickness(0, 0, 0, 6),
+			Child = grid
+		};
+		AttributeDefinitionEditorRow row = new AttributeDefinitionEditorRow
+		{
+			Container = container,
+			FieldComboBox = fieldComboBox,
+			DomainComboBox = domainComboBox
+		};
+		fieldComboBox.SelectionChanged += delegate
+		{
+			row.SelectedField = fieldComboBox.SelectedItem as PlacementAttributeFieldOption;
+			domainComboBox.ItemsSource = row.SelectedField?.DomainNames ?? new List<string>();
+			if (row.SelectedField?.DomainNames.Count == 1)
+			{
+				domainComboBox.SelectedIndex = 0;
+			}
+			if (_attributeDefinitionsLoadedSuccessfully)
+			{
+				TaskObservationService.Forget(RefreshSessionOverrideEditorAsync(), "Session override fields could not be refreshed.");
+			}
+		};
+		domainComboBox.SelectionChanged += delegate
+		{
+			if (_attributeDefinitionsLoadedSuccessfully)
+			{
+				TaskObservationService.Forget(RefreshSessionOverrideEditorAsync(), "Session override fields could not be refreshed.");
+			}
+		};
+		removeButton.Click += delegate
+		{
+			_attributeDefinitionRows.Remove(row);
+			_attributeDefinitionRowsPanel.Children.Remove(container);
+			TaskObservationService.Forget(RefreshSessionOverrideEditorAsync(), "Session override fields could not be refreshed.");
+		};
+		_attributeDefinitionRows.Add(row);
+		_attributeDefinitionRowsPanel.Children.Add(container);
+
+		PlacementAttributeFieldOption selectedField = _availableAttributeFields.FirstOrDefault(field => string.Equals(field.FieldName, definition?.FieldName, StringComparison.OrdinalIgnoreCase));
+		fieldComboBox.SelectedItem = selectedField;
+		if (!string.IsNullOrWhiteSpace(definition?.DomainName))
+		{
+			domainComboBox.SelectedItem = selectedField?.DomainNames.FirstOrDefault(domain => string.Equals(domain, definition.DomainName, StringComparison.OrdinalIgnoreCase));
+		}
 	}
 
 	private UIElement BuildAttributeOverrideSection()
@@ -536,60 +862,100 @@ internal sealed class TemplateSettingsWindow : Window
 			TextWrapping = TextWrapping.Wrap,
 			Margin = new Thickness(0.0, 0.0, 0.0, 12.0)
 		});
-		StackPanel editorPanel = new StackPanel();
-		editorPanel.Children.Add(new TextBlock
+		_sessionOverrideRowsPanel.Children.Add(new TextBlock
 		{
 			Text = "Loading placement override fields...",
 			Foreground = SecondaryTextBrush
 		});
-		stackPanel.Children.Add(editorPanel);
+		stackPanel.Children.Add(_sessionOverrideRowsPanel);
 		stackPanel.Loaded += delegate
 		{
-			if (_isLoadingAttributeOverrideEditor)
-			{
-				return;
-			}
-			_isLoadingAttributeOverrideEditor = true;
-			TaskObservationService.Forget(LoadAttributeOverrideEditorAsync(editorPanel), "Placement override editor fields could not be loaded.");
+			TaskObservationService.Forget(RefreshSessionOverrideEditorAsync(), "Placement override editor fields could not be loaded.");
 		};
 		return stackPanel;
 	}
 
-	private async Task LoadAttributeOverrideEditorAsync(StackPanel editorPanel)
+	/// <summary>
+	/// Rebuilds the session controls from the unsaved field rows and retains values
+	/// already entered in this window. A version check prevents a slower refresh
+	/// from overwriting a newer field selection.
+	/// </summary>
+	private async Task RefreshSessionOverrideEditorAsync()
 	{
+		int refreshVersion = ++_sessionOverrideRefreshVersion;
+		List<PlacementAttributeOverrideValue> selectedValues = GetSessionOverrideValues();
+		List<PlacementAttributeOverrideDefinition> definitions = GetEditedAttributeDefinitions();
 		try
 		{
-			IReadOnlyList<PlacementAttributeOverrideEditorState> readOnlyList = await PlacementAttributeOverrideService.BuildSessionEditorStatesAsync(Settings.SessionAttributeOverrides);
-			_sessionOverrideRows.Clear();
-			editorPanel.Children.Clear();
-		if (readOnlyList.Count == 0)
-		{
-			editorPanel.Children.Add(new TextBlock
+			IReadOnlyList<PlacementAttributeOverrideEditorState> readOnlyList = await PlacementAttributeOverrideService.BuildSessionEditorStatesAsync(selectedValues, definitions);
+			if (refreshVersion != _sessionOverrideRefreshVersion)
 			{
-				Text = "No packaged placement override fields are currently available.",
-				Foreground = SecondaryTextBrush,
-				TextWrapping = TextWrapping.Wrap
-			});
-			return;
-		}
-		foreach (PlacementAttributeOverrideEditorState item in readOnlyList)
-		{
-			PlacementOverrideEditorRow placementOverrideEditorRow = CreatePlacementOverrideEditorRow(item);
-			_sessionOverrideRows.Add(placementOverrideEditorRow);
-			editorPanel.Children.Add(placementOverrideEditorRow.Container);
-		}
+				return;
+			}
+			_sessionOverrideRows.Clear();
+			_sessionOverrideRowsPanel.Children.Clear();
+			_sessionOverridesLoaded = true;
+			if (readOnlyList.Count == 0)
+			{
+				_sessionOverrideRowsPanel.Children.Add(new TextBlock
+				{
+					Text = "No override fields are selected. Add or choose a field above to configure its session value.",
+					Foreground = SecondaryTextBrush,
+					TextWrapping = TextWrapping.Wrap
+				});
+				return;
+			}
+			foreach (PlacementAttributeOverrideEditorState item in readOnlyList)
+			{
+				PlacementOverrideEditorRow placementOverrideEditorRow = CreatePlacementOverrideEditorRow(item);
+				_sessionOverrideRows.Add(placementOverrideEditorRow);
+				_sessionOverrideRowsPanel.Children.Add(placementOverrideEditorRow.Container);
+			}
 		}
 		catch (Exception ex)
 		{
 			LogService.LogException("Placement override editor fields could not be loaded.", ex);
-			editorPanel.Children.Clear();
-			editorPanel.Children.Add(new TextBlock
+			_sessionOverrideRowsPanel.Children.Clear();
+			_sessionOverrideRowsPanel.Children.Add(new TextBlock
 			{
 				Text = "Placement override fields could not be loaded. See the Template Editor log for details.",
 				Foreground = SecondaryTextBrush,
 				TextWrapping = TextWrapping.Wrap
 			});
 		}
+	}
+
+	private List<PlacementAttributeOverrideDefinition> GetEditedAttributeDefinitions()
+	{
+		if (!_attributeDefinitionsLoadedSuccessfully)
+		{
+			return Settings.AttributeOverrideDefinitions ?? new List<PlacementAttributeOverrideDefinition>();
+		}
+
+		return _attributeDefinitionRows
+			.Where(row => row.SelectedField != null)
+			.Select(row => new PlacementAttributeOverrideDefinition
+			{
+				FieldName = row.SelectedField.FieldName,
+				Label = string.IsNullOrWhiteSpace(row.SelectedField.Alias) ? row.SelectedField.FieldName : row.SelectedField.Alias,
+				DomainName = row.DomainComboBox.SelectedItem as string
+			})
+			.ToList();
+	}
+
+	private List<PlacementAttributeOverrideValue> GetSessionOverrideValues()
+	{
+		if (!_sessionOverridesLoaded)
+		{
+			return Settings.SessionAttributeOverrides ?? new List<PlacementAttributeOverrideValue>();
+		}
+
+		return _sessionOverrideRows.Select(row => new PlacementAttributeOverrideValue
+		{
+			FieldName = row.State.Definition.FieldName,
+			Enabled = row.EnabledCheckBox.IsChecked == true,
+			Value = row.UseDropDown ? row.ValueComboBox.SelectedItem as string : row.ValueTextBox.Text
+		}).ToList();
 	}
 
 	private UIElement BuildTemplateConfigSection()
@@ -853,6 +1219,13 @@ internal sealed class TemplateSettingsWindow : Window
 			Settings.HintSourceColorHex = _hintSourceColorHexTextBox.Text;
 			Settings.HintAssociationTargetColorHex = _hintAssociationTargetColorHexTextBox.Text;
 			Settings.HintSplitCandidateColorHex = _hintSplitCandidateColorHexTextBox.Text;
+			Settings.PreviewFillColorHex = _previewFillColorHexTextBox.Text;
+			Settings.PreviewOutlineColorHex = _previewOutlineColorHexTextBox.Text;
+			// Preserve saved definitions if field discovery is still running or failed.
+			if (_attributeDefinitionsLoadedSuccessfully)
+			{
+				Settings.AttributeOverrideDefinitions = GetEditedAttributeDefinitions();
+			}
 			Settings.StructuralAttachmentSearchDistance = ParseDistance(_structuralAttachmentSearchDistanceTextBox.Text, "structural attachment search distance");
 			Settings.JunctionJunctionConnectivitySearchDistance = ParseDistance(_junctionJunctionConnectivitySearchDistanceTextBox.Text, "junction-junction connectivity search distance");
 			Settings.ContainmentPointSearchDistance = ParseDistance(_containmentPointSearchDistanceTextBox.Text, "containment point search distance");
@@ -867,12 +1240,7 @@ internal sealed class TemplateSettingsWindow : Window
 			Settings.ContainmentBoundaryTargetGroups = TemplateEditorSettings.ParseGroupNames(_containmentBoundaryTargetGroupsTextBox.Text);
 			Settings.ContainmentBoundaryTargetLayerNames = TemplateEditorSettings.ParseGroupNames(_containmentBoundaryTargetLayerNamesTextBox.Text);
 			Settings.AssociationRulesJsonPath = (string.IsNullOrWhiteSpace(_associationRulesJsonPathTextBox.Text) ? null : AtomicFileService.NormalizeJsonFilePath(_associationRulesJsonPathTextBox.Text));
-			Settings.SessionAttributeOverrides = _sessionOverrideRows.Select((PlacementOverrideEditorRow row) => new PlacementAttributeOverrideValue
-			{
-				FieldName = row.State.Definition.FieldName,
-				Enabled = (row.EnabledCheckBox.IsChecked == true),
-				Value = (row.UseDropDown ? (row.ValueComboBox.SelectedItem as string) : row.ValueTextBox.Text)
-			}).ToList();
+			Settings.SessionAttributeOverrides = GetSessionOverrideValues();
 			Settings.Normalize();
 			base.DialogResult = true;
 			Close();
@@ -992,13 +1360,6 @@ internal sealed class TemplateSettingsWindow : Window
 			FontWeight = FontWeights.SemiBold,
 			Foreground = PrimaryTextBrush
 		};
-		TextBlock element2 = new TextBlock
-		{
-			Text = (string.IsNullOrWhiteSpace(state.Definition.Description) ? state.ConfiguredValueSummary : (state.Definition.Description + "\n" + state.ConfiguredValueSummary)),
-			Foreground = SecondaryTextBrush,
-			TextWrapping = TextWrapping.Wrap,
-			Margin = new Thickness(0.0, 2.0, 0.0, 0.0)
-		};
 		ComboBox valueComboBox = null;
 		TextBox textBox = null;
 		Control valueEditor;
@@ -1032,7 +1393,16 @@ internal sealed class TemplateSettingsWindow : Window
 		};
 		StackPanel stackPanel = new StackPanel();
 		stackPanel.Children.Add(element);
-		stackPanel.Children.Add(element2);
+		if (!string.IsNullOrWhiteSpace(state.ConfiguredValueSummary))
+		{
+			stackPanel.Children.Add(new TextBlock
+			{
+				Text = state.ConfiguredValueSummary,
+				Foreground = SecondaryTextBrush,
+				TextWrapping = TextWrapping.Wrap,
+				Margin = new Thickness(0.0, 2.0, 0.0, 0.0)
+			});
+		}
 		stackPanel.Children.Add(valueEditor);
 		DockPanel dockPanel = new DockPanel
 		{
@@ -1168,6 +1538,8 @@ internal sealed class TemplateSettingsWindow : Window
 		SetToolTip(_hintSourceColorHexTextBox, "HEX color used for the newly placed/source feature hint, for example #00FF50.");
 		SetToolTip(_hintAssociationTargetColorHexTextBox, "HEX color used for association target hints, for example #FF0000.");
 		SetToolTip(_hintSplitCandidateColorHexTextBox, "HEX color used for split candidate line hints, for example #FF0000.");
+		SetToolTip(_previewFillColorHexTextBox, "HEX color used to fill point/polygon previews and draw line previews.");
+		SetToolTip(_previewOutlineColorHexTextBox, "HEX color used for point and polygon preview outlines.");
 	}
 
 	private static void SetToolTip(FrameworkElement element, string text)
@@ -1259,7 +1631,7 @@ internal sealed class TemplateSettingsWindow : Window
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true,
-			Setters = 
+			Setters =
 			{
 				(SetterBase)new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush),
 				(SetterBase)new Setter(Control.ForegroundProperty, PrimaryTextBrush),
@@ -1270,7 +1642,7 @@ internal sealed class TemplateSettingsWindow : Window
 		{
 			Property = UIElement.IsKeyboardFocusedProperty,
 			Value = true,
-			Setters = 
+			Setters =
 			{
 				(SetterBase)new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush),
 				(SetterBase)new Setter(Control.ForegroundProperty, PrimaryTextBrush),
@@ -1487,7 +1859,7 @@ internal sealed class TemplateSettingsWindow : Window
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true,
-			Setters = 
+			Setters =
 			{
 				(SetterBase)new Setter(Control.ForegroundProperty, PrimaryTextBrush),
 				(SetterBase)new Setter(Control.BorderBrushProperty, AccentBorderBrush)

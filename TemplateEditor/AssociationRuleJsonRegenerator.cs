@@ -16,23 +16,25 @@ internal static class AssociationRuleJsonRegenerator
 	public static async Task<AssociationRuleGenerationResult> RegenerateFromActiveMapAsync(string outputPathOverride = null)
 	{
 		string outputPath = AtomicFileService.NormalizeJsonFilePath(string.IsNullOrWhiteSpace(outputPathOverride) ? AssociationRuleCatalog.RuleFilePath : outputPathOverride);
-		AssociationRuleEnvelope envelope = await QueuedTask.Run<AssociationRuleEnvelope>((Func<AssociationRuleEnvelope>)delegate
+		// Utility Network datasets and rules are ArcGIS Core objects, so discover
+		// and project them to plain JSON models entirely on the MCT.
+		AssociationRuleEnvelope envelope = await QueuedTask.Run(() =>
 		{
-			MapView active = MapView.Active;
-			if (((active != null) ? active.Map : null) == null)
+			Map map = MapView.Active?.Map;
+			if (map == null)
 			{
 				throw new InvalidOperationException("No active map was found.");
 			}
-			foreach (Layer layersAsFlattened in MapView.Active.Map.GetLayersAsFlattenedList())
+			foreach (Layer layer in map.GetLayersAsFlattenedList())
 			{
-				AssociationRuleEnvelope associationRuleEnvelope = TryBuildRuleEnvelope(layersAsFlattened);
-				if (associationRuleEnvelope != null)
+				AssociationRuleEnvelope ruleEnvelope = TryBuildRuleEnvelope(layer);
+				if (ruleEnvelope != null)
 				{
-					return associationRuleEnvelope;
+					return ruleEnvelope;
 				}
 			}
 			throw new InvalidOperationException("No utility network was found in the active map.");
-		}, TaskCreationOptions.None);
+		});
 		AtomicFileService.WriteAllText(outputPath, JsonSerializer.Serialize(envelope, new JsonSerializerOptions
 		{
 			WriteIndented = true
@@ -47,25 +49,25 @@ internal static class AssociationRuleJsonRegenerator
 
 	private static AssociationRuleEnvelope TryBuildRuleEnvelope(Layer layer)
 	{
-		UtilityNetwork val = TryGetUtilityNetwork(layer);
+		UtilityNetwork utilityNetwork = TryGetUtilityNetwork(layer);
 		try
 		{
-			if (val == null)
+			if (utilityNetwork == null)
 			{
 				return null;
 			}
-			UtilityNetworkDefinition definition = val.GetDefinition();
+			UtilityNetworkDefinition definition = utilityNetwork.GetDefinition();
 			try
 			{
-				List<AssociationRule> rules = (from @group in (from rule in definition.GetRules().Where(delegate(Rule rule)
+				List<AssociationRule> rules = (from @group in (from rule in definition.GetRules().Where(delegate (Rule rule)
 						{
 							return (int)rule.Type == 3 || (int)rule.Type == 2 || (int)rule.Type == 1;
 						}).Select(ToAssociationRule)
-						where rule != null
-						select rule).GroupBy(GetRuleKey)
-					select @group.First() into rule
-					orderby rule.AssociationType, rule.FromTable, rule.FromAssetGroup, rule.FromAssetType, rule.ToTable, rule.ToAssetGroup, rule.ToAssetType
-					select rule).ToList();
+															   where rule != null
+															   select rule).GroupBy(GetRuleKey)
+											   select @group.First() into rule
+											   orderby rule.AssociationType, rule.FromTable, rule.FromAssetGroup, rule.FromAssetType, rule.ToTable, rule.ToAssetGroup, rule.ToAssetType
+											   select rule).ToList();
 				return new AssociationRuleEnvelope
 				{
 					Source = ((Definition)definition).GetName() + " / UtilityNetworkDefinition.GetRules",
@@ -80,33 +82,30 @@ internal static class AssociationRuleJsonRegenerator
 		}
 		finally
 		{
-			((IDisposable)val)?.Dispose();
+			utilityNetwork?.Dispose();
 		}
 	}
 
 	private static UtilityNetwork TryGetUtilityNetwork(Layer layer)
 	{
-		UtilityNetworkLayer val = (UtilityNetworkLayer)(object)((layer is UtilityNetworkLayer) ? layer : null);
-		if (val != null)
+		if (layer is UtilityNetworkLayer utilityNetworkLayer)
 		{
-			return val.GetUtilityNetwork();
+			return utilityNetworkLayer.GetUtilityNetwork();
 		}
-		SubtypeGroupLayer val2 = (SubtypeGroupLayer)(object)((layer is SubtypeGroupLayer) ? layer : null);
-		if (val2 != null)
+		if (layer is SubtypeGroupLayer subtypeGroupLayer)
 		{
-			foreach (Layer layer2 in ((CompositeLayer)val2).Layers)
+			foreach (Layer childLayer in subtypeGroupLayer.Layers)
 			{
-				UtilityNetwork val3 = TryGetUtilityNetwork(layer2);
-				if (val3 != null)
+				UtilityNetwork utilityNetwork = TryGetUtilityNetwork(childLayer);
+				if (utilityNetwork != null)
 				{
-					return val3;
+					return utilityNetwork;
 				}
 			}
 		}
-		FeatureLayer val4 = (FeatureLayer)(object)((layer is FeatureLayer) ? layer : null);
-		if (val4 != null)
+		if (layer is FeatureLayer featureLayer)
 		{
-			FeatureClass featureClass = val4.GetFeatureClass();
+			FeatureClass featureClass = featureLayer.GetFeatureClass();
 			try
 			{
 				return TryGetControllerUtilityNetwork(featureClass);
@@ -127,10 +126,9 @@ internal static class AssociationRuleJsonRegenerator
 		}
 		foreach (Dataset controllerDataset in ((Table)featureClass).GetControllerDatasets())
 		{
-			UtilityNetwork val = (UtilityNetwork)(object)((controllerDataset is UtilityNetwork) ? controllerDataset : null);
-			if (val != null)
+			if (controllerDataset is UtilityNetwork utilityNetwork)
 			{
-				return val;
+				return utilityNetwork;
 			}
 			((CoreObjectsBase)controllerDataset).Dispose();
 		}
@@ -144,25 +142,19 @@ internal static class AssociationRuleJsonRegenerator
 		{
 			return null;
 		}
-		RuleElement val = ruleElements[0];
-		RuleElement val2 = ruleElements[1];
-		AssociationRule obj = new AssociationRule
+		RuleElement fromElement = ruleElements[0];
+		RuleElement toElement = ruleElements[1];
+		AssociationRule associationRule = new AssociationRule
 		{
-			AssociationType = GetAssociationTypeName(rule.Type)
+			AssociationType = GetAssociationTypeName(rule.Type),
+			FromTable = fromElement.NetworkSource?.Name ?? string.Empty,
+			FromAssetGroup = fromElement.AssetGroup?.Name ?? string.Empty,
+			FromAssetType = fromElement.AssetType?.Name ?? string.Empty,
+			ToTable = toElement.NetworkSource?.Name ?? string.Empty,
+			ToAssetGroup = toElement.AssetGroup?.Name ?? string.Empty,
+			ToAssetType = toElement.AssetType?.Name ?? string.Empty
 		};
-		NetworkSource networkSource = val.NetworkSource;
-		obj.FromTable = ((networkSource != null) ? networkSource.Name : null) ?? string.Empty;
-		AssetGroup assetGroup = val.AssetGroup;
-		obj.FromAssetGroup = ((assetGroup != null) ? assetGroup.Name : null) ?? string.Empty;
-		AssetType assetType = val.AssetType;
-		obj.FromAssetType = ((assetType != null) ? assetType.Name : null) ?? string.Empty;
-		NetworkSource networkSource2 = val2.NetworkSource;
-		obj.ToTable = ((networkSource2 != null) ? networkSource2.Name : null) ?? string.Empty;
-		AssetGroup assetGroup2 = val2.AssetGroup;
-		obj.ToAssetGroup = ((assetGroup2 != null) ? assetGroup2.Name : null) ?? string.Empty;
-		AssetType assetType2 = val2.AssetType;
-		obj.ToAssetType = ((assetType2 != null) ? assetType2.Name : null) ?? string.Empty;
-		return obj;
+		return associationRule;
 	}
 
 	private static string GetAssociationTypeName(RuleType ruleType)

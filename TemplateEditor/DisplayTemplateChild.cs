@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System.Linq;
 
 namespace TemplateEditor;
 
@@ -20,33 +20,14 @@ public class DisplayTemplateChild
 
 	public bool IsSelected { get; set; }
 
-	public string DisplayText
-	{
-		get
-		{
-			string text = ((FeatureId > 0) ? $"{FeatureId}. " : string.Empty);
-			return text + Name;
-		}
-	}
+	public string DisplayText => (FeatureId > 0 ? $"{FeatureId}. " : string.Empty) + Name;
 
 	public string DetailText
 	{
 		get
 		{
-			List<string> list = new List<string>();
-			if (!string.IsNullOrWhiteSpace(TemplateType))
-			{
-				list.Add(TemplateType);
-			}
-			if (!string.IsNullOrWhiteSpace(SketchType))
-			{
-				list.Add(SketchType);
-			}
-			if (!string.IsNullOrWhiteSpace(Description))
-			{
-				list.Add(Description);
-			}
-			return string.Join(" | ", list);
+			return string.Join(" | ", new[] { TemplateType, SketchType, Description }
+				.Where(value => !string.IsNullOrWhiteSpace(value)));
 		}
 	}
 }

@@ -94,9 +94,9 @@ internal static class DialogService
 		}
 		string text = message.Replace("\r\n", "\n");
 		string[] array = (from line in text.Split('\n')
-			select line.Trim() into line
-			where line.Length > 0
-			select line).ToArray();
+						  select line.Trim() into line
+						  where line.Length > 0
+						  select line).ToArray();
 		if (array.Length == 0)
 		{
 			return (Summary: string.Empty, Detail: null);

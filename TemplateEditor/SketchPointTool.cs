@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Framework.Contracts;
@@ -25,29 +23,19 @@ internal class SketchPointTool : PreviewSketchTool
 
 	protected override async Task<bool> OnSketchCompleteAsync(Geometry geometry)
 	{
+		// Offset placement uses the first click as its origin and the second click
+		// only to choose direction. The actual feature is created after that second click.
 		if (OffsetPlacementSession.IsActive && OffsetPlacementSession.InsertPoint == null)
 		{
-			OffsetPlacementSession.SetInsertPoint((MapPoint)(object)((geometry is MapPoint) ? geometry : null));
+			OffsetPlacementSession.SetInsertPoint(geometry as MapPoint);
 			EditorDockpaneViewModel.SetPlacementStatus("Offset placement: move the mouse around the distance ring to choose a direction, then click to place.");
-			return await _003C_003En__0(geometry);
+			return await base.OnSketchCompleteAsync(geometry);
 		}
 		await RefreshPlacementRotationAsync();
 		MapPoint splitPointOverride = (OffsetPlacementSession.IsActive ? OffsetPlacementSession.InsertPoint : null);
-		object obj;
-		if (!OffsetPlacementSession.IsActive)
-		{
-			Geometry val = (Geometry)base.PlacementAnchorOverride;
-			obj = (object)val;
-			if (val == null)
-			{
-				obj = geometry;
-			}
-		}
-		else
-		{
-			obj = OffsetPlacementSession.GetOffsetPoint((MapPoint)(object)((geometry is MapPoint) ? geometry : null));
-		}
-		Geometry placementGeometry = (Geometry)obj;
+		Geometry placementGeometry = OffsetPlacementSession.IsActive
+			? OffsetPlacementSession.GetOffsetPoint(geometry as MapPoint)
+			: PlacementAnchorOverride ?? geometry;
 		SuspendPreview();
 		bool placementSucceeded = false;
 		await RunWithPlacementCursorAsync(async delegate
@@ -60,15 +48,8 @@ internal class SketchPointTool : PreviewSketchTool
 		{
 			ToolReactivationService.ActivateSelectTool();
 		}
-		bool completed = await _003C_003En__0(geometry);
+		bool completed = await base.OnSketchCompleteAsync(geometry);
 		ResetAfterPlacement(!returnToSelect);
 		return completed;
-	}
-
-	[CompilerGenerated]
-	[DebuggerHidden]
-	private Task<bool> _003C_003En__0(Geometry geometry)
-	{
-		return base.OnSketchCompleteAsync(geometry);
 	}
 }

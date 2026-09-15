@@ -25,6 +25,9 @@ namespace TemplateEditor;
 
 internal static class CommonFunctions
 {
+	// Placement is assembled in two phases: build one ArcGIS EditOperation on
+	// the MCT, then execute it before running optional association/enhancement
+	// work. Keep ArcGIS rows and definitions inside their QueuedTask scope.
 	private sealed class PlacementBuildResult
 	{
 		public EditOperation Operation { get; set; }
@@ -100,6 +103,9 @@ internal static class CommonFunctions
 		lock (_simplePointTemplateCacheLock)
 		{
 			_simplePointTemplateCache.Clear();
+			_cachedPreviewPointSymbol = null;
+			_cachedPreviewLineSymbol = null;
+			_cachedPreviewPolygonSymbol = null;
 		}
 	}
 
@@ -110,45 +116,25 @@ internal static class CommonFunctions
 		{
 			throw new InvalidOperationException("Template configuration is not loaded.");
 		}
-		TemplateConfig templateConfig = templates;
-		if (templateConfig.SimpleTemplates == null)
-		{
-			List<SimpleTemplate> list = (templateConfig.SimpleTemplates = new List<SimpleTemplate>());
-		}
-		templateConfig = templates;
-		if (templateConfig.GroupTemplates == null)
-		{
-			List<GroupTemplate> list3 = (templateConfig.GroupTemplates = new List<GroupTemplate>());
-		}
+		templates.SimpleTemplates ??= new List<SimpleTemplate>();
+		templates.GroupTemplates ??= new List<GroupTemplate>();
 		return templates;
 	}
 
 	public static object GetObjectValue(object obj)
 	{
-		if (obj == null)
-		{
-			return null;
-		}
-		if (!(obj is JsonElement jsonElement) || 1 == 0)
+		if (obj is not JsonElement jsonElement)
 		{
 			return obj;
 		}
-		JsonValueKind valueKind = jsonElement.ValueKind;
-		if (1 == 0)
+		return jsonElement.ValueKind switch
 		{
-		}
-		object result = valueKind switch
-		{
-			JsonValueKind.Number => jsonElement.TryGetInt64(out var value) ? ((double)value) : jsonElement.GetDouble(), 
-			JsonValueKind.True => true, 
-			JsonValueKind.False => false, 
-			JsonValueKind.Null => null, 
-			_ => jsonElement.ToString(), 
+			JsonValueKind.Number => jsonElement.TryGetInt64(out var value) ? ((double)value) : jsonElement.GetDouble(),
+			JsonValueKind.True => true,
+			JsonValueKind.False => false,
+			JsonValueKind.Null => null,
+			_ => jsonElement.ToString(),
 		};
-		if (1 == 0)
-		{
-		}
-		return result;
 	}
 
 	public static async Task<GeometryType> GetTemplateGeometryTypeAsync(DisplayTemplate template)
@@ -204,15 +190,12 @@ internal static class CommonFunctions
 
 	private static GeometryType GetConfiguredSketchGeometryType(SimpleTemplateReference simpleTemplateRef)
 	{
-		string text = simpleTemplateRef?.SketchType?.ToUpperInvariant();
-		if (1 == 0)
+		return simpleTemplateRef?.SketchType?.ToUpperInvariant() switch
 		{
-		}
-		GeometryType result = ((text == "LINE") ? ((GeometryType)25607) : ((!(text == "POLYGON")) ? ((GeometryType)513) : ((GeometryType)27656)));
-		if (1 == 0)
-		{
-		}
-		return result;
+			"LINE" => GeometryTypeHelper.PolylineGeometryType,
+			"POLYGON" => GeometryTypeHelper.PolygonGeometryType,
+			_ => GeometryTypeHelper.PointGeometryType
+		};
 	}
 
 	private static SimpleTemplateReference GetGroupChildReference(DisplayTemplate childTemplate)
@@ -368,17 +351,17 @@ internal static class CommonFunctions
 			return null;
 		}
 		string targets = string.Join("\n", from target in defaultVersionTargets.Distinct<string>(StringComparer.OrdinalIgnoreCase).OrderBy<string, string>((string target) => target, StringComparer.OrdinalIgnoreCase)
-			select "- " + target);
+										   select "- " + target);
 		return "Template placement was blocked because one or more target feature service layers or tables are connected to DEFAULT.\n\nSwitch the map to a named version before placing templates.\n\nTarget(s):\n" + targets;
 	}
 
 	private static List<string> GetDefaultVersionPlacementTargets(DisplayTemplate selectedTemplate)
 	{
 		return (from mapMember in GetPlacementTargetMapMembers(selectedTemplate)
-			where IsDefaultVersionConnection(mapMember)
-			select mapMember.Name into name
-			where !string.IsNullOrWhiteSpace(name)
-			select name).ToList();
+				where IsDefaultVersionConnection(mapMember)
+				select mapMember.Name into name
+				where !string.IsNullOrWhiteSpace(name)
+				select name).ToList();
 	}
 
 	private static IEnumerable<MapMember> GetPlacementTargetMapMembers(DisplayTemplate selectedTemplate)
@@ -792,24 +775,16 @@ internal static class CommonFunctions
 		{
 			return null;
 		}
-		string text = associationType.ToUpperInvariant();
-		if (1 == 0)
+		return associationType.ToUpperInvariant() switch
 		{
-		}
-		AssociationType? result = text switch
-		{
-			"CONTAINMENT" => (AssociationType)2, 
-			"ATTACHMENT" => (AssociationType)3, 
-			"JUNCTIONJUNCTIONCONNECTIVITY" => (AssociationType)1, 
-			"JUNCTIONEDGEOBJECTCONNECTIVITYFROMSIDE" => (AssociationType)4, 
-			"JUNCTIONEDGEOBJECTCONNECTIVITYTOSIDE" => (AssociationType)6, 
-			"JUNCTIONEDGEOBJECTCONNECTIVITYMIDSPAN" => (AssociationType)5, 
-			_ => null, 
+			"CONTAINMENT" => (AssociationType)2,
+			"ATTACHMENT" => (AssociationType)3,
+			"JUNCTIONJUNCTIONCONNECTIVITY" => (AssociationType)1,
+			"JUNCTIONEDGEOBJECTCONNECTIVITYFROMSIDE" => (AssociationType)4,
+			"JUNCTIONEDGEOBJECTCONNECTIVITYTOSIDE" => (AssociationType)6,
+			"JUNCTIONEDGEOBJECTCONNECTIVITYMIDSPAN" => (AssociationType)5,
+			_ => null,
 		};
-		if (1 == 0)
-		{
-		}
-		return result;
 	}
 
 	private static Task PopulateFeatureInfoDetailsAsync(List<FeatureInfo> featureInfos)
@@ -1116,9 +1091,9 @@ internal static class CommonFunctions
 			return;
 		}
 		List<((FeatureLayer Layer, long ObjectID, string Label, string OwningGroup) Candidate, List<(AssociationObject Rule, bool IsReversed)> Rules)> candidatesWithRules = (from c in selectedCandidates
-			select (Candidate: c, Rules: FindGroupTemplateAssociations(template, ((MapMember)c.Layer).Name, c.OwningGroup)) into c
-			where c.Rules.Count > 0
-			select c).ToList();
+																																											  select (Candidate: c, Rules: FindGroupTemplateAssociations(template, ((MapMember)c.Layer).Name, c.OwningGroup)) into c
+																																											  where c.Rules.Count > 0
+																																											  select c).ToList();
 		if (candidatesWithRules.Count == 0)
 		{
 			if (!ConfirmCreateNonSpatialWithoutAssociations(template))
@@ -1214,8 +1189,8 @@ internal static class CommonFunctions
 				if (flag && flag2)
 				{
 					List<(AssociationObject, bool)> list2 = (from a in list
-						where a.SpatialFeatureId == spatialFeatureId
-						select (Rule: a.Rule, IsReversed: a.IsReversed)).ToList();
+															 where a.SpatialFeatureId == spatialFeatureId
+															 select (Rule: a.Rule, IsReversed: a.IsReversed)).ToList();
 					if (list2.Count > 0)
 					{
 						return list2;
@@ -1228,45 +1203,33 @@ internal static class CommonFunctions
 
 	private static AssociationDescription CreateTableAssociationDescription(AssociationObject assoc, bool isReversed, RowHandle selectedHandle, RowHandle rowHandle)
 	{
-		RowHandle val = (isReversed ? rowHandle : selectedHandle);
-		RowHandle val2 = (isReversed ? selectedHandle : rowHandle);
-		int num = (isReversed ? assoc.ToTerminal : assoc.FromTerminal);
-		string text = assoc.Type?.ToUpperInvariant();
-		if (1 == 0)
+		RowHandle fromHandle = isReversed ? rowHandle : selectedHandle;
+		RowHandle toHandle = isReversed ? selectedHandle : rowHandle;
+		int terminalId = isReversed ? assoc.ToTerminal : assoc.FromTerminal;
+		return assoc.Type?.ToUpperInvariant() switch
 		{
-		}
-		AssociationDescription result = (AssociationDescription)(text switch
-		{
-			"CONTAINMENT" => (object)new AssociationDescription((AssociationType)2, val, val2, isReversed), 
-			"ATTACHMENT" => (object)new AssociationDescription((AssociationType)3, val, val2), 
-			"JUNCTIONJUNCTIONCONNECTIVITY" => (object)((num > 0) ? new AssociationDescription((AssociationType)1, val, (long)num, val2) : new AssociationDescription((AssociationType)1, val, val2)), 
-			_ => null, 
-		});
-		if (1 == 0)
-		{
-		}
-		return result;
+			"CONTAINMENT" => new AssociationDescription((AssociationType)2, fromHandle, toHandle, isReversed),
+			"ATTACHMENT" => new AssociationDescription((AssociationType)3, fromHandle, toHandle),
+			"JUNCTIONJUNCTIONCONNECTIVITY" => terminalId > 0
+				? new AssociationDescription((AssociationType)1, fromHandle, terminalId, toHandle)
+				: new AssociationDescription((AssociationType)1, fromHandle, toHandle),
+			_ => null,
+		};
 	}
 
 	private static string BuildTableAssociationSummary(IEnumerable<(AssociationObject Rule, bool IsReversed)> rules)
 	{
-		IEnumerable<string> values = rules.Select(delegate((AssociationObject Rule, bool IsReversed) r)
+		IEnumerable<string> values = rules.Select(ruleMatch =>
 		{
-			string text = r.Rule.Type?.ToUpperInvariant();
-			if (1 == 0)
+			return ruleMatch.Rule.Type?.ToUpperInvariant() switch
 			{
-			}
-			string result = text switch
-			{
-				"CONTAINMENT" => "  • Containment", 
-				"ATTACHMENT" => "  • Structural Attachment", 
-				"JUNCTIONJUNCTIONCONNECTIVITY" => ((r.IsReversed ? r.Rule.ToTerminal : r.Rule.FromTerminal) > 0) ? $"  • JJC (terminal {(r.IsReversed ? r.Rule.ToTerminal : r.Rule.FromTerminal)})" : "  • JJC", 
-				_ => "  • " + r.Rule.Type, 
+				"CONTAINMENT" => "  • Containment",
+				"ATTACHMENT" => "  • Structural Attachment",
+				"JUNCTIONJUNCTIONCONNECTIVITY" => (ruleMatch.IsReversed ? ruleMatch.Rule.ToTerminal : ruleMatch.Rule.FromTerminal) > 0
+					? $"  • JJC (terminal {(ruleMatch.IsReversed ? ruleMatch.Rule.ToTerminal : ruleMatch.Rule.FromTerminal)})"
+					: "  • JJC",
+				_ => "  • " + ruleMatch.Rule.Type,
 			};
-			if (1 == 0)
-			{
-			}
-			return result;
 		});
 		return string.Join("\n", values);
 	}
@@ -1472,8 +1435,10 @@ internal static class CommonFunctions
 		if (_cachedPreviewPointSymbol == null)
 		{
 			_cachedPreviewPointSymbol = CreatePreviewPointSymbol();
-			_cachedPreviewLineSymbol = SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(ColorFactory.Instance.CreateRGBColor(222.0, 123.0, 207.0, 70.0), 2.0, (SimpleLineStyle)1));
-			_cachedPreviewPolygonSymbol = SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(ColorFactory.Instance.CreateRGBColor(222.0, 123.0, 207.0, 18.0), (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(ColorFactory.Instance.CreateRGBColor(0.0, 133.0, 202.0, 70.0), 2.0, (SimpleLineStyle)1)));
+			CIMColor previewFill = CreatePreviewColor(AddinConfiguration.Settings?.PreviewFillColorHex, "#DE7BCF", 70);
+			CIMColor previewOutline = CreatePreviewColor(AddinConfiguration.Settings?.PreviewOutlineColorHex, "#0085CA", 70);
+			_cachedPreviewLineSymbol = SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(previewFill, 2.0, (SimpleLineStyle)1));
+			_cachedPreviewPolygonSymbol = SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(CreatePreviewColor(AddinConfiguration.Settings?.PreviewFillColorHex, "#DE7BCF", 18), (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(previewOutline, 2.0, (SimpleLineStyle)1)));
 		}
 		List<PreviewOverlayGraphic> list = new List<PreviewOverlayGraphic>();
 		if (selectedTemplate.IsGroupChild)
@@ -1588,8 +1553,8 @@ internal static class CommonFunctions
 
 	private static CIMSymbolReference CreatePreviewPointSymbol()
 	{
-		CIMColor val = ColorFactory.Instance.CreateRGBColor(222.0, 123.0, 207.0, 70.0);
-		CIMColor val2 = ColorFactory.Instance.CreateRGBColor(0.0, 133.0, 202.0, 70.0);
+		CIMColor val = CreatePreviewColor(AddinConfiguration.Settings?.PreviewFillColorHex, "#DE7BCF", 70);
+		CIMColor val2 = CreatePreviewColor(AddinConfiguration.Settings?.PreviewOutlineColorHex, "#0085CA", 70);
 		CIMPolygonSymbol symbol = SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 1.5, (SimpleLineStyle)0));
 		CIMPointSymbol val3 = SymbolFactory.Instance.ConstructPointSymbol(val, 9.0, (SimpleMarkerStyle)0);
 		CIMSymbolLayer[] array = ((CIMMultiLayerSymbol)val3).SymbolLayers ?? Array.Empty<CIMSymbolLayer>();
@@ -1606,6 +1571,16 @@ internal static class CommonFunctions
 			}
 		}
 		return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)val3);
+	}
+
+	private static CIMColor CreatePreviewColor(string hexColor, string fallback, double alpha)
+	{
+		string color = string.IsNullOrWhiteSpace(hexColor) ? fallback : hexColor.Trim();
+		color = color.TrimStart('#');
+		return ColorFactory.Instance.CreateRGBColor(
+			Convert.ToInt32(color.Substring(0, 2), 16),
+			Convert.ToInt32(color.Substring(2, 2), 16),
+			Convert.ToInt32(color.Substring(4, 2), 16), alpha);
 	}
 
 	private static bool IsSimplePointTemplate(SimpleTemplate template)
@@ -1661,16 +1636,16 @@ internal static class CommonFunctions
 	{
 		switch (AddinConfiguration.PlacementMirrorMode)
 		{
-		case PlacementMirrorMode.Horizontal:
-			xOffset = 0.0 - xOffset;
-			break;
-		case PlacementMirrorMode.Vertical:
-			yOffset = 0.0 - yOffset;
-			break;
-		case PlacementMirrorMode.Both:
-			xOffset = 0.0 - xOffset;
-			yOffset = 0.0 - yOffset;
-			break;
+			case PlacementMirrorMode.Horizontal:
+				xOffset = 0.0 - xOffset;
+				break;
+			case PlacementMirrorMode.Vertical:
+				yOffset = 0.0 - yOffset;
+				break;
+			case PlacementMirrorMode.Both:
+				xOffset = 0.0 - xOffset;
+				yOffset = 0.0 - yOffset;
+				break;
 		}
 	}
 
@@ -1681,24 +1656,24 @@ internal static class CommonFunctions
 		AssociationDescription result = null;
 		switch (association.Type.ToUpper())
 		{
-		case "CONTAINMENT":
-			result = new AssociationDescription((AssociationType)2, val, val2, toInfo.IsSpatialFeature);
-			break;
-		case "ATTACHMENT":
-			result = new AssociationDescription((AssociationType)3, val, val2);
-			break;
-		case "JUNCTIONJUNCTIONCONNECTIVITY":
-			result = ((association.FromTerminal == 0) ? new AssociationDescription((AssociationType)1, val, val2) : new AssociationDescription((AssociationType)1, val, (long)association.FromTerminal, val2));
-			break;
-		case "JUNCTIONEDGEOBJECTCONNECTIVITYFROMSIDE":
-			result = new AssociationDescription((AssociationType)4, val, val2);
-			break;
-		case "JUNCTIONEDGEOBJECTCONNECTIVITYTOSIDE":
-			result = new AssociationDescription((AssociationType)6, val, val2);
-			break;
-		case "JUNCTIONEDGEOBJECTCONNECTIVITYMIDSPAN":
-			result = new AssociationDescription((AssociationType)5, val, val2);
-			break;
+			case "CONTAINMENT":
+				result = new AssociationDescription((AssociationType)2, val, val2, toInfo.IsSpatialFeature);
+				break;
+			case "ATTACHMENT":
+				result = new AssociationDescription((AssociationType)3, val, val2);
+				break;
+			case "JUNCTIONJUNCTIONCONNECTIVITY":
+				result = ((association.FromTerminal == 0) ? new AssociationDescription((AssociationType)1, val, val2) : new AssociationDescription((AssociationType)1, val, (long)association.FromTerminal, val2));
+				break;
+			case "JUNCTIONEDGEOBJECTCONNECTIVITYFROMSIDE":
+				result = new AssociationDescription((AssociationType)4, val, val2);
+				break;
+			case "JUNCTIONEDGEOBJECTCONNECTIVITYTOSIDE":
+				result = new AssociationDescription((AssociationType)6, val, val2);
+				break;
+			case "JUNCTIONEDGEOBJECTCONNECTIVITYMIDSPAN":
+				result = new AssociationDescription((AssociationType)5, val, val2);
+				break;
 		}
 		return result;
 	}
@@ -1831,11 +1806,11 @@ internal static class CommonFunctions
 			return enumerable;
 		}
 		IEnumerable<string> second = from field in fields ?? new List<Field>()
-			where IsSymbolRotationField((field != null) ? field.Name : null)
-			select field.Name;
+									 where IsSymbolRotationField((field != null) ? field.Name : null)
+									 select field.Name;
 		return from fieldName in enumerable.Concat(second)
-			group fieldName by NormalizeFieldIdentifier(fieldName) into @group
-			select @group.First();
+			   group fieldName by NormalizeFieldIdentifier(fieldName) into @group
+			   select @group.First();
 	}
 
 	private static async Task<object> GetDatabaseFieldValueFromConfigValue(Dictionary<string, object> defaultFieldValues, Subtype subtype, List<Field> fields, string fieldName, double rotationDegrees = 0.0)
@@ -2056,21 +2031,13 @@ internal static class CommonFunctions
 
 	private static double ApplyMirrorModeToSymbolRotation(double degrees)
 	{
-		PlacementMirrorMode placementMirrorMode = AddinConfiguration.PlacementMirrorMode;
-		if (1 == 0)
+		return AddinConfiguration.PlacementMirrorMode switch
 		{
-		}
-		double result = placementMirrorMode switch
-		{
-			PlacementMirrorMode.Horizontal => 180.0 - degrees, 
-			PlacementMirrorMode.Vertical => 0.0 - degrees, 
-			PlacementMirrorMode.Both => degrees + 180.0, 
-			_ => degrees, 
+			PlacementMirrorMode.Horizontal => 180.0 - degrees,
+			PlacementMirrorMode.Vertical => 0.0 - degrees,
+			PlacementMirrorMode.Both => degrees + 180.0,
+			_ => degrees,
 		};
-		if (1 == 0)
-		{
-		}
-		return result;
 	}
 
 	private static object FormatSymbolRotationFieldValue(double degrees, object templateValue, Field field)
@@ -2149,9 +2116,9 @@ internal static class CommonFunctions
 			foreach (GroupTemplate groupTemplate in templates.GroupTemplates)
 			{
 				List<string> invalidTemplateNames = (from n in groupTemplate.SimpleTemplates
-					select n.Name into n
-					where !simpleTemplateNames.Contains(n)
-					select n).ToList();
+													 select n.Name into n
+													 where !simpleTemplateNames.Contains(n)
+													 select n).ToList();
 				if (invalidTemplateNames.Count > 0)
 				{
 					string error4 = $"Group template {groupTemplate.Name} contains references to invalid simple template(s): {string.Join(", ", invalidTemplateNames)}.";
@@ -2309,7 +2276,7 @@ internal static class CommonFunctions
 			await QueuedTask.Run((Action)delegate
 			{
 				fieldNamesInDatabase = (from n in ((TableDefinition)layer.GetFeatureClass().GetDefinition()).GetFields()
-					select n.Name.ToUpper()).ToList();
+										select n.Name.ToUpper()).ToList();
 				subtypeField = ((TableDefinition)layer.GetFeatureClass().GetDefinition()).GetSubtypeField()?.ToUpperInvariant();
 			}, TaskCreationOptions.None);
 		}
@@ -2323,7 +2290,7 @@ internal static class CommonFunctions
 			await QueuedTask.Run((Action)delegate
 			{
 				fieldNamesInDatabase = (from n in table.GetTable().GetDefinition().GetFields()
-					select n.Name.ToUpper()).ToList();
+										select n.Name.ToUpper()).ToList();
 				subtypeField = table.GetTable().GetDefinition().GetSubtypeField()?.ToUpperInvariant();
 			}, TaskCreationOptions.None);
 		}

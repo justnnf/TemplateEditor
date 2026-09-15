@@ -93,7 +93,7 @@ internal sealed class SearchHighlightTextBlock : TextBlock
 			return new List<TextRange>();
 		}
 		List<TextRange> list = new List<TextRange>();
-		foreach (string item in searchText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Distinct<string>(StringComparer.OrdinalIgnoreCase))
+		foreach (string item in searchText.Split((char[])null, StringSplitOptions.RemoveEmptyEntries).Distinct<string>(StringComparer.OrdinalIgnoreCase))
 		{
 			int num = 0;
 			while (num < text.Length)
@@ -108,8 +108,8 @@ internal sealed class SearchHighlightTextBlock : TextBlock
 			}
 		}
 		return MergeRanges((from range in list
-			orderby range.Start, range.Length
-			select range).ToList());
+							orderby range.Start, range.Length
+							select range).ToList());
 	}
 
 	private static List<TextRange> MergeRanges(List<TextRange> ranges)

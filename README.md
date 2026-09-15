@@ -72,17 +72,15 @@ Users can also choose another rule JSON path in `Settings > Associations > Rule 
 
 The source repository may contain a sample or working `TemplateEditor\AllowedAssociationRules.json`, but it is intentionally excluded from the `.esriAddinX` package. End users can generate their own rule JSON from their active map using the settings window.
 
-### Placement Attribute Overrides JSON
+### Placement Attribute Overrides
 
-Placement attribute override definitions are optional. They define which fields are available in the one-time placement override window and the session override settings.
+Override fields are configured directly under `Settings > Attribute Overrides`.
+Enter one field per line using `FieldName | Label | Description | DomainName`;
+only the field name is required. Definitions and session values are saved with
+the add-in's normal user settings—there is no separate override JSON catalog.
 
-The default override definition path is:
-
-```text
-%LOCALAPPDATA%\TemplateEditor\PlacementAttributeOverrides.json
-```
-
-The repository copy is not packaged with the add-in.
+Template preview fill/line and outline colors are configurable under
+`Settings > Interface > Template Preview Colors` using six-digit HEX values.
 
 ## Editor Dockpane
 
@@ -265,3 +263,22 @@ Common causes:
 - The active map is connected to `DEFAULT` and default-version placement prevention is enabled
 
 Read the popup details, adjust the template/config/map selection, and try again.
+
+## Developer notes
+
+Build the ArcGIS Pro 3.3 add-in from the repository root:
+
+```powershell
+dotnet build TemplateEditor.csproj --no-restore
+dotnet test TemplateEditor.Tests/TemplateEditor.Tests.csproj --no-restore
+```
+
+ArcGIS Core and Mapping objects must be read or changed on the Main CIM Thread
+through `QueuedTask.Run`. WPF windows and controls must be accessed through the
+application dispatcher. Keep disposable ArcGIS rows, cursors, definitions,
+feature classes, and overlay handles inside the scope that owns them.
+
+A successful build verifies compilation and packaging, but not DAML registration
+or interactive behavior. Before release, exercise point, line, polygon, and table
+placement; preview rotation; offset/parallel copy; line splitting; Utility Network
+associations; settings persistence; and light/dark UI resources in ArcGIS Pro 3.3.

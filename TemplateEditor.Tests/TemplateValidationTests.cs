@@ -62,4 +62,19 @@ public sealed class TemplateValidationTests
         Assert.Equal("AlwaysAsk", settings.SplitPromptMode);
         Assert.Equal(new[] { "ELECTRICDEVICE" }, settings.SplitPointPlacementGroups);
     }
+
+    [Fact]
+    public void SettingsNormalization_ValidatesTemplatePreviewColors()
+    {
+        var settings = new TemplateEditorSettings
+        {
+            PreviewFillColorHex = "de7bcf",
+            PreviewOutlineColorHex = "not-a-color"
+        };
+
+        settings.Normalize();
+
+        Assert.Equal("#DE7BCF", settings.PreviewFillColorHex);
+        Assert.Equal("#0085CA", settings.PreviewOutlineColorHex);
+    }
 }

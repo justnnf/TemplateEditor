@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Framework.Contracts;
@@ -25,14 +23,10 @@ internal class SketchPolylineTool : PreviewSketchTool
 
 	protected override async Task<bool> OnSketchCompleteAsync(Geometry geometry)
 	{
+		// Preview rotation may have supplied an anchor different from the final
+		// sketch geometry; use it when present so preview and placement agree.
 		await RefreshPlacementRotationAsync();
-		Geometry val = (Geometry)base.PlacementAnchorOverride;
-		object obj = (object)val;
-		if (val == null)
-		{
-			obj = geometry;
-		}
-		Geometry placementGeometry = (Geometry)obj;
+		Geometry placementGeometry = PlacementAnchorOverride ?? geometry;
 		SuspendPreview();
 		bool placementSucceeded = false;
 		await RunWithPlacementCursorAsync(async delegate
@@ -44,15 +38,8 @@ internal class SketchPolylineTool : PreviewSketchTool
 		{
 			ToolReactivationService.ActivateSelectTool();
 		}
-		bool completed = await _003C_003En__0(geometry);
+		bool completed = await base.OnSketchCompleteAsync(geometry);
 		ResetAfterPlacement(!returnToSelect);
 		return completed;
-	}
-
-	[CompilerGenerated]
-	[DebuggerHidden]
-	private Task<bool> _003C_003En__0(Geometry geometry)
-	{
-		return base.OnSketchCompleteAsync(geometry);
 	}
 }

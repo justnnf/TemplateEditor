@@ -50,7 +50,7 @@ internal static class ToolReactivationService
 				return;
 			}
 			LogService.LogException("SetCurrentToolAsync failed for '" + toolId + "'. Falling back to plug-in command activation.", ex2);
-			((DispatcherObject)Application.Current).Dispatcher.BeginInvoke((Delegate)(Action)delegate
+			_ = ((DispatcherObject)Application.Current).Dispatcher.BeginInvoke((Delegate)(Action)delegate
 			{
 				if (FrameworkApplication.GetPlugInWrapper(toolId, true) is ICommand command)
 				{

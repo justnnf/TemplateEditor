@@ -81,7 +81,6 @@ internal static class AddinConfiguration
 	public static void Initialize()
 	{
 		LoadBuiltInDefaults();
-		PlacementAttributeOverrideService.Initialize();
 		LoadUserSettings();
 		if (GroupFeatureLayerNames == null)
 		{
@@ -92,6 +91,7 @@ internal static class AddinConfiguration
 			Settings = new TemplateEditorSettings();
 		}
 		Settings.Normalize();
+		PlacementAttributeOverrideService.Initialize();
 	}
 
 	public static bool HasValidTemplateConfigPath()
@@ -154,6 +154,8 @@ internal static class AddinConfiguration
 			Settings.TemplateConfigFilePath = DefaultTemplateConfigFilePath;
 		}
 		Settings.Normalize();
+		PlacementAttributeOverrideService.Initialize();
+		CommonFunctions.ClearPreviewGeometryCache();
 		SaveUserSettings();
 		AssociationRuleCatalog.Reload();
 		SettingsChanged?.Invoke();
@@ -170,11 +172,7 @@ internal static class AddinConfiguration
 		{
 			return false;
 		}
-		TemplateEditorSettings settings = Settings;
-		if (settings.FavouriteTemplateKeys == null)
-		{
-			List<string> list = (settings.FavouriteTemplateKeys = new List<string>());
-		}
+		Settings.FavouriteTemplateKeys ??= new List<string>();
 		bool flag = Settings.FavouriteTemplateKeys.RemoveAll((string k) => string.Equals(k, key, StringComparison.OrdinalIgnoreCase)) > 0;
 		if (!flag)
 		{
@@ -188,11 +186,7 @@ internal static class AddinConfiguration
 	{
 		if (!string.IsNullOrWhiteSpace(key) && Settings != null)
 		{
-			TemplateEditorSettings settings = Settings;
-			if (settings.RecentTemplateKeys == null)
-			{
-				List<string> list = (settings.RecentTemplateKeys = new List<string>());
-			}
+			Settings.RecentTemplateKeys ??= new List<string>();
 			Settings.RecentTemplateKeys.RemoveAll((string k) => string.Equals(k, key, StringComparison.OrdinalIgnoreCase));
 			Settings.RecentTemplateKeys.Insert(0, key);
 			int num = Math.Max(1, Settings.MaxRecentTemplates);
@@ -287,9 +281,9 @@ internal static class AddinConfiguration
 	private static IEnumerable<string> ParseCsv(string csv)
 	{
 		return from name in (csv ?? string.Empty).Split(',')
-			select name.Trim() into name
-			where !string.IsNullOrWhiteSpace(name)
-			select name;
+			   select name.Trim() into name
+			   where !string.IsNullOrWhiteSpace(name)
+			   select name;
 	}
 
 	private static TemplateConfig LoadTemplateConfig(string configFilePath)
@@ -307,16 +301,8 @@ internal static class AddinConfiguration
 		{
 			throw new InvalidOperationException("The selected template configuration file is empty or invalid.");
 		}
-		TemplateConfig templateConfig2 = templateConfig;
-		if (templateConfig2.SimpleTemplates == null)
-		{
-			List<SimpleTemplate> list = (templateConfig2.SimpleTemplates = new List<SimpleTemplate>());
-		}
-		templateConfig2 = templateConfig;
-		if (templateConfig2.GroupTemplates == null)
-		{
-			List<GroupTemplate> list3 = (templateConfig2.GroupTemplates = new List<GroupTemplate>());
-		}
+		templateConfig.SimpleTemplates ??= new List<SimpleTemplate>();
+		templateConfig.GroupTemplates ??= new List<GroupTemplate>();
 		return templateConfig;
 	}
 

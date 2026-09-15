@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using ArcGIS.Core.Geometry;
@@ -41,13 +39,6 @@ internal class AddRowTool : MapTool
 		{
 			ToolReactivationService.ActivateSelectTool();
 		}
-		return await _003C_003En__0(geometry);
-	}
-
-	[CompilerGenerated]
-	[DebuggerHidden]
-	private Task<bool> _003C_003En__0(Geometry geometry)
-	{
-		return base.OnSketchCompleteAsync(geometry);
+		return await base.OnSketchCompleteAsync(geometry);
 	}
 }

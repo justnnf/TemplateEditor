@@ -29,6 +29,8 @@ internal static class AtomicFileService
 			throw new InvalidOperationException("The output file must have a valid directory.");
 		}
 		Directory.CreateDirectory(directoryName);
+		// Create the temporary file beside the destination so the final rename is
+		// confined to one volume and readers never observe partially written JSON.
 		string text = Path.Combine(directoryName, Path.GetRandomFileName());
 		try
 		{

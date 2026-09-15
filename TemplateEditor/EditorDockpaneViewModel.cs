@@ -56,6 +56,28 @@ internal class EditorDockpaneViewModel : DockPane
 
 	public string TemplateCount { get; set; }
 
+	public bool HasTemplates => Templates?.Count > 0;
+
+	public string EmptyStateMessage
+	{
+		get
+		{
+			if (HasSearchText)
+			{
+				return $"No templates match “{SearchText.Trim()}”";
+			}
+			if (_showFavouriteTemplates)
+			{
+				return "No favourite templates yet\nRight-click a template to add it to Favourites.";
+			}
+			if (_showRecentTemplates)
+			{
+				return "No recently used templates yet.";
+			}
+			return "No templates are available in this view.";
+		}
+	}
+
 	public string SelectedTemplateStatus => (SelectedTemplate == null) ? "No template selected" : ("Selected: " + SelectedTemplate.DisplayName);
 
 	public string PlacementStatus => _placementStatus;
@@ -162,6 +184,7 @@ internal class EditorDockpaneViewModel : DockPane
 			FilterTemplates();
 			NotifyPropertyChanged<string>((Expression<Func<string>>)(() => SearchText));
 			NotifyPropertyChanged<bool>((Expression<Func<bool>>)(() => HasSearchText));
+			NotifyPropertyChanged<string>((Expression<Func<string>>)(() => EmptyStateMessage));
 		}
 	}
 
@@ -367,11 +390,11 @@ internal class EditorDockpaneViewModel : DockPane
 			StopContinuousPlacement();
 		});
 		ActivateMirrorPlacementCommand = new RelayCommand(ActivateMirrorPlacement);
-		PlaceWithOverridesCommand = new RelayCommand(delegate(object parameter)
+		PlaceWithOverridesCommand = new RelayCommand(delegate (object parameter)
 		{
 			TaskObservationService.Forget(PlaceWithOverridesAsync(parameter), "One-time placement override setup failed.");
 		});
-		PlaceAtOffsetCommand = new RelayCommand(delegate(object parameter)
+		PlaceAtOffsetCommand = new RelayCommand(delegate (object parameter)
 		{
 			TaskObservationService.Forget(PlaceAtOffsetAsync(parameter), "Offset placement setup failed.");
 		});
@@ -559,7 +582,7 @@ internal class EditorDockpaneViewModel : DockPane
 		_simpleTemplates = new List<DisplayTemplate>();
 		foreach (SimpleTemplate simpleTemplate in templateConfig.SimpleTemplates)
 		{
-			if (!templateConfig.GroupTemplates.Any(delegate(GroupTemplate n)
+			if (!templateConfig.GroupTemplates.Any(delegate (GroupTemplate n)
 			{
 				IEnumerable<SimpleTemplateReference> simpleTemplates = n.SimpleTemplates;
 				return (simpleTemplates ?? Enumerable.Empty<SimpleTemplateReference>()).Any((SimpleTemplateReference r) => string.Equals(r.Name, simpleTemplate.Name, StringComparison.OrdinalIgnoreCase));
@@ -569,24 +592,21 @@ internal class EditorDockpaneViewModel : DockPane
 			}
 		}
 		_groupTemplates = (from n in templateConfig.GroupTemplates
-			select CreateDisplayTemplate(n, simpleTemplatesByName) into n
-			orderby n.Name
-			select n).ToList();
-		List<DisplayTemplate> first = (from n in templateConfig.SimpleTemplates
-			select CreateDisplayTemplate(n) into n
-			orderby n.Name
-			select n).ToList();
-		List<DisplayTemplate> second = _groupTemplates.OrderBy((DisplayTemplate n) => n.Name).ToList();
-		_allTemplates = (from n in first.Concat(second)
-			orderby n.Name
-			select n).ToList();
+						   select CreateDisplayTemplate(n, simpleTemplatesByName) into n
+						   orderby n.Name
+						   select n).ToList();
+		// "All" intentionally includes group templates plus only standalone simple
+		// templates. Group child parts remain accessible through their parent group.
+		_allTemplates = (from n in _simpleTemplates.Concat(_groupTemplates)
+						 orderby n.Name
+						 select n).ToList();
 		_allTemplatesByKey = BuildAllTemplatesByKey(_simpleTemplates, _groupTemplates);
 		BuildFavouriteAndRecentLists();
 		Templates = ApplySort(_groupTemplates).ToList();
-		TemplateCount = $"{Templates.Count} template(s)";
+		TemplateCount = $"{Templates.Count:N0} templates";
 		if (!_showGroupTemplates && !_showSimpleTemplates && !_showAllTemplates && !_showFavouriteTemplates && !_showRecentTemplates)
 		{
-			_showGroupTemplates = true;
+			_showAllTemplates = true;
 		}
 		FilterTemplates();
 	}
@@ -600,8 +620,8 @@ internal class EditorDockpaneViewModel : DockPane
 		_recentTemplates = new List<DisplayTemplate>();
 		_allTemplatesByKey = new Dictionary<string, DisplayTemplate>(StringComparer.OrdinalIgnoreCase);
 		Templates = new List<DisplayTemplate>();
-		TemplateCount = "0 template(s)";
-		_showGroupTemplates = true;
+		TemplateCount = "0 templates";
+		_showAllTemplates = true;
 		NotifyPropertyChanged<List<DisplayTemplate>>((Expression<Func<List<DisplayTemplate>>>)(() => Templates));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => TemplateCount));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => ConfigurationHealthStatus));
@@ -630,7 +650,7 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private static List<DisplayTemplateChild> CreateChildTemplates(GroupTemplate groupTemplate, IReadOnlyDictionary<string, SimpleTemplate> simpleTemplatesByName)
 	{
-		return (from template in (groupTemplate.SimpleTemplates ?? new List<SimpleTemplateReference>()).Select(delegate(SimpleTemplateReference templateReference)
+		return (from template in (groupTemplate.SimpleTemplates ?? new List<SimpleTemplateReference>()).Select(delegate (SimpleTemplateReference templateReference)
 			{
 				simpleTemplatesByName.TryGetValue(templateReference.Name ?? string.Empty, out var value);
 				return new DisplayTemplateChild
@@ -643,8 +663,8 @@ internal class EditorDockpaneViewModel : DockPane
 					Description = value?.Description
 				};
 			})
-			orderby template.FeatureId
-			select template).ThenBy<DisplayTemplateChild, string>((DisplayTemplateChild template) => template.Name, StringComparer.OrdinalIgnoreCase).ToList();
+				orderby template.FeatureId
+				select template).ThenBy<DisplayTemplateChild, string>((DisplayTemplateChild template) => template.Name, StringComparer.OrdinalIgnoreCase).ToList();
 	}
 
 	private void FilterTemplates()
@@ -667,9 +687,11 @@ internal class EditorDockpaneViewModel : DockPane
 			SetPlacementStatusCore("Ready. Please select a template to place.");
 			ToolReactivationService.ActivateSelectTool();
 		}
-		TemplateCount = $"{Templates.Count} template(s)";
+		TemplateCount = $"{Templates.Count:N0} templates";
 		NotifyPropertyChanged<List<DisplayTemplate>>((Expression<Func<List<DisplayTemplate>>>)(() => Templates));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => TemplateCount));
+		NotifyPropertyChanged<bool>((Expression<Func<bool>>)(() => HasTemplates));
+		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => EmptyStateMessage));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => PlacementOptionsStatus));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => ConfigurationHealthStatus));
 	}
@@ -683,20 +705,9 @@ internal class EditorDockpaneViewModel : DockPane
 
 	internal static bool ShouldReturnToSelectAfterPlacement(bool placementSucceeded)
 	{
-		int result;
-		if (placementSucceeded)
-		{
-			TemplateEditorSettings settings = AddinConfiguration.Settings;
-			if (settings != null && settings.EnableContinuousPlacementMode)
-			{
-				result = ((AddinConfiguration.SelectedTemplate == null) ? 1 : 0);
-				goto IL_0025;
-			}
-		}
-		result = 1;
-		goto IL_0025;
-		IL_0025:
-		return (byte)result != 0;
+		return !placementSucceeded ||
+			AddinConfiguration.Settings?.EnableContinuousPlacementMode != true ||
+			AddinConfiguration.SelectedTemplate == null;
 	}
 
 	private static void CompleteTemplateSelectionAfterPlacement()
@@ -733,9 +744,9 @@ internal class EditorDockpaneViewModel : DockPane
 	{
 		if (FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane") is EditorDockpaneViewModel editorDockpaneViewModel)
 		{
-				editorDockpaneViewModel.SetPlacementStatusCore(status);
-				}
-			}
+			editorDockpaneViewModel.SetPlacementStatusCore(status);
+		}
+	}
 
 	internal static void RefreshSettingsStatus()
 	{
@@ -767,20 +778,13 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private static string GetMirrorModeLabel(PlacementMirrorMode mirrorMode)
 	{
-		if (1 == 0)
+		return mirrorMode switch
 		{
-		}
-		string result = mirrorMode switch
-		{
-			PlacementMirrorMode.Horizontal => "Horizontal", 
-			PlacementMirrorMode.Vertical => "Vertical", 
-			PlacementMirrorMode.Both => "Both", 
-			_ => string.Empty, 
+			PlacementMirrorMode.Horizontal => "Horizontal",
+			PlacementMirrorMode.Vertical => "Vertical",
+			PlacementMirrorMode.Both => "Both",
+			_ => string.Empty,
 		};
-		if (1 == 0)
-		{
-		}
-		return result;
 	}
 
 	private IEnumerable<DisplayTemplate> GetCurrentViewTemplates()
@@ -870,9 +874,9 @@ internal class EditorDockpaneViewModel : DockPane
 			.ToList();
 		enumerable = AddinConfiguration.Settings?.RecentTemplateKeys;
 		_recentTemplates = (from key in enumerable ?? Enumerable.Empty<string>()
-			select (_allTemplatesByKey != null && _allTemplatesByKey.TryGetValue(key, out var value)) ? value : null into t
-			where t != null
-			select t).Select(CloneForFlatList).ToList();
+							select (_allTemplatesByKey != null && _allTemplatesByKey.TryGetValue(key, out var value)) ? value : null into t
+							where t != null
+							select t).Select(CloneForFlatList).ToList();
 	}
 
 	private static DisplayTemplate CloneForFlatList(DisplayTemplate template)
@@ -946,16 +950,15 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private IEnumerable<DisplayTemplate> ApplySort(IEnumerable<DisplayTemplate> templates)
 	{
-		string sortField = _sortField;
-		if (1 == 0)
+		Func<DisplayTemplate, string> keySelector = _sortField switch
 		{
-		}
-		Func<DisplayTemplate, string> func = ((sortField == "TemplateType") ? ((Func<DisplayTemplate, string>)((DisplayTemplate template) => template.TemplateType)) : ((!(sortField == "Description")) ? ((Func<DisplayTemplate, string>)((DisplayTemplate template) => template.Name)) : ((Func<DisplayTemplate, string>)((DisplayTemplate template) => template.Description))));
-		if (1 == 0)
-		{
-		}
-		Func<DisplayTemplate, string> keySelector = func;
-		return _sortAscending ? templates.OrderBy<DisplayTemplate, string>(keySelector, StringComparer.OrdinalIgnoreCase).ThenBy<DisplayTemplate, string>((DisplayTemplate template) => template.Name, StringComparer.OrdinalIgnoreCase) : templates.OrderByDescending<DisplayTemplate, string>(keySelector, StringComparer.OrdinalIgnoreCase).ThenBy<DisplayTemplate, string>((DisplayTemplate template) => template.Name, StringComparer.OrdinalIgnoreCase);
+			"TemplateType" => template => template.TemplateType,
+			"Description" => template => template.Description,
+			_ => template => template.Name
+		};
+		return _sortAscending
+			? templates.OrderBy(keySelector, StringComparer.OrdinalIgnoreCase).ThenBy(template => template.Name, StringComparer.OrdinalIgnoreCase)
+			: templates.OrderByDescending(keySelector, StringComparer.OrdinalIgnoreCase).ThenBy(template => template.Name, StringComparer.OrdinalIgnoreCase);
 	}
 
 	private static string[] GetSearchTerms(string searchText)
@@ -964,10 +967,10 @@ internal class EditorDockpaneViewModel : DockPane
 		{
 			return Array.Empty<string>();
 		}
-		return (from term in searchText.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
-			select term.Trim() into term
-			where term.Length > 0
-			select term).Distinct<string>(StringComparer.OrdinalIgnoreCase).ToArray();
+		return (from term in searchText.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)
+				select term.Trim() into term
+				where term.Length > 0
+				select term).Distinct<string>(StringComparer.OrdinalIgnoreCase).ToArray();
 	}
 
 	private static bool MatchesSearchTerms(DisplayTemplate template, IReadOnlyList<string> searchTerms)

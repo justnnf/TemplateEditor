@@ -6,6 +6,7 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows7.0</TargetFramework>
     <UseWPF>true</UseWPF>
+	<UseWindowsForms>true</UseWindowsForms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <PlatformTarget>x64</PlatformTarget>
@@ -21,7 +22,7 @@
     <AddInImage>Images\AddInDesktopMap.png</AddInImage>
     <AddInAuthor>TemplateEditor</AddInAuthor>
     <AddInCompany>TemplateEditor</AddInCompany>
-    <AddInVersion>1.7.9</AddInVersion>
+    <AddInVersion>1.8.0</AddInVersion>
     <ArcGISProReleaseVersion>3.3</ArcGISProReleaseVersion>
     <ReleaseDirectory>$(MSBuildProjectDirectory)\Release\</ReleaseDirectory>
   </PropertyGroup>
@@ -30,11 +31,7 @@
     <None Remove="Config.daml" />
 	<Compile Remove="TemplateEditor.Tests\**\*.cs" />
     <Content Remove="TemplateEditor\AllowedAssociationRules.json" />
-    <Content Remove="TemplateEditor\PlacementAttributeOverrides.json" />
     <None Update="TemplateEditor\AllowedAssociationRules.json">
-      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-    </None>
-    <None Update="TemplateEditor\PlacementAttributeOverrides.json">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </None>
   </ItemGroup>
@@ -66,10 +63,6 @@
     <Content Include="Images\tableCursor.cur">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include=".github\copilot-instructions.md" />
   </ItemGroup>
 
   <ItemGroup>
@@ -132,13 +125,16 @@
     <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\Tools\Set-AddInManifestVersion.ps1&quot; -PackagePath &quot;$(_ArcGISPackageFile)&quot; -Version &quot;$(AddInVersion)&quot;" />
   </Target>
 
-  <Target Name="DeployArcGISAddIn" DependsOnTargets="Build;StampAddInPackageVersion" Condition="'$(_ArcGISExtension)' != '' And Exists('$(_ArcGISPackageFile)')">
+  <Target Name="DeployArcGISAddIn" DependsOnTargets="Build;StampAddInPackageVersion">
+    <Error Condition="'$(_ArcGISPackageFile)' == '' Or !Exists('$(_ArcGISPackageFile)')" Text="The ArcGIS add-in package was not produced by the build." />
     <Exec Command="RegisterAddIn.exe &quot;$(_ArcGISPackageFile)&quot; /s" WorkingDirectory="$(ArcGISFolder)" Condition="Exists('$(ArcGISFolder)RegisterAddIn.exe')" />
     <Copy SourceFiles="$(_ArcGISPackageFile)" DestinationFolder="$(ArcGISAddInInstallFolder)" />
     <Message Text="Updated the installed add-in package to version $(AddInVersion)" Importance="High" />
   </Target>
 
-  <Target Name="PublishArcGISAddIn" DependsOnTargets="Build;StampAddInPackageVersion" Condition="'$(_ArcGISExtension)' != '' And Exists('$(_ArcGISPackageFile)')">
+  <!-- Every normal build also keeps a versioned release copy. AddInVersion above
+       is the single version value used by the assembly, manifest, and filename. -->
+  <Target Name="PublishArcGISAddIn" AfterTargets="StampAddInPackageVersion" Condition="'$(_ArcGISExtension)' != '' And Exists('$(_ArcGISPackageFile)')">
     <PropertyGroup>
       <ReleaseAddInFileName>$(AssemblyName).ArcPro.$(ArcGISProReleaseVersion).v.$(AddInVersion)$(_ArcGISExtension)</ReleaseAddInFileName>
     </PropertyGroup>

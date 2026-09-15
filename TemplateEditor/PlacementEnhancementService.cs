@@ -18,6 +18,9 @@ namespace TemplateEditor;
 
 internal static class PlacementEnhancementService
 {
+	// Candidate overlays are disposable ArcGIS resources. A monotonically
+	// increasing version prevents a slow, stale update from replacing the most
+	// recently requested highlight.
 	private sealed class CandidateSelectionOverlay : IDisposable
 	{
 		private readonly PlacedFeatureContext _createdFeature;
@@ -56,6 +59,8 @@ internal static class PlacementEnhancementService
 		}
 	}
 
+	// Placement callbacks can overlap. Serialize prompts so two modal workflows
+	// cannot compete for the ArcGIS UI or apply edits to the wrong placement.
 	private static readonly SemaphoreSlim EnhancementPromptGate = new SemaphoreSlim(1, 1);
 
 	private static readonly Dictionary<string, string> FacilityIdFieldCache = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -477,7 +482,7 @@ internal static class PlacementEnhancementService
 
 	private static List<FeatureCandidate> MergeUniqueCandidates(IEnumerable<FeatureCandidate> first, IEnumerable<FeatureCandidate> second)
 	{
-		return (from @group in (first ?? Enumerable.Empty<FeatureCandidate>()).Concat(second ?? Enumerable.Empty<FeatureCandidate>()).GroupBy<FeatureCandidate, string>(delegate(FeatureCandidate candidate)
+		return (from @group in (first ?? Enumerable.Empty<FeatureCandidate>()).Concat(second ?? Enumerable.Empty<FeatureCandidate>()).GroupBy<FeatureCandidate, string>(delegate (FeatureCandidate candidate)
 			{
 				DefaultInterpolatedStringHandler defaultInterpolatedStringHandler = new DefaultInterpolatedStringHandler(2, 3);
 				FeatureLayer layer = candidate.Layer;
@@ -488,9 +493,9 @@ internal static class PlacementEnhancementService
 				defaultInterpolatedStringHandler.AppendFormatted<AssociationType>(candidate.AssociationType);
 				return defaultInterpolatedStringHandler.ToStringAndClear();
 			}, StringComparer.Ordinal)
-			select @group.OrderBy((FeatureCandidate candidate) => candidate.Distance).First() into candidate
-			orderby candidate.Distance
-			select candidate).ToList();
+				select @group.OrderBy((FeatureCandidate candidate) => candidate.Distance).First() into candidate
+				orderby candidate.Distance
+				select candidate).ToList();
 	}
 
 	private static List<FeatureCandidate> ExcludeExistingAssociationCandidates(PlacedFeatureContext createdFeature, List<FeatureCandidate> candidates, IReadOnlyList<ExistingAssociationPair> existingAssociations)
@@ -499,7 +504,7 @@ internal static class PlacementEnhancementService
 		{
 			return candidates ?? new List<FeatureCandidate>();
 		}
-		return candidates.Where((FeatureCandidate candidate) => !existingAssociations.Any(delegate(ExistingAssociationPair existingAssociation)
+		return candidates.Where((FeatureCandidate candidate) => !existingAssociations.Any(delegate (ExistingAssociationPair existingAssociation)
 		{
 			return existingAssociation.Matches(candidate.AssociationType, (MapMember)(object)createdFeature.Layer, createdFeature.ObjectID, (MapMember)(object)candidate.Layer, candidate.ObjectID);
 		})).ToList();
@@ -507,26 +512,15 @@ internal static class PlacementEnhancementService
 
 	private static bool IsContainmentContainerTarget(PlacedFeatureContext createdFeature, TemplateEditorSettings settings)
 	{
-		string item = createdFeature?.Template?.GroupLayer?.ToUpperInvariant();
-		if (settings == null || settings.ContainmentBoundaryTargetGroups?.Contains(item) != true)
+		string groupName = createdFeature?.Template?.GroupLayer?.ToUpperInvariant();
+		if (settings?.ContainmentBoundaryTargetGroups?.Contains(groupName) != true)
 		{
 			return false;
 		}
-		List<string> list = settings.ContainmentBoundaryTargetLayerNames ?? new List<string>();
-		int result;
-		if (list.Count != 0)
-		{
-			FeatureLayer layer = createdFeature.Layer;
-			if (!list.Contains((layer == null) ? null : ((MapMember)layer).Name?.ToUpperInvariant()))
-			{
-				result = (list.Contains(createdFeature.Template?.SubtypeLayer?.ToUpperInvariant()) ? 1 : 0);
-				goto IL_00c6;
-			}
-		}
-		result = 1;
-		goto IL_00c6;
-		IL_00c6:
-		return (byte)result != 0;
+		List<string> targetLayers = settings.ContainmentBoundaryTargetLayerNames ?? new List<string>();
+		return targetLayers.Count == 0 ||
+			targetLayers.Contains(createdFeature.Layer?.Name?.ToUpperInvariant()) ||
+			targetLayers.Contains(createdFeature.Template?.SubtypeLayer?.ToUpperInvariant());
 	}
 
 	private static async Task<AssociationPromptResult> PromptForAssociationAsync(PlacedFeatureContext createdFeature, List<FeatureCandidate> candidates, string singlePrompt, string chooserPrompt)
@@ -575,7 +569,7 @@ internal static class PlacementEnhancementService
 			return (await PromptForAssociationAsync(createdFeature, candidates, title, prompt)).WasCreated ? 1 : 0;
 		}
 		string candidateSummary = string.Join("\n", from featureCandidate in candidates.Take(12)
-			select "  - " + featureCandidate.Label);
+													select "  - " + featureCandidate.Label);
 		string additionalText = ((candidates.Count > 12) ? $"\n  - {candidates.Count - 12} more..." : string.Empty);
 		using (await ShowCandidateContextAsync(createdFeature, candidates, isSplitCandidate: false))
 		{
@@ -670,7 +664,7 @@ internal static class PlacementEnhancementService
 				{
 					return new List<FeatureCandidate>();
 				}
-				layerContextPredicate = delegate(LayerSearchContext context)
+				layerContextPredicate = delegate (LayerSearchContext context)
 				{
 					HashSet<string> hashSet = allowedCounterpartTables;
 					string owningGroupName = context.OwningGroupName;
@@ -680,7 +674,7 @@ internal static class PlacementEnhancementService
 			}
 		}
 		HashSet<string> createdFeatureKeys = BuildCreatedFeatureKeySet(featuresCreatedByOperation);
-		List<FeatureCandidate> candidates = await FindFeatureCandidatesAsync(targetGroups, targetLayerNames, searchGeometry, createdFeature.Geometry, delegate(FeatureLayer layer, Feature feature, Geometry geometry)
+		List<FeatureCandidate> candidates = await FindFeatureCandidatesAsync(targetGroups, targetLayerNames, searchGeometry, createdFeature.Geometry, delegate (FeatureLayer layer, Feature feature, Geometry geometry)
 		{
 			return (geometryPredicate == null || geometryPredicate(geometry)) && !IsFeatureInSet(createdFeatureKeys, layer, ((Row)feature).GetObjectID()) && IsAllowedAssociationCandidate(associationType, layer, feature, createdFeatureInfo, createdFeatureIsAssociationSource);
 		}, labelPrefix, useRuleCatalogSearchScope, int.MaxValue, layerContextPredicate);
@@ -1040,7 +1034,7 @@ internal static class PlacementEnhancementService
 			}
 			if (list.Count > 1)
 			{
-				list.Sort(delegate(FeatureCandidate a, FeatureCandidate b)
+				list.Sort(delegate (FeatureCandidate a, FeatureCandidate b)
 				{
 					int num = a.Distance.CompareTo(b.Distance);
 					return (num != 0) ? num : a.ObjectID.CompareTo(b.ObjectID);
@@ -1134,7 +1128,7 @@ internal static class PlacementEnhancementService
 			if (!FacilityIdFieldCache.TryGetValue(uRI, out value))
 			{
 				value = (from field in ((TableDefinition)layer.GetFeatureClass().GetDefinition()).GetFields()
-					select field.Name).FirstOrDefault((string fieldName) => string.Equals(fieldName, "FACILITYID", StringComparison.OrdinalIgnoreCase));
+						 select field.Name).FirstOrDefault((string fieldName) => string.Equals(fieldName, "FACILITYID", StringComparison.OrdinalIgnoreCase));
 				FacilityIdFieldCache[uRI] = value;
 			}
 		}
@@ -1216,7 +1210,7 @@ internal static class PlacementEnhancementService
 			{
 				List<string> labels = candidates.Select((FeatureCandidate candidate, int index) => $"{index + 1}. {candidate.Label}").ToList();
 				await selectedOverlay.UpdateAsync(candidates[0]);
-				CandidateChoiceDialog dialog = await ShowDialogAsync(() => new CandidateChoiceDialog(title, prompt + "\n\nCandidates are ordered by proximity. The selected candidate is highlighted in yellow on the map.", labels, delegate(int selectedIndex)
+				CandidateChoiceDialog dialog = await ShowDialogAsync(() => new CandidateChoiceDialog(title, prompt + "\n\nCandidates are ordered by proximity. The selected candidate is highlighted in yellow on the map.", labels, delegate (int selectedIndex)
 				{
 					TaskObservationService.Forget(selectedOverlay.UpdateAsync(candidates[selectedIndex]), "Candidate selection highlight update failed.");
 				}));

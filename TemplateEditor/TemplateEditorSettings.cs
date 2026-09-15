@@ -103,6 +103,26 @@ internal sealed class TemplateEditorSettings
 
 	public string HintSplitCandidateColorHex { get; set; } = "#FF0000";
 
+	public string PreviewFillColorHex { get; set; } = "#DE7BCF";
+
+	public string PreviewOutlineColorHex { get; set; } = "#0085CA";
+
+	public List<PlacementAttributeOverrideDefinition> AttributeOverrideDefinitions { get; set; } = new List<PlacementAttributeOverrideDefinition>
+	{
+		new PlacementAttributeOverrideDefinition
+		{
+			FieldName = "ownedby",
+			Label = "Owned By",
+			DomainName = "FAI_Asset_Owner"
+		},
+		new PlacementAttributeOverrideDefinition
+		{
+			FieldName = "maintby",
+			Label = "FAI Operated?",
+			DomainName = "FAI_Yes_No_Text"
+		}
+	};
+
 	public string AssociationRulesJsonPath { get; set; }
 
 	public List<string> FavouriteTemplateKeys { get; set; } = new List<string>();
@@ -166,6 +186,9 @@ internal sealed class TemplateEditorSettings
 		HintSourceColorHex = NormalizeHexColor(HintSourceColorHex, "#00FF50");
 		HintAssociationTargetColorHex = NormalizeHexColor(HintAssociationTargetColorHex, "#FF0000");
 		HintSplitCandidateColorHex = NormalizeHexColor(HintSplitCandidateColorHex, "#FF0000");
+		PreviewFillColorHex = NormalizeHexColor(PreviewFillColorHex, "#DE7BCF");
+		PreviewOutlineColorHex = NormalizeHexColor(PreviewOutlineColorHex, "#0085CA");
+		AttributeOverrideDefinitions ??= new List<PlacementAttributeOverrideDefinition>();
 		SplitPointPlacementGroups = NormalizeGroupNames(SplitPointPlacementGroups);
 		SplitLinePlacementGroups = NormalizeGroupNames(SplitLinePlacementGroups);
 		SplitTargetLineGroups = NormalizeGroupNames(SplitTargetLineGroups);
@@ -182,14 +205,8 @@ internal sealed class TemplateEditorSettings
 		SymbolRotationFieldNames = NormalizeGroupNames(SymbolRotationFieldNames);
 		DefaultSymbolRotationWhenMissing = NormalizeRotationDegrees(DefaultSymbolRotationWhenMissing);
 		MaxRecentTemplates = Math.Max(1, Math.Min(50, MaxRecentTemplates));
-		if (FavouriteTemplateKeys == null)
-		{
-			List<string> list = (FavouriteTemplateKeys = new List<string>());
-		}
-		if (RecentTemplateKeys == null)
-		{
-			List<string> list = (RecentTemplateKeys = new List<string>());
-		}
+		FavouriteTemplateKeys ??= new List<string>();
+		RecentTemplateKeys ??= new List<string>();
 		SessionAttributeOverrides = PlacementAttributeOverrideService.NormalizeOverrides(SessionAttributeOverrides);
 	}
 
@@ -206,9 +223,9 @@ internal sealed class TemplateEditorSettings
 	private static List<string> NormalizeGroupNames(IEnumerable<string> groupNames)
 	{
 		return (from name in groupNames ?? Enumerable.Empty<string>()
-			select (name ?? string.Empty).Trim() into name
-			where !string.IsNullOrWhiteSpace(name)
-			select name.ToUpperInvariant()).Distinct().ToList();
+				select (name ?? string.Empty).Trim() into name
+				where !string.IsNullOrWhiteSpace(name)
+				select name.ToUpperInvariant()).Distinct().ToList();
 	}
 
 	private static string NormalizeChoice(string value, string defaultValue, params string[] validValues)

@@ -9,6 +9,9 @@ namespace TemplateEditor;
 
 internal static class MapMemberLookupService
 {
+	// ArcGIS map members must be inspected on the Main CIM Thread (MCT).
+	// Core methods assume that boundary; these public wrappers establish it for
+	// callers that originate on either the WPF thread or the MCT.
 	public static FeatureLayer GetFeatureLayerByName(string subtypeLayerName, string groupLayerName)
 	{
 		return RunOnMct(() => GetFeatureLayerByNameCore(subtypeLayerName, groupLayerName));
@@ -21,34 +24,19 @@ internal static class MapMemberLookupService
 
 	private static FeatureLayer GetFeatureLayerByNameCore(string subtypeLayerName, string groupLayerName)
 	{
-		if (subtypeLayerName != null)
+		Map map = MapView.Active?.Map;
+		if (map == null)
 		{
-			MapView active = MapView.Active;
-			if (active == null)
-			{
-				return null;
-			}
-			return active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().FirstOrDefault(delegate(FeatureLayer n)
-			{
-				int result;
-				if (string.Equals(((MapMember)n).Name, subtypeLayerName, StringComparison.OrdinalIgnoreCase))
-				{
-					ILayerContainer parent = ((Layer)n).Parent;
-					SubtypeGroupLayer val = (SubtypeGroupLayer)(object)((parent is SubtypeGroupLayer) ? parent : null);
-					if (val != null)
-					{
-						result = (string.Equals(((MapMember)val).Name, groupLayerName, StringComparison.OrdinalIgnoreCase) ? 1 : 0);
-						goto IL_0038;
-					}
-				}
-				result = 0;
-				goto IL_0038;
-				IL_0038:
-				return (byte)result != 0;
-			});
+			return null;
 		}
-		MapView active2 = MapView.Active;
-		return (active2 != null) ? active2.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().FirstOrDefault((FeatureLayer n) => string.Equals(((MapMember)n).Name, groupLayerName, StringComparison.OrdinalIgnoreCase)) : null;
+
+		IEnumerable<FeatureLayer> layers = map.GetLayersAsFlattenedList().OfType<FeatureLayer>();
+		return subtypeLayerName == null
+			? layers.FirstOrDefault(layer => NamesMatch(layer.Name, groupLayerName))
+			: layers.FirstOrDefault(layer =>
+				NamesMatch(layer.Name, subtypeLayerName) &&
+				layer.Parent is SubtypeGroupLayer parent &&
+				NamesMatch(parent.Name, groupLayerName));
 	}
 
 	public static StandaloneTable GetTableByName(string subtypeLayerName, string groupLayerName)
@@ -63,34 +51,19 @@ internal static class MapMemberLookupService
 
 	private static StandaloneTable GetTableByNameCore(string subtypeLayerName, string groupLayerName)
 	{
-		if (subtypeLayerName != null)
+		Map map = MapView.Active?.Map;
+		if (map == null)
 		{
-			MapView active = MapView.Active;
-			if (active == null)
-			{
-				return null;
-			}
-			return active.Map.GetStandaloneTablesAsFlattenedList().OfType<StandaloneTable>().FirstOrDefault(delegate(StandaloneTable n)
-			{
-				int result;
-				if (string.Equals(((MapMember)n).Name, subtypeLayerName, StringComparison.OrdinalIgnoreCase))
-				{
-					IStandaloneTableContainer parent = n.Parent;
-					SubtypeGroupTable val = (SubtypeGroupTable)(object)((parent is SubtypeGroupTable) ? parent : null);
-					if (val != null)
-					{
-						result = (string.Equals(((MapMember)val).Name, groupLayerName, StringComparison.OrdinalIgnoreCase) ? 1 : 0);
-						goto IL_0038;
-					}
-				}
-				result = 0;
-				goto IL_0038;
-				IL_0038:
-				return (byte)result != 0;
-			});
+			return null;
 		}
-		MapView active2 = MapView.Active;
-		return (active2 != null) ? active2.Map.GetStandaloneTablesAsFlattenedList().OfType<StandaloneTable>().FirstOrDefault((StandaloneTable n) => string.Equals(((MapMember)n).Name, groupLayerName, StringComparison.OrdinalIgnoreCase)) : null;
+
+		IEnumerable<StandaloneTable> tables = map.GetStandaloneTablesAsFlattenedList().OfType<StandaloneTable>();
+		return subtypeLayerName == null
+			? tables.FirstOrDefault(table => NamesMatch(table.Name, groupLayerName))
+			: tables.FirstOrDefault(table =>
+				NamesMatch(table.Name, subtypeLayerName) &&
+				table.Parent is SubtypeGroupTable parent &&
+				NamesMatch(parent.Name, groupLayerName));
 	}
 
 	public static FeatureLayer GetFeatureLayerByName(string layerName)
@@ -100,8 +73,9 @@ internal static class MapMemberLookupService
 
 	private static FeatureLayer GetFeatureLayerByNameCore(string layerName)
 	{
-		MapView active = MapView.Active;
-		return (active != null) ? active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().FirstOrDefault((FeatureLayer n) => string.Equals(((MapMember)n).Name, layerName, StringComparison.OrdinalIgnoreCase)) : null;
+		return MapView.Active?.Map.GetLayersAsFlattenedList()
+			.OfType<FeatureLayer>()
+			.FirstOrDefault(layer => NamesMatch(layer.Name, layerName));
 	}
 
 	public static SubtypeGroupLayer GetGroupLayerByName(string layerName)
@@ -111,8 +85,9 @@ internal static class MapMemberLookupService
 
 	private static SubtypeGroupLayer GetGroupLayerByNameCore(string layerName)
 	{
-		MapView active = MapView.Active;
-		return (active != null) ? active.Map.GetLayersAsFlattenedList().OfType<SubtypeGroupLayer>().FirstOrDefault((SubtypeGroupLayer n) => string.Equals(((MapMember)n).Name, layerName, StringComparison.OrdinalIgnoreCase)) : null;
+		return MapView.Active?.Map.GetLayersAsFlattenedList()
+			.OfType<SubtypeGroupLayer>()
+			.FirstOrDefault(layer => NamesMatch(layer.Name, layerName));
 	}
 
 	public static IEnumerable<FeatureLayer> GetFeatureLayersForGroups(IEnumerable<string> groupNames)
@@ -127,13 +102,13 @@ internal static class MapMemberLookupService
 		{
 			return new List<FeatureLayer>();
 		}
-		HashSet<string> groupNameLookup = (from name in groupNames
-			where !string.IsNullOrWhiteSpace(name)
-			select name.ToUpperInvariant()).ToHashSet();
-		return active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Where(delegate(FeatureLayer layer)
+		HashSet<string> groupNameLookup = groupNames
+			.Where(name => !string.IsNullOrWhiteSpace(name))
+			.ToHashSet(StringComparer.OrdinalIgnoreCase);
+		return active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Where(layer =>
 		{
-			string owningGroupNameCore = GetOwningGroupNameCore(layer);
-			return groupNameLookup.Contains(((MapMember)layer).Name.ToUpperInvariant()) || (!string.IsNullOrWhiteSpace(owningGroupNameCore) && groupNameLookup.Contains(owningGroupNameCore.ToUpperInvariant()));
+			string owningGroupName = GetOwningGroupNameCore(layer);
+			return groupNameLookup.Contains(layer.Name) || groupNameLookup.Contains(owningGroupName);
 		})
 			.ToList();
 	}
@@ -149,8 +124,11 @@ internal static class MapMemberLookupService
 		{
 			return null;
 		}
-		return (((Layer)layer).Parent is SubtypeGroupLayer) ? ((MapMember)(SubtypeGroupLayer)((Layer)layer).Parent).Name : ((MapMember)layer).Name;
+		return layer.Parent is SubtypeGroupLayer parent ? parent.Name : layer.Name;
 	}
+
+	private static bool NamesMatch(string left, string right) =>
+		string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
 	private static T RunOnMct<T>(Func<T> action)
 	{

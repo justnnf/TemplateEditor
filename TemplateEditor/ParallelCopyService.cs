@@ -60,12 +60,11 @@ internal static class ParallelCopyService
 		List<FeatureLayer> layers = GetActiveFeatureLayers();
 		try
 		{
-			return await QueuedTask.Run<bool>((Func<bool>)(() => GetSelectedPolylines(layers).Count > 0), TaskCreationOptions.None);
+			return await QueuedTask.Run(() => GetSelectedPolylines(layers).Count > 0);
 		}
 		catch (Exception ex)
 		{
-			Exception ex2 = ex;
-			LogService.LogException("Could not inspect selected lines for parallel copy.", ex2);
+			LogService.LogException("Could not inspect selected lines for parallel copy.", ex);
 			return false;
 		}
 	}
@@ -118,9 +117,9 @@ internal static class ParallelCopyService
 			throw new InvalidOperationException("Multiple selected lines were found. Enable multi-segment parallel copy in Settings or select one line.");
 		}
 		List<List<MapPoint>> lineParts = (from line in selectedPolylines
-			select ((IEnumerable<MapPoint>)((Multipart)line).Points)?.ToList() into points
-			where points != null && points.Count >= 2
-			select points).ToList();
+										  select ((IEnumerable<MapPoint>)((Multipart)line).Points)?.ToList() into points
+										  where points != null && points.Count >= 2
+										  select points).ToList();
 		List<MapPoint> list = StitchConnectedLineParts(lineParts, templateEditorSettings.RequireConnectedParallelCopySpan, templateEditorSettings.ParallelCopyEndpointMatchTolerance);
 		SpatialReference val = selectedPolylines.Select((Polyline line) => ((Geometry)line).SpatialReference).FirstOrDefault((SpatialReference reference) => reference != null);
 		return PolylineBuilderEx.CreatePolyline((IEnumerable<MapPoint>)list, val);

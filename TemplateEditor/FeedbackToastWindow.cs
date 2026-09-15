@@ -96,20 +96,13 @@ internal sealed class FeedbackToastWindow : Window
 
 	private static Brush GetBorderBrush(FeedbackSeverity severity)
 	{
-		if (1 == 0)
+		return severity switch
 		{
-		}
-		SolidColorBrush result = severity switch
-		{
-			FeedbackSeverity.Success => new SolidColorBrush(Color.FromRgb(86, 158, 92)), 
-			FeedbackSeverity.Warning => new SolidColorBrush(Color.FromRgb(204, 155, 48)), 
-			FeedbackSeverity.Error => new SolidColorBrush(Color.FromRgb(196, 72, 72)), 
-			_ => new SolidColorBrush(Color.FromRgb(91, 139, 190)), 
+			FeedbackSeverity.Success => new SolidColorBrush(Color.FromRgb(86, 158, 92)),
+			FeedbackSeverity.Warning => new SolidColorBrush(Color.FromRgb(204, 155, 48)),
+			FeedbackSeverity.Error => new SolidColorBrush(Color.FromRgb(196, 72, 72)),
+			_ => new SolidColorBrush(Color.FromRgb(91, 139, 190)),
 		};
-		if (1 == 0)
-		{
-		}
-		return result;
 	}
 
 	private void PositionNearOwner()

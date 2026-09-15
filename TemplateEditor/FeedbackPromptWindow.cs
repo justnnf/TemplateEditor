@@ -168,36 +168,29 @@ internal sealed class FeedbackPromptWindow : Window
 
 	private static DialogButtonChoice[] GetButtons(MessageBoxButton buttons)
 	{
-		if (1 == 0)
-		{
-		}
-		DialogButtonChoice[] result = buttons switch
+		return buttons switch
 		{
 			MessageBoxButton.YesNo => new DialogButtonChoice[2]
 			{
 				new DialogButtonChoice("Yes", MessageBoxResult.Yes, isPrimary: true),
 				new DialogButtonChoice("No", MessageBoxResult.No, isPrimary: false, isCancel: true)
-			}, 
+			},
 			MessageBoxButton.OKCancel => new DialogButtonChoice[2]
 			{
 				new DialogButtonChoice("OK", MessageBoxResult.OK, isPrimary: true),
 				new DialogButtonChoice("Cancel", MessageBoxResult.Cancel, isPrimary: false, isCancel: true)
-			}, 
+			},
 			MessageBoxButton.YesNoCancel => new DialogButtonChoice[3]
 			{
 				new DialogButtonChoice("Yes", MessageBoxResult.Yes, isPrimary: true),
 				new DialogButtonChoice("No", MessageBoxResult.No),
 				new DialogButtonChoice("Cancel", MessageBoxResult.Cancel, isPrimary: false, isCancel: true)
-			}, 
+			},
 			_ => new DialogButtonChoice[1]
 			{
 				new DialogButtonChoice("OK", MessageBoxResult.OK, isPrimary: true)
-			}, 
+			},
 		};
-		if (1 == 0)
-		{
-		}
-		return result;
 	}
 
 }

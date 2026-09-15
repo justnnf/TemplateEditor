@@ -299,7 +299,9 @@ internal sealed class ParallelCopyPromptDialog : Window
 
 	private void QueuePreviewRefresh()
 	{
-		RefreshPreviewAsync(++_previewVersion);
+		// RefreshPreviewAsync handles preview failures internally; the version
+		// prevents an older request from replacing a newer overlay.
+		_ = RefreshPreviewAsync(++_previewVersion);
 	}
 
 	private async Task RefreshPreviewAsync(int previewVersion)

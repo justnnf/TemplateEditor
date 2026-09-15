@@ -9,13 +9,12 @@ internal static class FeatureInfoCache
 {
 	public static string GetDomainDescription(Domain domain, object value)
 	{
-		CodedValueDomain val = (CodedValueDomain)(object)((domain is CodedValueDomain) ? domain : null);
-		if (val == null || value == null)
+		if (domain is not CodedValueDomain codedValueDomain || value == null)
 		{
 			return null;
 		}
 		string text = Convert.ToString(value);
-		foreach (KeyValuePair<object, string> codedValuePair in val.GetCodedValuePairs())
+		foreach (KeyValuePair<object, string> codedValuePair in codedValueDomain.GetCodedValuePairs())
 		{
 			if (string.Equals(Convert.ToString(codedValuePair.Key), text, StringComparison.OrdinalIgnoreCase))
 			{
@@ -27,17 +26,17 @@ internal static class FeatureInfoCache
 
 	public static Subtype GetSubtype(TableDefinition definition, Feature feature)
 	{
-		string text = ((definition != null) ? definition.GetSubtypeField() : null);
-		if (string.IsNullOrWhiteSpace(text))
+		string subtypeField = definition?.GetSubtypeField();
+		if (string.IsNullOrWhiteSpace(subtypeField))
 		{
 			return null;
 		}
-		object obj = ((Row)feature)[text];
-		if (obj == null || obj == DBNull.Value)
+		object subtypeValue = feature[subtypeField];
+		if (subtypeValue == null || subtypeValue == DBNull.Value)
 		{
 			return null;
 		}
-		string subtypeValueText = Convert.ToString(obj);
+		string subtypeValueText = Convert.ToString(subtypeValue);
 		return definition.GetSubtypes().FirstOrDefault((Subtype st) => string.Equals(Convert.ToString(st.GetCode()), subtypeValueText, StringComparison.OrdinalIgnoreCase) || string.Equals(st.GetName(), subtypeValueText, StringComparison.OrdinalIgnoreCase));
 	}
 }
