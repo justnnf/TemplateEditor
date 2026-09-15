@@ -14,7 +14,7 @@ internal class EditorDockpaneViewModel : DockPane
 {
 	private const string _dockPaneID = "TemplateEditor_EditorDockpane";
 
-	internal const string ReadyPlacementStatus = "Ready. Please select a template to place.";
+	internal const string ReadyPlacementStatus = "Ready. Select a template to place.";
 
 	private List<DisplayTemplate> _simpleTemplates;
 
@@ -50,7 +50,7 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private Dictionary<string, DisplayTemplate> _allTemplatesByKey;
 
-	private string _placementStatus = "Ready. Please select a template to place.";
+	private string _placementStatus = ReadyPlacementStatus;
 
 	public List<DisplayTemplate> Templates { get; set; }
 
@@ -129,6 +129,45 @@ internal class EditorDockpaneViewModel : DockPane
 			}
 			return string.Join(" | ", list);
 		}
+	}
+
+	public string FooterAttentionStatus
+	{
+		get
+		{
+			List<string> attentionItems = new List<string>();
+			if (!string.Equals(ConfigurationHealthStatus, "Config and rules ready", StringComparison.Ordinal))
+			{
+				attentionItems.Add(ConfigurationHealthStatus);
+			}
+
+			TemplateEditorSettings settings = AddinConfiguration.Settings;
+			if (settings != null)
+			{
+				if (!settings.PreventDefaultVersionPlacement) attentionItems.Add("DEFAULT allowed");
+				if (!settings.EnableAssociationPrompts) attentionItems.Add("Associations off");
+				if (!settings.EnableLineSplitPrompts) attentionItems.Add("Splits off");
+				if (settings.EnableContinuousPlacementMode) attentionItems.Add("Continuous on");
+			}
+			if (AddinConfiguration.PlacementMirrorMode != PlacementMirrorMode.None)
+			{
+				attentionItems.Add("Mirror " + GetMirrorModeLabel(AddinConfiguration.PlacementMirrorMode));
+			}
+			string overrideStatus = PlacementAttributeOverrideService.GetStatusLabel();
+			if (!string.IsNullOrWhiteSpace(overrideStatus))
+			{
+				attentionItems.Add(overrideStatus);
+			}
+			return string.Join(" · ", attentionItems);
+		}
+	}
+
+	public string FooterDetailsStatus => ConfigurationHealthStatus + " | " + PlacementOptionsStatus;
+
+	private void NotifyFooterStatus()
+	{
+		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => FooterAttentionStatus));
+		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => FooterDetailsStatus));
 	}
 
 	public ICommand SortCommand { get; }
@@ -284,7 +323,8 @@ internal class EditorDockpaneViewModel : DockPane
 		NotifyPropertyChanged<DisplayTemplate>((Expression<Func<DisplayTemplate>>)(() => SelectedTemplate));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => SelectedTemplateStatus));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => PlacementOptionsStatus));
-		SetPlacementStatusCore((template == null) ? "Ready. Please select a template to place." : ("Selected: " + GetPlacementStatusTemplateText(template) + ". Click the map to place."));
+		NotifyFooterStatus();
+		SetPlacementStatusCore((template == null) ? ReadyPlacementStatus : ("Selected: " + GetPlacementStatusTemplateText(template) + ". Click the map to place."));
 	}
 
 	private static void ActivateTemplate(DisplayTemplate selectedTemplate)
@@ -429,6 +469,7 @@ internal class EditorDockpaneViewModel : DockPane
 		}
 		AddinConfiguration.SetPlacementMirrorMode(tuple.Item2);
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => PlacementOptionsStatus));
+		NotifyFooterStatus();
 		if (object.Equals(_selectedTemplate, tuple.Item1))
 		{
 			SelectTemplate(tuple.Item1, resetMirrorMode: false);
@@ -453,9 +494,22 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private async Task PlaceWithOverridesAsync(object parameter)
 	{
-		if (parameter is DisplayTemplate template && await PlacementAttributeOverrideService.ConfigureOneTimePlacementOverridesAsync(template))
+		if (!(parameter is DisplayTemplate template))
 		{
-			SelectTemplate(template);
+			return;
+		}
+
+		try
+		{
+			if (await PlacementAttributeOverrideService.ConfigureOneTimePlacementOverridesAsync(template))
+			{
+				SelectTemplate(template);
+			}
+		}
+		catch (Exception exception)
+		{
+			LogService.LogException("Could not open one-time placement overrides for '" + template.DisplayName + "'.", exception);
+			DialogService.Show("Placement overrides could not be opened.\n\n" + exception.Message, "Template Editor");
 		}
 	}
 
@@ -481,12 +535,14 @@ internal class EditorDockpaneViewModel : DockPane
 		{
 			NotifyPropertyChanged<bool>((Expression<Func<bool>>)(() => IsContinuousPlacementEnabled));
 			NotifyPropertyChanged<string>((Expression<Func<string>>)(() => PlacementOptionsStatus));
+			NotifyFooterStatus();
 			return;
 		}
 		templateEditorSettings.EnableContinuousPlacementMode = enabled;
 		AddinConfiguration.ApplySettings(templateEditorSettings);
 		NotifyPropertyChanged<bool>((Expression<Func<bool>>)(() => IsContinuousPlacementEnabled));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => PlacementOptionsStatus));
+		NotifyFooterStatus();
 	}
 
 	private void ActivateChildTemplate(object parameter)
@@ -625,6 +681,7 @@ internal class EditorDockpaneViewModel : DockPane
 		NotifyPropertyChanged<List<DisplayTemplate>>((Expression<Func<List<DisplayTemplate>>>)(() => Templates));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => TemplateCount));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => ConfigurationHealthStatus));
+		NotifyFooterStatus();
 	}
 
 	private static DisplayTemplate CreateDisplayTemplate(SimpleTemplate simpleTemplate)
@@ -684,7 +741,7 @@ internal class EditorDockpaneViewModel : DockPane
 			AddinConfiguration.ClearSelectedTemplate();
 			NotifyPropertyChanged<DisplayTemplate>((Expression<Func<DisplayTemplate>>)(() => SelectedTemplate));
 			NotifyPropertyChanged<string>((Expression<Func<string>>)(() => SelectedTemplateStatus));
-			SetPlacementStatusCore("Ready. Please select a template to place.");
+			SetPlacementStatusCore(ReadyPlacementStatus);
 			ToolReactivationService.ActivateSelectTool();
 		}
 		TemplateCount = $"{Templates.Count:N0} templates";
@@ -694,6 +751,7 @@ internal class EditorDockpaneViewModel : DockPane
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => EmptyStateMessage));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => PlacementOptionsStatus));
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => ConfigurationHealthStatus));
+		NotifyFooterStatus();
 	}
 
 	internal static void PostPlacementSummary(string summary, string details = null, bool warning = false)
@@ -728,6 +786,7 @@ internal class EditorDockpaneViewModel : DockPane
 			viewModel.NotifyPropertyChanged<DisplayTemplate>((Expression<Func<DisplayTemplate>>)(() => viewModel.SelectedTemplate));
 			viewModel.NotifyPropertyChanged<string>((Expression<Func<string>>)(() => viewModel.SelectedTemplateStatus));
 			viewModel.NotifyPropertyChanged<string>((Expression<Func<string>>)(() => viewModel.PlacementOptionsStatus));
+			viewModel.NotifyFooterStatus();
 			viewModel.SetPlacementStatusCore("Continuous: " + viewModel.GetPlacementStatusTemplateText(viewModel._selectedTemplate) + ". Click the map to place again.");
 		}
 		else
@@ -736,7 +795,8 @@ internal class EditorDockpaneViewModel : DockPane
 			viewModel.NotifyPropertyChanged<DisplayTemplate>((Expression<Func<DisplayTemplate>>)(() => viewModel.SelectedTemplate));
 			viewModel.NotifyPropertyChanged<string>((Expression<Func<string>>)(() => viewModel.SelectedTemplateStatus));
 			viewModel.NotifyPropertyChanged<string>((Expression<Func<string>>)(() => viewModel.PlacementOptionsStatus));
-			viewModel.SetPlacementStatusCore((viewModel._selectedTemplate == null) ? "Ready. Please select a template to place." : ("Placed: " + viewModel.GetPlacementStatusTemplateText(viewModel._selectedTemplate) + ". Click the highlighted template or press Enter to place again."));
+			viewModel.NotifyFooterStatus();
+			viewModel.SetPlacementStatusCore((viewModel._selectedTemplate == null) ? ReadyPlacementStatus : ("Placed: " + viewModel.GetPlacementStatusTemplateText(viewModel._selectedTemplate) + ". Click the highlighted template or press Enter to place again."));
 		}
 	}
 
@@ -757,12 +817,13 @@ internal class EditorDockpaneViewModel : DockPane
 			viewModel.NotifyPropertyChanged<bool>((Expression<Func<bool>>)(() => viewModel.IsContinuousPlacementEnabled));
 			viewModel.NotifyPropertyChanged<string>((Expression<Func<string>>)(() => viewModel.PlacementOptionsStatus));
 			viewModel.NotifyPropertyChanged<string>((Expression<Func<string>>)(() => viewModel.ConfigurationHealthStatus));
+			viewModel.NotifyFooterStatus();
 		}
 	}
 
 	private void SetPlacementStatusCore(string status)
 	{
-		_placementStatus = (string.IsNullOrWhiteSpace(status) ? "Ready. Please select a template to place." : status);
+		_placementStatus = (string.IsNullOrWhiteSpace(status) ? ReadyPlacementStatus : status);
 		NotifyPropertyChanged<string>((Expression<Func<string>>)(() => PlacementStatus));
 	}
 

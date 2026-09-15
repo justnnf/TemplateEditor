@@ -22,7 +22,7 @@
     <AddInImage>Images\AddInDesktopMap.png</AddInImage>
     <AddInAuthor>TemplateEditor</AddInAuthor>
     <AddInCompany>TemplateEditor</AddInCompany>
-    <AddInVersion>1.8.0</AddInVersion>
+    <AddInVersion>1.8.1</AddInVersion>
     <ArcGISProReleaseVersion>3.3</ArcGISProReleaseVersion>
     <ReleaseDirectory>$(MSBuildProjectDirectory)\Release\</ReleaseDirectory>
   </PropertyGroup>

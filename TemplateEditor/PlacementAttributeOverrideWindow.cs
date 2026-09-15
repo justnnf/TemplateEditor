@@ -676,7 +676,6 @@ internal sealed class PlacementAttributeOverrideWindow : Window
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, PanelBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		DialogAppearance.ApplySquareButtonTemplate(style);
 		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsKeyboardFocusedProperty,
@@ -836,9 +835,17 @@ internal sealed class PlacementAttributeOverrideWindow : Window
 			Property = ListBoxItem.IsSelectedProperty,
 			Value = true
 		};
-		trigger2.Setters.Add(new Setter(Control.BackgroundProperty, AccentBrush));
-		trigger2.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
+		trigger2.Setters.Add(new Setter(Control.BackgroundProperty, SelectedBrush));
+		trigger2.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
 		style.Triggers.Add(trigger2);
+		Trigger highlightedTrigger = new Trigger
+		{
+			Property = ComboBoxItem.IsHighlightedProperty,
+			Value = true
+		};
+		highlightedTrigger.Setters.Add(new Setter(Control.BackgroundProperty, HoverBrush));
+		highlightedTrigger.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
+		style.Triggers.Add(highlightedTrigger);
 		return style;
 	}
 

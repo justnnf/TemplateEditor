@@ -326,20 +326,18 @@ public class EditorDockpaneView : UserControl
 			BorderThickness = new Thickness(1),
 			MinHeight = 28
 		};
+		footer.SetBinding(FrameworkElement.ToolTipProperty, new Binding("FooterDetailsStatus"));
 		DockPanel panel = new DockPanel { LastChildFill = true };
 		StackPanel details = new StackPanel
 		{
 			Orientation = Orientation.Horizontal,
 			HorizontalAlignment = HorizontalAlignment.Right
 		};
+		TextBlock attention = CreateFooterText("FooterAttentionStatus");
 		TextBlock count = CreateFooterText("TemplateCount");
-		TextBlock config = CreateFooterText("ConfigurationHealthStatus");
-		TextBlock options = CreateFooterText("PlacementOptionsStatus");
+		count.Margin = new Thickness(12, 0, 0, 0);
+		details.Children.Add(attention);
 		details.Children.Add(count);
-		details.Children.Add(CreateFooterSeparator());
-		details.Children.Add(config);
-		details.Children.Add(CreateFooterSeparator());
-		details.Children.Add(options);
 		DockPanel.SetDock(details, Dock.Right);
 		panel.Children.Add(details);
 		StackPanel status = new StackPanel
@@ -350,6 +348,7 @@ public class EditorDockpaneView : UserControl
 		TextBlock statusIndicator = new TextBlock
 		{
 			Text = "●",
+			FontSize = 16,
 			Margin = new Thickness(0, 0, 6, 0),
 			VerticalAlignment = VerticalAlignment.Center
 		};
@@ -372,11 +371,6 @@ public class EditorDockpaneView : UserControl
 			TextBlock text = new TextBlock { Foreground = GetMutedForegroundBrush(), VerticalAlignment = VerticalAlignment.Center };
 			text.SetBinding(TextBlock.TextProperty, new Binding(bindingPath));
 			return text;
-		}
-
-		static TextBlock CreateFooterSeparator()
-		{
-			return new TextBlock { Text = "·", Foreground = GetMutedForegroundBrush(), Margin = new Thickness(8, 0, 8, 0) };
 		}
 	}
 
@@ -613,9 +607,10 @@ public class EditorDockpaneView : UserControl
 
 	private void UpdatePlaceWithOverridesMenuItem()
 	{
-		bool flag = PlacementAttributeOverrideService.Definitions.Count > 0;
-		_placeWithOverridesMenuItem.IsEnabled = flag;
-		_placeWithOverridesMenuItem.ToolTip = (flag ? "Choose one-time attribute overrides for the next placement of this template." : "No packaged placement override fields are currently available.");
+		// One-time overrides are discovered from the selected template itself; they
+		// do not require workflow-wide fields to be configured in Settings.
+		_placeWithOverridesMenuItem.IsEnabled = _contextMenuTarget != null;
+		_placeWithOverridesMenuItem.ToolTip = "Choose one-time attribute overrides for the next placement of this template.";
 	}
 
 	private void UpdatePlaceAtOffsetMenuItem()
@@ -793,6 +788,7 @@ public class EditorDockpaneView : UserControl
 		frameworkElementFactory.SetBinding(FrameworkElement.ToolTipProperty, new Binding(bindingPath));
 		frameworkElementFactory.SetValue(TextBlock.TextWrappingProperty, TextWrapping.NoWrap);
 		frameworkElementFactory.SetValue(TextBlock.TextTrimmingProperty, trimOverflow ? TextTrimming.CharacterEllipsis : TextTrimming.None);
+		frameworkElementFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
 		frameworkElementFactory.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 12.0, 0.0));
 		return new DataTemplate
 		{
@@ -804,6 +800,7 @@ public class EditorDockpaneView : UserControl
 	{
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(DockPanel));
 		frameworkElementFactory.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 12.0, 0.0));
+		frameworkElementFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
 		frameworkElementFactory.SetValue(DockPanel.LastChildFillProperty, true);
 		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(Button));
 		frameworkElementFactory2.SetValue(FrameworkElement.WidthProperty, 22.0);
@@ -837,6 +834,7 @@ public class EditorDockpaneView : UserControl
 		FrameworkElementFactory frameworkElementFactory3 = CreateHighlightedTextFactory("DisplayName");
 		frameworkElementFactory3.SetValue(TextBlock.TextWrappingProperty, TextWrapping.NoWrap);
 		frameworkElementFactory3.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.None);
+		frameworkElementFactory3.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
 		frameworkElementFactory3.SetBinding(FrameworkElement.MarginProperty, new Binding("IsIndentedChild")
 		{
 			Converter = new ChildRowIndentConverter()
@@ -904,8 +902,8 @@ public class EditorDockpaneView : UserControl
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(System.Windows.Shapes.Path));
 		frameworkElementFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
 		frameworkElementFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory.SetValue(FrameworkElement.WidthProperty, 10.0);
-		frameworkElementFactory.SetValue(FrameworkElement.HeightProperty, 10.0);
+		frameworkElementFactory.SetValue(FrameworkElement.WidthProperty, 8.0);
+		frameworkElementFactory.SetValue(FrameworkElement.HeightProperty, 8.0);
 		frameworkElementFactory.SetValue(System.Windows.Shapes.Shape.StretchProperty, Stretch.Uniform);
 		frameworkElementFactory.SetBinding(System.Windows.Shapes.Path.DataProperty, new Binding("Content")
 		{
