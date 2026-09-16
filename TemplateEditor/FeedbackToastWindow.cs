@@ -31,7 +31,7 @@ internal sealed class FeedbackToastWindow : Window
 			PositionNearOwner();
 			DispatcherTimer timer = new DispatcherTimer
 			{
-				Interval = TimeSpan.FromSeconds(4.5)
+				Interval = TimeSpan.FromSeconds(7.5)
 			};
 			timer.Tick += delegate
 			{

@@ -37,13 +37,13 @@
         <tool id="TemplateEditor_AddRowTool" caption="AddRowTool" className="TemplateEditor.AddRowTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
           <tooltip heading="Create Table Row">Create a non-spatial row for the selected template.<disabledText /></tooltip>
         </tool>
-        <button id="TemplateEditor_TemplateSettings" caption="Settings" className="TemplateEditor.TemplateSettingsButton" loadOnClick="true" smallImage="Images\SettingsVectorIcon16.xaml" largeImage="Images\SettingsVectorIcon32.xaml" keytip="">
+        <button id="TemplateEditor_TemplateSettings" caption="Settings" className="TemplateEditor.TemplateSettingsButton" loadOnClick="true" smallImage="Images\SettingsVectorIcon.xaml" largeImage="Images\SettingsVectorIcon.xaml" keytip="">
           <tooltip heading="Settings">Choose the template config file and placement options.<disabledText /></tooltip>
         </button>
-        <button id="TemplateEditor_OpenEditorDockpane" caption="Open Editor" className="TemplateEditor.EditorDockpane_ShowButton" loadOnClick="true" smallImage="Images\TemplatesVectorIcon16.xaml" largeImage="Images\TemplatesVectorIcon32.xaml" keytip="">
+        <button id="TemplateEditor_OpenEditorDockpane" caption="Open Editor" className="TemplateEditor.EditorDockpane_ShowButton" loadOnClick="true" smallImage="Images\TemplatesVectorIcon.xaml" largeImage="Images\TemplatesVectorIcon.xaml" keytip="">
           <tooltip heading="Open Editor">Open the template editor.<disabledText /></tooltip>
         </button>
-        <button id="TemplateEditor_ReloadConfig" caption="Reload Config" className="TemplateEditor.TemplateReloadConfigButton" loadOnClick="true" smallImage="Images\ReloadVectorIcon16.xaml" largeImage="Images\ReloadVectorIcon32.xaml" keytip="">
+        <button id="TemplateEditor_ReloadConfig" caption="Reload Config" className="TemplateEditor.TemplateReloadConfigButton" loadOnClick="true" smallImage="Images\ReloadVectorIcon.xaml" largeImage="Images\ReloadVectorIcon.xaml" keytip="">
           <tooltip heading="Reload Config">Reload the selected template configuration file.<disabledText /></tooltip>
         </button>
       </controls>

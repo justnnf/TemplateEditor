@@ -20,9 +20,12 @@
     <AddInName>TemplateEditor</AddInName>
     <AddInDescription>Template editor tools</AddInDescription>
     <AddInImage>Images\AddInDesktopMap.png</AddInImage>
+    <AddInImageSource>Images\TemplatesVectorIcon.xaml</AddInImageSource>
+    <AddInImageWidth>128</AddInImageWidth>
+    <AddInImageHeight>128</AddInImageHeight>
     <AddInAuthor>TemplateEditor</AddInAuthor>
     <AddInCompany>TemplateEditor</AddInCompany>
-    <AddInVersion>1.8.1</AddInVersion>
+    <AddInVersion>1.8.2</AddInVersion>
     <ArcGISProReleaseVersion>3.3</ArcGISProReleaseVersion>
     <ReleaseDirectory>$(MSBuildProjectDirectory)\Release\</ReleaseDirectory>
   </PropertyGroup>
@@ -39,18 +42,14 @@
   <ItemGroup>
     <Content Include="Config.daml" />
     <Content Include="Images\AddInDesktopMap.png" />
-    <Content Include="Images\SettingsVectorIcon16.xaml" />
-    <Content Include="Images\SettingsVectorIcon32.xaml" />
-    <Content Include="Images\ReloadVectorIcon16.xaml" />
-    <Content Include="Images\ReloadVectorIcon32.xaml" />
-    <Content Include="Images\TemplatesVectorIcon16.xaml" />
-    <Content Include="Images\TemplatesVectorIcon32.xaml" />
-    <Content Include="DarkImages\SettingsVectorIcon16.xaml" />
-    <Content Include="DarkImages\SettingsVectorIcon32.xaml" />
-    <Content Include="DarkImages\ReloadVectorIcon16.xaml" />
-    <Content Include="DarkImages\ReloadVectorIcon32.xaml" />
-    <Content Include="DarkImages\TemplatesVectorIcon16.xaml" />
-    <Content Include="DarkImages\TemplatesVectorIcon32.xaml" />
+    <!-- Vector icons scale to both DAML button sizes; keep matching names in
+         Images and DarkImages so ArcGIS Pro can select the active theme. -->
+    <Content Include="Images\SettingsVectorIcon.xaml" />
+    <Content Include="Images\ReloadVectorIcon.xaml" />
+    <Content Include="Images\TemplatesVectorIcon.xaml" />
+    <Content Include="DarkImages\SettingsVectorIcon.xaml" />
+    <Content Include="DarkImages\ReloadVectorIcon.xaml" />
+    <Content Include="DarkImages\TemplatesVectorIcon.xaml" />
     <Content Include="Images\lineCursor.cur">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -100,6 +99,18 @@
 
   <Import Project="Esri.ArcGISPro.Extensions.targets" Condition="Exists('Esri.ArcGISPro.Extensions.targets')" />
 
+  <!-- The ArcGIS targets provide a conventional Documents path. Override it
+       after import so redirected/OneDrive Documents folders are respected. -->
+  <PropertyGroup>
+    <ArcGISAddInInstallFolder>$(registry:HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders@Personal)\ArcGIS\AddIns\ArcGISPro\</ArcGISAddInInstallFolder>
+    <AutoDeployArcGISAddIn Condition="'$(AutoDeployArcGISAddIn)' == ''">true</AutoDeployArcGISAddIn>
+  </PropertyGroup>
+
+  <Target Name="GenerateAddInImage" BeforeTargets="PrepareForBuild">
+    <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\Tools\Convert-XamlVectorToPng.ps1&quot; -SourcePath &quot;$(MSBuildProjectDirectory)\$(AddInImageSource)&quot; -DestinationPath &quot;$(MSBuildProjectDirectory)\$(AddInImage)&quot; -Width $(AddInImageWidth) -Height $(AddInImageHeight)" />
+    <Message Text="Generated $(AddInImage) from $(AddInImageSource)" Importance="High" />
+  </Target>
+
   <Target Name="GenerateVersionedAssemblyAttributes" BeforeTargets="CoreCompile">
     <PropertyGroup>
       <VersionedAssemblyInfo>$(IntermediateOutputPath)VersionInfo.cs</VersionedAssemblyInfo>
@@ -125,12 +136,32 @@
     <Exec Command="powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\Tools\Set-AddInManifestVersion.ps1&quot; -PackagePath &quot;$(_ArcGISPackageFile)&quot; -Version &quot;$(AddInVersion)&quot;" />
   </Target>
 
-  <Target Name="DeployArcGISAddIn" DependsOnTargets="Build;StampAddInPackageVersion">
+  <!-- Resolve the GUID from DAML and replace the exact package ArcGIS Pro
+       discovers, instead of leaving a second copy in the parent directory. -->
+  <Target Name="InstallArcGISAddInPackage">
     <Error Condition="'$(_ArcGISPackageFile)' == '' Or !Exists('$(_ArcGISPackageFile)')" Text="The ArcGIS add-in package was not produced by the build." />
-    <Exec Command="RegisterAddIn.exe &quot;$(_ArcGISPackageFile)&quot; /s" WorkingDirectory="$(ArcGISFolder)" Condition="Exists('$(ArcGISFolder)RegisterAddIn.exe')" />
-    <Copy SourceFiles="$(_ArcGISPackageFile)" DestinationFolder="$(ArcGISAddInInstallFolder)" />
-    <Message Text="Updated the installed add-in package to version $(AddInVersion)" Importance="High" />
+    <XmlPeek XmlInputPath="$(MSBuildProjectDirectory)\Config.daml" Query="/*[local-name()='ArcGIS']/*[local-name()='AddInInfo']/@id">
+      <Output TaskParameter="Result" PropertyName="InstalledAddInId" />
+    </XmlPeek>
+    <Error Condition="'$(InstalledAddInId)' == ''" Text="The add-in ID could not be read from Config.daml." />
+    <PropertyGroup>
+      <InstalledAddInDirectory>$(ArcGISAddInInstallFolder)$(InstalledAddInId)\</InstalledAddInDirectory>
+      <InstalledAddInPackage>$(InstalledAddInDirectory)$(AssemblyName).esriAddinX</InstalledAddInPackage>
+    </PropertyGroup>
+    <MakeDir Directories="$(InstalledAddInDirectory)" />
+    <Copy SourceFiles="$(_ArcGISPackageFile)" DestinationFiles="$(InstalledAddInPackage)" />
+    <Message Text="Updated test add-in: $(InstalledAddInPackage)" Importance="High" />
+    <Message Text="Restart ArcGIS Pro to load the rebuilt assembly." Importance="High" />
   </Target>
+
+  <Target Name="DeployArcGISAddIn" DependsOnTargets="Build;StampAddInPackageVersion;InstallArcGISAddInPackage" />
+
+  <!-- Keep normal Release/CI builds side-effect free. Pass
+       -p:AutoDeployArcGISAddIn=false to opt out of local Debug deployment. -->
+  <Target Name="AutoDeployArcGISAddIn"
+          AfterTargets="PublishArcGISAddIn"
+          DependsOnTargets="InstallArcGISAddInPackage"
+          Condition="'$(Configuration)' == 'Debug' And '$(AutoDeployArcGISAddIn)' == 'true'" />
 
   <!-- Every normal build also keeps a versioned release copy. AddInVersion above
        is the single version value used by the assembly, manifest, and filename. -->
