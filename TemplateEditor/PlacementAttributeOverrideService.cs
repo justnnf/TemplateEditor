@@ -58,8 +58,6 @@ internal static class PlacementAttributeOverrideService
 
 	private static readonly string FavouriteFilePath = Path.Combine(FavouriteDirectoryPath, "placement-override-favourites.json");
 
-	private static readonly string[] AlwaysVisiblePlacementEditorFields = new string[4] { "PHASESNORMAL", "VOLTAGEGROUP", "OWNEDBY", "MAINTBY" };
-
 	private static readonly HashSet<string> SystemManagedFieldNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
 	{
 		"OBJECTID", "GLOBALID", "SHAPE", "SHAPE_LENGTH", "SHAPE_AREA", "ASSETGROUP", "ASSETTYPE",
@@ -612,39 +610,37 @@ internal static class PlacementAttributeOverrideService
 		(TableDefinition Definition, Subtype Subtype) tuple = await QueuedTask.Run<(TableDefinition, Subtype)>((Func<(TableDefinition, Subtype)>)(() => GetDefinitionAndSubtype(mapMember, template)), TaskCreationOptions.None).ConfigureAwait(continueOnCapturedContext: false);
 		TableDefinition definition = tuple.Definition;
 		Subtype subtype = tuple.Subtype;
-		List<Field> fields = await QueuedTask.Run<List<Field>>((Func<List<Field>>)delegate
+		(List<Field> Fields, List<FieldDescription> Descriptions) layerFields = await QueuedTask.Run<(List<Field>, List<FieldDescription>)>(delegate
 		{
-			TableDefinition obj = definition;
-			return ((obj == null) ? null : obj.GetFields()?.ToList()) ?? new List<Field>();
+			return (((definition == null) ? null : definition.GetFields()?.ToList()) ?? new List<Field>(), GetFieldDescriptions(mapMember));
 		}, TaskCreationOptions.None).ConfigureAwait(continueOnCapturedContext: false);
+		List<Field> fields = layerFields.Fields;
 		Dictionary<string, object> configuredValues = new Dictionary<string, object>(template.DefaultFieldValues ?? new Dictionary<string, object>(), StringComparer.OrdinalIgnoreCase);
-		AddAlwaysVisiblePlacementEditorFields(configuredValues, fields);
 		Dictionary<string, object> currentValues = await ApplySessionOverridesOnlyAsync(template, configuredValues, subtype, fields).ConfigureAwait(continueOnCapturedContext: false);
 		return await QueuedTask.Run<List<PlacementAttributeEditorFieldState>>((Func<List<PlacementAttributeEditorFieldState>>)delegate
 		{
 			List<PlacementAttributeEditorFieldState> list = new List<PlacementAttributeEditorFieldState>();
-			foreach (string fieldName in configuredValues.Keys.OrderBy<string, string>((string name) => name, StringComparer.OrdinalIgnoreCase))
+			string subtypeField = definition?.GetSubtypeField();
+			foreach (FieldDescription description in layerFields.Descriptions
+				.Where(candidate => candidate.IsVisible && !candidate.IsReadOnly))
 			{
-				if (!ShouldHidePlacementEditorField(fieldName))
+				if (!ShouldHidePlacementEditorField(description.Name, subtypeField))
 				{
-					Field val = fields.FirstOrDefault((Field candidate) => string.Equals(candidate.Name, fieldName, StringComparison.OrdinalIgnoreCase));
+					Field val = fields.FirstOrDefault((Field candidate) => string.Equals(candidate.Name, description.Name, StringComparison.OrdinalIgnoreCase));
 					if (val != null)
 					{
 						List<string> availableDomainValues = GetAvailableDomainValues(val, subtype);
-						string configuredValue = ConvertToEditorValue(configuredValues.TryGetValue(fieldName, out var value) ? value : null);
+						string configuredValue = ConvertToEditorValue(configuredValues.TryGetValue(val.Name, out var value) ? value : null);
 						string currentValue = ConvertToEditorValue(currentValues.TryGetValue(val.Name, out var value2) ? value2 : null);
-						if (ShouldShowPlacementEditorField(val.Name, configuredValue, currentValue, availableDomainValues))
+						list.Add(new PlacementAttributeEditorFieldState
 						{
-							list.Add(new PlacementAttributeEditorFieldState
-							{
-								FieldName = val.Name,
-								Label = val.AliasName,
-								ConfiguredValue = configuredValue,
-								CurrentValue = currentValue,
-								HasDomainValues = (availableDomainValues.Count > 0),
-								AvailableValues = availableDomainValues
-							});
-						}
+							FieldName = val.Name,
+							Label = string.IsNullOrWhiteSpace(description.Alias) ? val.AliasName : description.Alias,
+							ConfiguredValue = configuredValue,
+							CurrentValue = currentValue,
+							HasDomainValues = (availableDomainValues.Count > 0),
+							AvailableValues = availableDomainValues
+						});
 					}
 				}
 			}
@@ -652,49 +648,25 @@ internal static class PlacementAttributeOverrideService
 		}, TaskCreationOptions.None).ConfigureAwait(continueOnCapturedContext: false);
 	}
 
-	private static bool ShouldHidePlacementEditorField(string fieldName)
+	private static List<FieldDescription> GetFieldDescriptions(MapMember mapMember)
 	{
-		return string.Equals(fieldName, "ASSETGROUP", StringComparison.OrdinalIgnoreCase) || string.Equals(fieldName, "ASSETTYPE", StringComparison.OrdinalIgnoreCase);
+		if (mapMember is FeatureLayer featureLayer)
+		{
+			return featureLayer.GetFieldDescriptions();
+		}
+		if (mapMember is StandaloneTable standaloneTable)
+		{
+			return standaloneTable.GetFieldDescriptions();
+		}
+		return new List<FieldDescription>();
 	}
 
-	private static void AddAlwaysVisiblePlacementEditorFields(Dictionary<string, object> configuredValues, List<Field> fields)
+	private static bool ShouldHidePlacementEditorField(string fieldName, string subtypeField)
 	{
-		if (configuredValues == null || fields == null || fields.Count == 0)
-		{
-			return;
-		}
-		string[] alwaysVisiblePlacementEditorFields = AlwaysVisiblePlacementEditorFields;
-		foreach (string preferredFieldName in alwaysVisiblePlacementEditorFields)
-		{
-			Field field = fields.FirstOrDefault((Field candidate) => string.Equals(candidate.Name, preferredFieldName, StringComparison.OrdinalIgnoreCase));
-			if (field != null && !ShouldHidePlacementEditorField(field.Name) && !configuredValues.Keys.Any((string candidate) => string.Equals(candidate, field.Name, StringComparison.OrdinalIgnoreCase)))
-			{
-				configuredValues[field.Name] = null;
-			}
-		}
-	}
-
-	private static bool ShouldShowPlacementEditorField(string fieldName, string configuredValue, string currentValue, List<string> domainValues)
-	{
-		if (!string.IsNullOrWhiteSpace(configuredValue) || !string.IsNullOrWhiteSpace(currentValue))
-		{
-			return true;
-		}
-		if (domainValues == null || domainValues.Count == 0)
-		{
-			return !AlwaysVisiblePlacementEditorFields.Contains<string>(NormalizeFieldName(fieldName), StringComparer.OrdinalIgnoreCase);
-		}
-		return domainValues.Any((string value) => !IsNotApplicableEditorValue(value));
-	}
-
-	private static bool IsNotApplicableEditorValue(string value)
-	{
-		string text = (value ?? string.Empty).Trim();
-		if (string.IsNullOrWhiteSpace(text))
-		{
-			return true;
-		}
-		return string.Equals(text, "Not Applicable", StringComparison.OrdinalIgnoreCase) || string.Equals(text, "N/A", StringComparison.OrdinalIgnoreCase) || string.Equals(text, "NA", StringComparison.OrdinalIgnoreCase) || string.Equals(text, "Unknown", StringComparison.OrdinalIgnoreCase);
+		return string.IsNullOrWhiteSpace(fieldName)
+			|| SystemManagedFieldNames.Contains(fieldName)
+			|| (AddinConfiguration.Settings?.PlacementOverrideExcludedFieldNames?.Contains(fieldName, StringComparer.OrdinalIgnoreCase) ?? false)
+			|| string.Equals(fieldName, subtypeField, StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static async Task<IReadOnlyList<PlacementAttributeOverrideEditorState>> BuildEditorStatesAsync(IEnumerable<SimpleTemplate> templates, IEnumerable<PlacementAttributeOverrideValue> selectedValues, IEnumerable<PlacementAttributeOverrideDefinition> definitions, bool includeUnavailableDefinitions)
@@ -1128,7 +1100,12 @@ internal static class PlacementAttributeOverrideService
 			IEnumerable<PlacementAttributeEditorFieldState> attributeFields = item.AttributeFields;
 			foreach (PlacementAttributeEditorFieldState item2 in attributeFields ?? Enumerable.Empty<PlacementAttributeEditorFieldState>())
 			{
-				dictionary2[item2.FieldName] = (string.IsNullOrWhiteSpace(item2.CurrentValue) ? null : item2.CurrentValue.Trim());
+				string currentValue = item2.CurrentValue?.Trim() ?? string.Empty;
+				string configuredValue = item2.ConfiguredValue?.Trim() ?? string.Empty;
+				if (!string.Equals(currentValue, configuredValue, StringComparison.Ordinal))
+				{
+					dictionary2[item2.FieldName] = string.IsNullOrWhiteSpace(currentValue) ? null : currentValue;
+				}
 			}
 			if (dictionary2.Count > 0 && !string.IsNullOrWhiteSpace(item.PartKey))
 			{

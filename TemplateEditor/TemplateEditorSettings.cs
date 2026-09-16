@@ -123,6 +123,8 @@ internal sealed class TemplateEditorSettings
 		}
 	};
 
+	public List<string> PlacementOverrideExcludedFieldNames { get; set; } = new List<string>();
+
 	public string AssociationRulesJsonPath { get; set; }
 
 	public List<string> FavouriteTemplateKeys { get; set; } = new List<string>();
@@ -189,6 +191,7 @@ internal sealed class TemplateEditorSettings
 		PreviewFillColorHex = NormalizeHexColor(PreviewFillColorHex, "#DE7BCF");
 		PreviewOutlineColorHex = NormalizeHexColor(PreviewOutlineColorHex, "#0085CA");
 		AttributeOverrideDefinitions ??= new List<PlacementAttributeOverrideDefinition>();
+		PlacementOverrideExcludedFieldNames = NormalizeGroupNames(PlacementOverrideExcludedFieldNames);
 		SplitPointPlacementGroups = NormalizeGroupNames(SplitPointPlacementGroups);
 		SplitLinePlacementGroups = NormalizeGroupNames(SplitLinePlacementGroups);
 		SplitTargetLineGroups = NormalizeGroupNames(SplitTargetLineGroups);

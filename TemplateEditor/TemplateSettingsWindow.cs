@@ -175,6 +175,8 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private IReadOnlyList<PlacementAttributeFieldOption> _availableAttributeFields = Array.Empty<PlacementAttributeFieldOption>();
 
+	private readonly TextBox _placementOverrideExcludedFieldNamesTextBox;
+
 	private readonly TextBox _structuralAttachmentSearchDistanceTextBox;
 
 	private readonly TextBox _junctionJunctionConnectivitySearchDistanceTextBox;
@@ -290,6 +292,7 @@ internal sealed class TemplateSettingsWindow : Window
 		_hintSplitCandidateColorHexTextBox = CreateTextBox(Settings.HintSplitCandidateColorHex);
 		_previewFillColorHexTextBox = CreateTextBox(Settings.PreviewFillColorHex);
 		_previewOutlineColorHexTextBox = CreateTextBox(Settings.PreviewOutlineColorHex);
+		_placementOverrideExcludedFieldNamesTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.PlacementOverrideExcludedFieldNames));
 		_structuralAttachmentSearchDistanceTextBox = CreateTextBox(Settings.StructuralAttachmentSearchDistance.ToString("0.###"));
 		_junctionJunctionConnectivitySearchDistanceTextBox = CreateTextBox(Settings.JunctionJunctionConnectivitySearchDistance.ToString("0.###"));
 		_containmentPointSearchDistanceTextBox = CreateTextBox(Settings.ContainmentPointSearchDistance.ToString("0.###"));
@@ -710,6 +713,16 @@ internal sealed class TemplateSettingsWindow : Window
 			TaskObservationService.Forget(LoadAttributeDefinitionEditorAsync(), "Available attribute fields could not be loaded.");
 		};
 		stackPanel.Children.Add(CreateGroupBox("Available Override Fields", definitionsPanel));
+		StackPanel exclusionsPanel = new StackPanel();
+		exclusionsPanel.Children.Add(new TextBlock
+		{
+			Text = "Enter field names separated by commas. These fields will never appear in Place With Overrides, even when the subtype layer marks them visible and editable.",
+			Foreground = SecondaryTextBrush,
+			TextWrapping = TextWrapping.Wrap,
+			Margin = new Thickness(0, 0, 0, 8)
+		});
+		exclusionsPanel.Children.Add(_placementOverrideExcludedFieldNamesTextBox);
+		stackPanel.Children.Add(CreateGroupBox("Place With Overrides Excluded Fields", exclusionsPanel));
 		stackPanel.Children.Add(CreateGroupBox("Session Overrides", BuildAttributeOverrideSection()));
 		return WrapTab(stackPanel);
 	}
@@ -1221,6 +1234,7 @@ internal sealed class TemplateSettingsWindow : Window
 			Settings.HintSplitCandidateColorHex = _hintSplitCandidateColorHexTextBox.Text;
 			Settings.PreviewFillColorHex = _previewFillColorHexTextBox.Text;
 			Settings.PreviewOutlineColorHex = _previewOutlineColorHexTextBox.Text;
+			Settings.PlacementOverrideExcludedFieldNames = TemplateEditorSettings.ParseGroupNames(_placementOverrideExcludedFieldNamesTextBox.Text);
 			// Preserve saved definitions if field discovery is still running or failed.
 			if (_attributeDefinitionsLoadedSuccessfully)
 			{
