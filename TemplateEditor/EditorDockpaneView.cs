@@ -78,7 +78,11 @@ public class EditorDockpaneView : UserControl
 
 	private bool _lastCompactLayout;
 
+	private bool _lastSidebarLayout;
+
 	private bool IsCompactLayout => AddinConfiguration.Settings?.UseCompactDockpaneLayout ?? false;
+
+	private bool IsSidebarLayout => AddinConfiguration.Settings?.UseSidebarDockpaneLayout ?? false;
 
 	public EditorDockpaneView()
 	{
@@ -104,6 +108,7 @@ public class EditorDockpaneView : UserControl
 		{
 			LogService.Write("EditorDockpaneView.InitializeComponent starting.");
 			bool flag = (_lastCompactLayout = IsCompactLayout);
+			bool sidebar = (_lastSidebarLayout = IsSidebarLayout);
 			Grid grid = new Grid
 			{
 				Margin = (flag ? new Thickness(4.0, 3.0, 4.0, 3.0) : new Thickness(10.0, 8.0, 10.0, 8.0))
@@ -120,10 +125,10 @@ public class EditorDockpaneView : UserControl
 			{
 				Height = GridLength.Auto
 			});
-			UIElement element = CreateFilterPanel(flag);
+			UIElement element = CreateFilterPanel(flag, sidebar);
 			Grid.SetRow(element, 0);
 			grid.Children.Add(element);
-			UIElement element2 = CreateTemplateListHost(flag);
+			UIElement element2 = CreateTemplateListHost(flag, sidebar);
 			Grid.SetRow(element2, 1);
 			grid.Children.Add(element2);
 			UIElement element3 = CreateStatusFooter(flag);
@@ -171,7 +176,8 @@ public class EditorDockpaneView : UserControl
 	private void OnSettingsChanged()
 	{
 		bool isCompactLayout = IsCompactLayout;
-		if (isCompactLayout != _lastCompactLayout)
+		bool isSidebarLayout = IsSidebarLayout;
+		if (isCompactLayout != _lastCompactLayout || isSidebarLayout != _lastSidebarLayout)
 		{
 			((DispatcherObject)this).Dispatcher.BeginInvoke((Delegate)new Action(InitializeComponent), (DispatcherPriority)3, Array.Empty<object>());
 		}
@@ -181,7 +187,7 @@ public class EditorDockpaneView : UserControl
 		}
 	}
 
-	private UIElement CreateFilterPanel(bool compact)
+	private UIElement CreateFilterPanel(bool compact, bool sidebar)
 	{
 		Grid grid = new Grid
 		{
@@ -197,7 +203,7 @@ public class EditorDockpaneView : UserControl
 		});
 		Grid grid2 = new Grid
 		{
-			Margin = new Thickness(compact ? 8.0 : 12.0, 0.0, 0.0, 0.0),
+			Margin = sidebar ? new Thickness(0, 0, 0, compact ? 4 : 8) : new Thickness(compact ? 8.0 : 12.0, 0.0, 0.0, 0.0),
 			MinWidth = (compact ? 200.0 : 240.0)
 		};
 		TextBox searchBox = new TextBox
@@ -280,34 +286,39 @@ public class EditorDockpaneView : UserControl
 		button.SetBinding(ButtonBase.CommandProperty, new Binding("ClearSearchCommand"));
 		button.Style = CreateClearSearchButtonStyle();
 		grid2.Children.Add(button);
-		WrapPanel primaryFilters = new WrapPanel
+		if (sidebar)
 		{
-			Orientation = Orientation.Horizontal,
-			Margin = new Thickness(0.0)
-		};
-		primaryFilters.Children.Add(CreateRadioButton("All", "ShowAllTemplates", compact));
-		primaryFilters.Children.Add(CreateRadioButton("Groups", "ShowGroupTemplates", compact));
-		primaryFilters.Children.Add(CreateRadioButton("Simple", "ShowSimpleTemplates", compact));
-		primaryFilters.VerticalAlignment = VerticalAlignment.Center;
-		WrapPanel savedFilters = new WrapPanel
+			StackPanel panel = new StackPanel();
+			panel.Children.Add(grid2);
+			UniformGrid primaryFilters = new UniformGrid { Columns = 3, Margin = new Thickness(0, 0, 0, compact ? 3 : 5) };
+			primaryFilters.Children.Add(CreateRadioButton("All", "ShowAllTemplates", compact, sidebar: true));
+			primaryFilters.Children.Add(CreateRadioButton("Groups", "ShowGroupTemplates", compact, sidebar: true));
+			primaryFilters.Children.Add(CreateRadioButton("Simple", "ShowSimpleTemplates", compact, sidebar: true));
+			UniformGrid savedFilters = new UniformGrid { Columns = 2 };
+			savedFilters.Children.Add(CreateRadioButton("★ Favourites", "ShowFavouriteTemplates", compact, "Favourites", sidebar: true));
+			savedFilters.Children.Add(CreateRadioButton("◷ Recent", "ShowRecentTemplates", compact, "Recent", sidebar: true));
+			panel.Children.Add(primaryFilters);
+			panel.Children.Add(savedFilters);
+			grid.Children.Add(panel);
+		}
+		else
 		{
-			Orientation = Orientation.Horizontal,
-			Margin = new Thickness(compact ? 4 : 8, 0, 0, 0),
-			VerticalAlignment = VerticalAlignment.Center
-		};
-		savedFilters.Children.Add(CreateRadioButton("★ Favourites", "ShowFavouriteTemplates", compact, "Favourites"));
-		savedFilters.Children.Add(CreateRadioButton("◷ Recent", "ShowRecentTemplates", compact, "Recent"));
-		StackPanel filterGroups = new StackPanel { Orientation = Orientation.Horizontal };
-		filterGroups.Children.Add(primaryFilters);
-		filterGroups.Children.Add(savedFilters);
-		DockPanel dockPanel = new DockPanel
-		{
-			LastChildFill = true
-		};
-		DockPanel.SetDock(filterGroups, Dock.Left);
-		dockPanel.Children.Add(filterGroups);
-		dockPanel.Children.Add(grid2);
-		grid.Children.Add(dockPanel);
+			WrapPanel primaryFilters = new WrapPanel { Orientation = Orientation.Horizontal };
+			primaryFilters.Children.Add(CreateRadioButton("All", "ShowAllTemplates", compact));
+			primaryFilters.Children.Add(CreateRadioButton("Groups", "ShowGroupTemplates", compact));
+			primaryFilters.Children.Add(CreateRadioButton("Simple", "ShowSimpleTemplates", compact));
+			WrapPanel savedFilters = new WrapPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(compact ? 4 : 8, 0, 0, 0) };
+			savedFilters.Children.Add(CreateRadioButton("★ Favourites", "ShowFavouriteTemplates", compact, "Favourites"));
+			savedFilters.Children.Add(CreateRadioButton("◷ Recent", "ShowRecentTemplates", compact, "Recent"));
+			StackPanel filterGroups = new StackPanel { Orientation = Orientation.Horizontal };
+			filterGroups.Children.Add(primaryFilters);
+			filterGroups.Children.Add(savedFilters);
+			DockPanel dockPanel = new DockPanel { LastChildFill = true };
+			DockPanel.SetDock(filterGroups, Dock.Left);
+			dockPanel.Children.Add(filterGroups);
+			dockPanel.Children.Add(grid2);
+			grid.Children.Add(dockPanel);
+		}
 		return grid;
 		void UpdatePlaceholderVisibility()
 		{
@@ -374,10 +385,10 @@ public class EditorDockpaneView : UserControl
 		}
 	}
 
-	private UIElement CreateTemplateListHost(bool compact)
+	private UIElement CreateTemplateListHost(bool compact, bool sidebar)
 	{
 		Grid host = new Grid();
-		host.Children.Add(CreateTemplateList(compact));
+		host.Children.Add(CreateTemplateList(compact, sidebar));
 		TextBlock emptyState = new TextBlock
 		{
 			Foreground = GetMutedForegroundBrush(),
@@ -394,7 +405,7 @@ public class EditorDockpaneView : UserControl
 		return host;
 	}
 
-	private ListView CreateTemplateList(bool compact)
+	private ListView CreateTemplateList(bool compact, bool sidebar)
 	{
 		listViewUnits = new ListView
 		{
@@ -407,7 +418,7 @@ public class EditorDockpaneView : UserControl
 			ItemContainerStyle = CreateTemplateListItemStyle(compact),
 			AlternationCount = 2
 		};
-		ScrollViewer.SetHorizontalScrollBarVisibility((DependencyObject)(object)listViewUnits, ScrollBarVisibility.Auto);
+		ScrollViewer.SetHorizontalScrollBarVisibility((DependencyObject)(object)listViewUnits, sidebar ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto);
 		ScrollViewer.SetVerticalScrollBarVisibility((DependencyObject)(object)listViewUnits, ScrollBarVisibility.Auto);
 		ScrollViewer.SetCanContentScroll((DependencyObject)(object)listViewUnits, canContentScroll: true);
 		VirtualizingPanel.SetIsVirtualizing((DependencyObject)(object)listViewUnits, value: true);
@@ -470,8 +481,8 @@ public class EditorDockpaneView : UserControl
 		listViewUnits.ContextMenuOpening += OnContextMenuOpening;
 		_nameColumn = new GridViewColumn
 		{
-			Header = CreateSortableHeader("Name", "Name"),
-			CellTemplate = CreateNameCellTemplate(),
+			Header = CreateSortableHeader(sidebar ? "Template details" : "Name", "Name"),
+			CellTemplate = CreateNameCellTemplate(sidebar),
 			Width = 220.0
 		};
 		_typeColumn = new GridViewColumn
@@ -486,10 +497,14 @@ public class EditorDockpaneView : UserControl
 			CellTemplate = CreateTextCellTemplate("Description", trimOverflow: true),
 			Width = 360.0
 		};
-		listViewUnits.View = new GridView
+		GridView tableView = new GridView();
+		tableView.Columns.Add(_nameColumn);
+		if (!sidebar)
 		{
-			Columns = { _nameColumn, _typeColumn, _descriptionColumn }
-		};
+			tableView.Columns.Add(_typeColumn);
+			tableView.Columns.Add(_descriptionColumn);
+		}
+		listViewUnits.View = tableView;
 		listViewUnits.Loaded += delegate
 		{
 			QueueAutoSizeColumns();
@@ -796,7 +811,7 @@ public class EditorDockpaneView : UserControl
 		};
 	}
 
-	private DataTemplate CreateNameCellTemplate()
+	private DataTemplate CreateNameCellTemplate(bool sidebar = false)
 	{
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(DockPanel));
 		frameworkElementFactory.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 12.0, 0.0));
@@ -831,14 +846,35 @@ public class EditorDockpaneView : UserControl
 		});
 		frameworkElementFactory2.SetValue(DockPanel.DockProperty, Dock.Left);
 		frameworkElementFactory.AppendChild(frameworkElementFactory2);
-		FrameworkElementFactory frameworkElementFactory3 = CreateHighlightedTextFactory("DisplayName");
-		frameworkElementFactory3.SetValue(TextBlock.TextWrappingProperty, TextWrapping.NoWrap);
-		frameworkElementFactory3.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.None);
-		frameworkElementFactory3.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory3.SetBinding(FrameworkElement.MarginProperty, new Binding("IsIndentedChild")
+		FrameworkElementFactory frameworkElementFactory3;
+		if (sidebar)
 		{
-			Converter = new ChildRowIndentConverter()
-		});
+			frameworkElementFactory3 = new FrameworkElementFactory(typeof(StackPanel));
+			frameworkElementFactory3.SetBinding(FrameworkElement.MarginProperty, new Binding("IsIndentedChild") { Converter = new ChildRowIndentConverter() });
+			FrameworkElementFactory name = CreateHighlightedTextFactory("DisplayName");
+			name.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+			name.SetValue(TextBlock.FontWeightProperty, FontWeights.SemiBold);
+			frameworkElementFactory3.AppendChild(name);
+			FrameworkElementFactory type = new FrameworkElementFactory(typeof(TextBlock));
+			type.SetBinding(TextBlock.TextProperty, new Binding("TemplateType"));
+			type.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+			type.SetValue(UIElement.OpacityProperty, 0.78);
+			frameworkElementFactory3.AppendChild(type);
+			FrameworkElementFactory description = new FrameworkElementFactory(typeof(TextBlock));
+			description.SetBinding(TextBlock.TextProperty, new Binding("Description"));
+			description.SetBinding(FrameworkElement.ToolTipProperty, new Binding("Description"));
+			description.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis);
+			description.SetValue(UIElement.OpacityProperty, 0.68);
+			frameworkElementFactory3.AppendChild(description);
+		}
+		else
+		{
+			frameworkElementFactory3 = CreateHighlightedTextFactory("DisplayName");
+			frameworkElementFactory3.SetValue(TextBlock.TextWrappingProperty, TextWrapping.NoWrap);
+			frameworkElementFactory3.SetValue(TextBlock.TextTrimmingProperty, TextTrimming.None);
+			frameworkElementFactory3.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+			frameworkElementFactory3.SetBinding(FrameworkElement.MarginProperty, new Binding("IsIndentedChild") { Converter = new ChildRowIndentConverter() });
+		}
 		frameworkElementFactory.AppendChild(frameworkElementFactory3);
 		return new DataTemplate
 		{
@@ -950,7 +986,12 @@ public class EditorDockpaneView : UserControl
 		if (listViewUnits?.Items != null && _nameColumn != null && _typeColumn != null && _descriptionColumn != null)
 		{
 			List<DisplayTemplate> visibleTemplates = GetTemplatesInViewport();
-			double availableWidth = Math.Max(360, listViewUnits.ActualWidth - 24);
+			double availableWidth = Math.Max(IsSidebarLayout ? 200 : 360, listViewUnits.ActualWidth - 24);
+			if (IsSidebarLayout)
+			{
+				_nameColumn.Width = availableWidth;
+				return;
+			}
 			// Begin with balanced proportional widths. A column grows beyond that
 			// baseline only when its currently visible rows need more room; expanding
 			// a group therefore accounts for child names without widening collapsed views.
@@ -1194,14 +1235,14 @@ public class EditorDockpaneView : UserControl
 		return style;
 	}
 
-	private RadioButton CreateRadioButton(string text, string bindingPath, bool compact, string viewKey = null)
+	private RadioButton CreateRadioButton(string text, string bindingPath, bool compact, string viewKey = null, bool sidebar = false)
 	{
 		RadioButton radioButton = new RadioButton
 		{
 			Content = text,
 			Tag = viewKey ?? text,
 			GroupName = "TemplateView",
-			Margin = new Thickness(0.0, 0.0, compact ? 4.0 : 6.0, 0.0),
+			Margin = sidebar ? new Thickness(0, 0, 4, 0) : new Thickness(0.0, 0.0, compact ? 4.0 : 6.0, 0.0),
 			Padding = (compact ? new Thickness(8.0, 3.0, 8.0, 3.0) : new Thickness(10.0, 4.0, 10.0, 4.0)),
 			Foreground = GetPrimaryForegroundBrush(),
 			Style = CreateSegmentedRadioButtonStyle()

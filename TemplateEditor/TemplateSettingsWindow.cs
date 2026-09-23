@@ -157,6 +157,8 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly CheckBox _useCompactDockpaneLayoutCheckBox;
 
+	private readonly CheckBox _useSidebarDockpaneLayoutCheckBox;
+
 	private readonly TextBox _maxRecentTemplatesTextBox;
 
 	private readonly TextBox _hintSourceColorHexTextBox;
@@ -286,6 +288,7 @@ internal sealed class TemplateSettingsWindow : Window
 		_highlightSplitCandidatesCheckBox = CreateCheckBox("Highlight split candidates on the map", Settings.HighlightSplitCandidates);
 		_showAutomaticStepDiagnosticsCheckBox = CreateCheckBox("Show diagnostics when automatic placement steps fail", Settings.ShowAutomaticStepDiagnostics);
 		_useCompactDockpaneLayoutCheckBox = CreateCheckBox("Use compact dockpane layout", Settings.UseCompactDockpaneLayout);
+		_useSidebarDockpaneLayoutCheckBox = CreateCheckBox("Use sidebar dockpane layout", Settings.UseSidebarDockpaneLayout);
 		_maxRecentTemplatesTextBox = CreateTextBox(Settings.MaxRecentTemplates.ToString());
 		_hintSourceColorHexTextBox = CreateTextBox(Settings.HintSourceColorHex);
 		_hintAssociationTargetColorHexTextBox = CreateTextBox(Settings.HintAssociationTargetColorHex);
@@ -548,7 +551,7 @@ internal sealed class TemplateSettingsWindow : Window
 	private UIElement BuildInterfaceTab()
 	{
 		StackPanel stackPanel = CreateTabPanel();
-		stackPanel.Children.Add(CreateGroupBox("Dockpane Layout", CreateFormGrid(("Use compact dockpane layout", _useCompactDockpaneLayoutCheckBox), ("Maximum recent templates", _maxRecentTemplatesTextBox))));
+		stackPanel.Children.Add(CreateGroupBox("Dockpane Layout", CreateFormGrid(("Use compact dockpane layout", _useCompactDockpaneLayoutCheckBox), ("Use sidebar dockpane layout", _useSidebarDockpaneLayoutCheckBox), ("Maximum recent templates", _maxRecentTemplatesTextBox))));
 		stackPanel.Children.Add(CreateGroupBox("Map Feedback", CreateCheckBoxPanel(_highlightSplitCandidatesCheckBox, _highlightAssociationCandidatesCheckBox, _showAutomaticStepDiagnosticsCheckBox)));
 		stackPanel.Children.Add(CreateGroupBox("Hint Colors", CreateFormGrid(
 			("Placed/source feature color", CreateColorSelector(_hintSourceColorHexTextBox, "#00FF50")),
@@ -1228,6 +1231,7 @@ internal sealed class TemplateSettingsWindow : Window
 			Settings.HighlightSplitCandidates = _highlightSplitCandidatesCheckBox.IsChecked == true;
 			Settings.ShowAutomaticStepDiagnostics = _showAutomaticStepDiagnosticsCheckBox.IsChecked == true;
 			Settings.UseCompactDockpaneLayout = _useCompactDockpaneLayoutCheckBox.IsChecked == true;
+			Settings.UseSidebarDockpaneLayout = _useSidebarDockpaneLayoutCheckBox.IsChecked == true;
 			Settings.MaxRecentTemplates = ParsePositiveInteger(_maxRecentTemplatesTextBox.Text, "maximum recent templates");
 			Settings.HintSourceColorHex = _hintSourceColorHexTextBox.Text;
 			Settings.HintAssociationTargetColorHex = _hintAssociationTargetColorHexTextBox.Text;
@@ -1548,6 +1552,7 @@ internal sealed class TemplateSettingsWindow : Window
 		SetToolTip(_highlightAssociationCandidatesCheckBox, "Draws a temporary overlay on association candidates while the prompt is visible.");
 		SetToolTip(_showAutomaticStepDiagnosticsCheckBox, "Shows popup details when an automatic split or association step fails.");
 		SetToolTip(_useCompactDockpaneLayoutCheckBox, "Reduces spacing, button padding, row height, and footer padding in the bottom-docked template editor.");
+		SetToolTip(_useSidebarDockpaneLayoutCheckBox, "Places the search box above the filter buttons for a narrow side-docked template editor.");
 		SetToolTip(_maxRecentTemplatesTextBox, "Maximum number of recent templates to keep in the dockpane history. Values are clamped from 1 to 50.");
 		SetToolTip(_hintSourceColorHexTextBox, "HEX color used for the newly placed/source feature hint, for example #00FF50.");
 		SetToolTip(_hintAssociationTargetColorHexTextBox, "HEX color used for association target hints, for example #FF0000.");

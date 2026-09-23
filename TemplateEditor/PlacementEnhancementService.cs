@@ -245,7 +245,7 @@ internal static class PlacementEnhancementService
 				return;
 			}
 			LineSplitChoiceDialog choiceDialog = await ShowDialogAsync(() => new LineSplitChoiceDialog(availableOptions));
-			if (choiceDialog != null)
+			if (choiceDialog.Accepted)
 			{
 				if (choiceDialog.SplitAtStart)
 				{
@@ -1205,6 +1205,7 @@ internal static class PlacementEnhancementService
 		}
 		using (await ShowSourceContextAsync(createdFeature))
 		{
+			await FocusCandidatesAsync(createdFeature, candidates);
 			CandidateSelectionOverlay selectedOverlay = new CandidateSelectionOverlay(createdFeature, isSplitCandidate);
 			try
 			{
@@ -1256,6 +1257,7 @@ internal static class PlacementEnhancementService
 		{
 			return null;
 		}
+		await FocusCandidatesAsync(createdFeature, candidateList);
 		TemplateEditorSettings settings = AddinConfiguration.Settings;
 		int num;
 		if (!isSplitCandidate)
@@ -1290,6 +1292,51 @@ internal static class PlacementEnhancementService
 			overlay = new OverlayGroup(list);
 		}, TaskCreationOptions.None);
 		return overlay;
+	}
+
+	private static async Task FocusCandidatesAsync(PlacedFeatureContext createdFeature, IEnumerable<FeatureCandidate> candidates)
+	{
+		MapView view = MapView.Active;
+		if (view == null)
+		{
+			return;
+		}
+		Envelope target = await QueuedTask.Run<Envelope>((Func<Envelope>)delegate
+		{
+			Envelope current = view.Extent;
+			SpatialReference spatialReference = current?.SpatialReference;
+			List<Geometry> geometries = (candidates ?? Enumerable.Empty<FeatureCandidate>())
+				.Select(candidate => candidate?.Geometry)
+				.Where(geometry => geometry != null)
+				.ToList();
+			if (createdFeature?.Geometry != null)
+			{
+				geometries.Add(createdFeature.Geometry);
+			}
+			if (geometries.Count == 0 || current == null)
+			{
+				return null;
+			}
+			double xmin = double.MaxValue;
+			double ymin = double.MaxValue;
+			double xmax = double.MinValue;
+			double ymax = double.MinValue;
+			foreach (Geometry geometry in geometries)
+			{
+				Envelope extent = ProjectGeometry(geometry, spatialReference).Extent;
+				xmin = Math.Min(xmin, extent.XMin);
+				ymin = Math.Min(ymin, extent.YMin);
+				xmax = Math.Max(xmax, extent.XMax);
+				ymax = Math.Max(ymax, extent.YMax);
+			}
+			double xPadding = Math.Max((xmax - xmin) * 0.25, current.Width * 0.2);
+			double yPadding = Math.Max((ymax - ymin) * 0.25, current.Height * 0.2);
+			return EnvelopeBuilderEx.CreateEnvelope(xmin - xPadding, ymin - yPadding, xmax + xPadding, ymax + yPadding, spatialReference);
+		}, TaskCreationOptions.None);
+		if (target != null)
+		{
+			await view.ZoomToAsync(target, TimeSpan.FromMilliseconds(350), true);
+		}
 	}
 
 	private static async Task<IDisposable> ShowCandidateSelectionOverlayAsync(PlacedFeatureContext createdFeature, FeatureCandidate candidate, bool isSplitCandidate)
@@ -1411,12 +1458,14 @@ internal static class PlacementEnhancementService
 
 	private static async Task<bool> ShowConfirmationAsync(string message, string title, string confirmLabel = "Yes", string cancelLabel = "No")
 	{
-		return await ShowDialogAsync(() => new EnhancementConfirmationDialog(title, message, confirmLabel, cancelLabel)) != null;
+		EnhancementConfirmationDialog dialog = await ShowDialogAsync(() => new EnhancementConfirmationDialog(title, message, confirmLabel, cancelLabel));
+		return dialog.Accepted;
 	}
 
 	private static async Task<TDialog> ShowDialogAsync<TDialog>(Func<TDialog> createDialog) where TDialog : Window
 	{
-		return await ((DispatcherObject)Application.Current).Dispatcher.InvokeAsync<TDialog>((Func<TDialog>)delegate
+		TaskCompletionSource<TDialog> completion = new TaskCompletionSource<TDialog>();
+		await ((DispatcherObject)Application.Current).Dispatcher.InvokeAsync((Action)delegate
 		{
 			TDialog val = createDialog();
 			Window window = Application.Current?.MainWindow;
@@ -1424,7 +1473,14 @@ internal static class PlacementEnhancementService
 			{
 				val.Owner = window;
 			}
-			return (val.ShowDialog() == true) ? val : null;
+			IDisposable decisionOutline = WindowPlacementHelper.ShowPendingMapDecision();
+			val.Closed += delegate
+			{
+				decisionOutline?.Dispose();
+				completion.TrySetResult(val);
+			};
+			val.Show();
 		});
+		return await completion.Task;
 	}
 }

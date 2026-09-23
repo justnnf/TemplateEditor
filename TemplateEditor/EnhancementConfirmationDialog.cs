@@ -6,6 +6,7 @@ namespace TemplateEditor;
 
 internal sealed class EnhancementConfirmationDialog : Window
 {
+	public bool Accepted { get; private set; }
 	private readonly string _message;
 
 	private readonly string _confirmLabel;
@@ -80,7 +81,7 @@ internal sealed class EnhancementConfirmationDialog : Window
 		};
 		button.Click += delegate
 		{
-			base.DialogResult = false;
+			Accepted = false;
 			Close();
 		};
 		Button button2 = new Button
@@ -93,7 +94,7 @@ internal sealed class EnhancementConfirmationDialog : Window
 		};
 		button2.Click += delegate
 		{
-			base.DialogResult = true;
+			Accepted = true;
 			Close();
 		};
 		stackPanel2.Children.Add(button);

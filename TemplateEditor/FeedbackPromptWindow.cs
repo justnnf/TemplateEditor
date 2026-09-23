@@ -59,7 +59,10 @@ internal sealed class FeedbackPromptWindow : Window
 
 	public MessageBoxResult ShowPrompt()
 	{
-		ShowDialog();
+		using (WindowPlacementHelper.ShowPendingMapDecision())
+		{
+			ShowDialog();
+		}
 		return (_result == MessageBoxResult.None) ? MessageBoxResult.Cancel : _result;
 	}
 

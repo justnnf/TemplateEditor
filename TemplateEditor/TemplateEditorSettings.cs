@@ -91,6 +91,8 @@ internal sealed class TemplateEditorSettings
 
 	public bool UseCompactDockpaneLayout { get; set; }
 
+	public bool UseSidebarDockpaneLayout { get; set; }
+
 	public bool EnableContinuousPlacementMode { get; set; }
 
 	public List<string> SymbolRotationFieldNames { get; set; } = new List<string> { "ROTATION", "SYMBOLROTATION", "SYMBOL_ROTATION", "ANGLE" };

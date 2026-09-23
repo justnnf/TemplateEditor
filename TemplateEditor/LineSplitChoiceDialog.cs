@@ -8,6 +8,7 @@ namespace TemplateEditor;
 
 internal sealed class LineSplitChoiceDialog : Window
 {
+	public bool Accepted { get; private set; }
 	private readonly CheckBox _startCheckBox;
 
 	private readonly CheckBox _endCheckBox;
@@ -100,7 +101,7 @@ internal sealed class LineSplitChoiceDialog : Window
 		};
 		button.Click += delegate
 		{
-			base.DialogResult = false;
+			Accepted = false;
 			Close();
 		};
 		Button button2 = new Button
@@ -112,14 +113,7 @@ internal sealed class LineSplitChoiceDialog : Window
 		};
 		button2.Click += delegate
 		{
-			if (!SplitAtStart && !SplitAtEnd)
-			{
-				base.DialogResult = false;
-			}
-			else
-			{
-				base.DialogResult = true;
-			}
+			Accepted = SplitAtStart || SplitAtEnd;
 			Close();
 		};
 		stackPanel2.Children.Add(button);

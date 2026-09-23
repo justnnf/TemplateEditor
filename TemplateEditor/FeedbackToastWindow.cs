@@ -28,7 +28,7 @@ internal sealed class FeedbackToastWindow : Window
 		base.Content = BuildContent(title, message, detail, severity);
 		base.Loaded += delegate
 		{
-			PositionNearOwner();
+			WindowPlacementHelper.PositionNearOwnerBottomRight(this, 24.0, 24.0);
 			DispatcherTimer timer = new DispatcherTimer
 			{
 				Interval = TimeSpan.FromSeconds(7.5)
@@ -105,22 +105,4 @@ internal sealed class FeedbackToastWindow : Window
 		};
 	}
 
-	private void PositionNearOwner()
-	{
-		Rect ownerBounds = GetOwnerBounds();
-		base.Left = ClampToVirtualScreen(ownerBounds.Right - base.ActualWidth - 24.0, base.ActualWidth, horizontal: true);
-		base.Top = ClampToVirtualScreen(ownerBounds.Bottom - base.ActualHeight - 24.0, base.ActualHeight, horizontal: false);
-	}
-
-	private Rect GetOwnerBounds()
-	{
-		return (Rect)((base.Owner != null && base.Owner.ActualWidth > 0.0 && base.Owner.ActualHeight > 0.0) ? new Rect(base.Owner.Left, base.Owner.Top, base.Owner.ActualWidth, base.Owner.ActualHeight) : SystemParameters.WorkArea);
-	}
-
-	private static double ClampToVirtualScreen(double value, double size, bool horizontal)
-	{
-		double num = (horizontal ? SystemParameters.VirtualScreenLeft : SystemParameters.VirtualScreenTop) + 8.0;
-		double val = num + (horizontal ? SystemParameters.VirtualScreenWidth : SystemParameters.VirtualScreenHeight) - size - 16.0;
-		return Math.Max(num, Math.Min(value, val));
-	}
 }

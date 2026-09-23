@@ -25,7 +25,7 @@
     <AddInImageHeight>128</AddInImageHeight>
     <AddInAuthor>TemplateEditor</AddInAuthor>
     <AddInCompany>TemplateEditor</AddInCompany>
-    <AddInVersion>1.8.3</AddInVersion>
+    <AddInVersion>1.9.0</AddInVersion>
     <ArcGISProReleaseVersion>3.3</ArcGISProReleaseVersion>
     <ReleaseDirectory>$(MSBuildProjectDirectory)\Release\</ReleaseDirectory>
   </PropertyGroup>

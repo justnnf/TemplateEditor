@@ -98,7 +98,6 @@ internal sealed class CandidateChoiceDialog : Window
 		button.Click += delegate
 		{
 			Result = CandidateChoiceResult.Skip;
-			base.DialogResult = false;
 			Close();
 		};
 		Button button2 = new Button
@@ -113,7 +112,6 @@ internal sealed class CandidateChoiceDialog : Window
 			if (SelectedIndex >= 0)
 			{
 				Result = CandidateChoiceResult.UseCandidate;
-				base.DialogResult = true;
 				Close();
 			}
 		};
