@@ -351,10 +351,10 @@ public class EditorDockpaneView : UserControl
 		details.Children.Add(count);
 		DockPanel.SetDock(details, Dock.Right);
 		panel.Children.Add(details);
-		StackPanel status = new StackPanel
+		DockPanel status = new DockPanel
 		{
-			Orientation = Orientation.Horizontal,
-			VerticalAlignment = VerticalAlignment.Center
+			VerticalAlignment = VerticalAlignment.Center,
+			LastChildFill = true
 		};
 		TextBlock statusIndicator = new TextBlock
 		{
@@ -364,6 +364,7 @@ public class EditorDockpaneView : UserControl
 			VerticalAlignment = VerticalAlignment.Center
 		};
 		statusIndicator.SetBinding(TextBlock.ForegroundProperty, new Binding("PlacementStatus") { Converter = StatusBrush });
+		DockPanel.SetDock(statusIndicator, Dock.Left);
 		status.Children.Add(statusIndicator);
 		TextBlock placement = new TextBlock
 		{
@@ -372,6 +373,7 @@ public class EditorDockpaneView : UserControl
 			VerticalAlignment = VerticalAlignment.Center
 		};
 		placement.SetBinding(TextBlock.TextProperty, new Binding("PlacementStatus"));
+		placement.SetBinding(FrameworkElement.ToolTipProperty, new Binding("PlacementStatus"));
 		status.Children.Add(placement);
 		panel.Children.Add(status);
 		footer.Child = panel;
@@ -379,8 +381,14 @@ public class EditorDockpaneView : UserControl
 
 		static TextBlock CreateFooterText(string bindingPath)
 		{
-			TextBlock text = new TextBlock { Foreground = GetMutedForegroundBrush(), VerticalAlignment = VerticalAlignment.Center };
+			TextBlock text = new TextBlock
+			{
+				Foreground = GetMutedForegroundBrush(),
+				VerticalAlignment = VerticalAlignment.Center,
+				TextTrimming = TextTrimming.CharacterEllipsis
+			};
 			text.SetBinding(TextBlock.TextProperty, new Binding(bindingPath));
+			text.SetBinding(FrameworkElement.ToolTipProperty, new Binding(bindingPath));
 			return text;
 		}
 	}
