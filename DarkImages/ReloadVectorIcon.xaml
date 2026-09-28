@@ -1,15 +1,15 @@
-<!-- Dark-theme counterpart to Images/ReloadVectorIcon.xaml. -->
+<!-- Vector geometry from the corresponding 60x60 SVG. -->
 <Image xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Stretch="Uniform">
   <Image.Source>
     <DrawingImage xmlns:PresentationOptions="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options" PresentationOptions:Freeze="True">
       <DrawingImage.Drawing>
         <DrawingGroup>
           <DrawingGroup.Transform>
-            <ScaleTransform ScaleX="0.0625" ScaleY="0.0625" />
+            <ScaleTransform ScaleX="0.5333333333333333" ScaleY="0.5333333333333333" />
           </DrawingGroup.Transform>
-          <GeometryDrawing Geometry="M0,0 L512,0 L512,512 L0,512 Z" />
-          <GeometryDrawing Brush="#FF66CC00" Geometry="F1 M256,0 C114.615,0 0,114.615 0,256 C0,397.385 114.615,512 256,512 C397.385,512 512,397.385 512,256 C512,114.615 397.385,0 256,0 Z" />
-          <GeometryDrawing Brush="#FF343434" Geometry="F1 M256,431.967 C158.97,431.967 80.033,353.028 80.033,256 C80.033,227.332 87.046,199.345 100.189,174.323 L75.045,157.684 L182.327,103.456 L174.353,223.399 L148.242,206.12 C141.039,221.637 137.201,238.63 137.201,255.999 C137.201,321.506 190.495,374.8 256.002,374.8 C321.509,374.8 374.803,321.506 374.803,255.999 C374.803,190.492 321.508,137.199 256.001,137.199 L256.001,80.033 C353.029,80.033 431.968,158.971 431.968,256 C431.968,353.029 353.028,431.967 256,431.967 Z" />
+          <GeometryDrawing Brush="Transparent" Geometry="M0,0 L60,0 L60,60 L0,60 Z" />
+          <GeometryDrawing Brush='#FFC1C0C0' Geometry='M47,30.5c-3.764,0-7.317,1.581-9.75,4.338c-0.365,0.415-0.326,1.047,0.088,1.412c0.415,0.365,1.045,0.326,1.412-0.088 C40.803,33.835,43.811,32.5,47,32.5c6.065,0,11,4.935,11,11s-4.935,11-11,11c-4.992,0-9.407-3.367-10.741-8H40v-2h-7v7h2v-2.664 c2.093,4.531,6.781,7.664,12,7.664c7.168,0,13-5.832,13-13S54.168,30.5,47,30.5z' />
+          <GeometryDrawing Brush='#FFC1C0C0' Geometry='M26.515,10.5l-5-7H0v53h37.043C32.791,53.512,30,48.58,30,43c0-9.098,7.402-16.5,16.5-16.5c5.58,0,10.512,2.792,13.5,7.043 V19.5v-2v-7H26.515z M58,17.5H31.515l-3.571-5H58V17.5z' />
         </DrawingGroup>
       </DrawingImage.Drawing>
     </DrawingImage>
