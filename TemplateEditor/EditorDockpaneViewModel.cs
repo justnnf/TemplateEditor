@@ -12,7 +12,7 @@ namespace TemplateEditor;
 
 internal class EditorDockpaneViewModel : DockPane
 {
-	private const string _dockPaneID = "TemplateEditor_EditorDockpane";
+	private const string _dockPaneID = "TemplateEditor_EditorDockpaneV2";
 
 	internal const string ReadyPlacementStatus = "Ready. Select a template to place.";
 
@@ -331,7 +331,7 @@ internal class EditorDockpaneViewModel : DockPane
 	{
 		if (selectedTemplate != null)
 		{
-			int activationVersion = ((FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane") is EditorDockpaneViewModel editorDockpaneViewModel) ? (++editorDockpaneViewModel._activationVersion) : 0);
+			int activationVersion = ((FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpaneV2") is EditorDockpaneViewModel editorDockpaneViewModel) ? (++editorDockpaneViewModel._activationVersion) : 0);
 			TaskObservationService.Forget(ActivateSelectedTemplateToolAsync(selectedTemplate, activationVersion), "Template activation failed for '" + selectedTemplate?.Name + "'.");
 		}
 	}
@@ -372,7 +372,7 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private static bool IsStaleActivation(int activationVersion)
 	{
-		return FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane") is EditorDockpaneViewModel editorDockpaneViewModel && activationVersion != 0 && activationVersion != editorDockpaneViewModel._activationVersion;
+		return FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpaneV2") is EditorDockpaneViewModel editorDockpaneViewModel && activationVersion != 0 && activationVersion != editorDockpaneViewModel._activationVersion;
 	}
 
 	private static string GetToolIdForGeometryType(GeometryType templateGeometryType)
@@ -601,7 +601,7 @@ internal class EditorDockpaneViewModel : DockPane
 	{
 		try
 		{
-			if (FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane") is EditorDockpaneViewModel editorDockpaneViewModel)
+			if (FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpaneV2") is EditorDockpaneViewModel editorDockpaneViewModel)
 			{
 				editorDockpaneViewModel.ReloadTemplateConfig();
 				Show();
@@ -770,7 +770,7 @@ internal class EditorDockpaneViewModel : DockPane
 
 	private static void CompleteTemplateSelectionAfterPlacement()
 	{
-		DockPane val = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane");
+		DockPane val = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpaneV2");
 		EditorDockpaneViewModel viewModel = val as EditorDockpaneViewModel;
 		if (viewModel == null)
 		{
@@ -802,7 +802,7 @@ internal class EditorDockpaneViewModel : DockPane
 
 	internal static void SetPlacementStatus(string status)
 	{
-		if (FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane") is EditorDockpaneViewModel editorDockpaneViewModel)
+		if (FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpaneV2") is EditorDockpaneViewModel editorDockpaneViewModel)
 		{
 			editorDockpaneViewModel.SetPlacementStatusCore(status);
 		}
@@ -810,7 +810,7 @@ internal class EditorDockpaneViewModel : DockPane
 
 	internal static void RefreshSettingsStatus()
 	{
-		DockPane val = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane");
+		DockPane val = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpaneV2");
 		EditorDockpaneViewModel viewModel = val as EditorDockpaneViewModel;
 		if (viewModel != null)
 		{
@@ -887,7 +887,7 @@ internal class EditorDockpaneViewModel : DockPane
 
 	internal static void RefreshFavouriteAndRecentLists(bool refreshVisibleTemplates = true)
 	{
-		if (FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane") is EditorDockpaneViewModel editorDockpaneViewModel)
+		if (FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpaneV2") is EditorDockpaneViewModel editorDockpaneViewModel)
 		{
 			editorDockpaneViewModel.BuildFavouriteAndRecentLists();
 			if (refreshVisibleTemplates && (editorDockpaneViewModel._showFavouriteTemplates || editorDockpaneViewModel._showRecentTemplates))
@@ -1043,7 +1043,7 @@ internal class EditorDockpaneViewModel : DockPane
 
 	internal static void Show()
 	{
-		DockPane val = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane");
+		DockPane val = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpaneV2");
 		if (val != null)
 		{
 			val.Activate();

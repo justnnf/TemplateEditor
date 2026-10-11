@@ -13,6 +13,8 @@ internal sealed class AssociationRuleCatalog
 
 	private readonly List<AssociationRule> _rules;
 
+	private readonly Dictionary<string, List<AssociationRule>> _rulesByType;
+
 	private readonly bool _isAvailable;
 
 	public static AssociationRuleCatalog Current => _current ?? (_current = Load());
@@ -23,9 +25,11 @@ internal sealed class AssociationRuleCatalog
 
 	public static string RuleFilePath => ResolveRuleFilePath();
 
-	private AssociationRuleCatalog(List<AssociationRule> rules, bool isAvailable = true)
+	internal AssociationRuleCatalog(List<AssociationRule> rules, bool isAvailable = true)
 	{
 		_rules = rules ?? new List<AssociationRule>();
+		_rulesByType = _rules.GroupBy(rule => rule.AssociationType ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+			.ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 		_isAvailable = isAvailable;
 	}
 
@@ -49,7 +53,7 @@ internal sealed class AssociationRuleCatalog
 		{
 			return true;
 		}
-		return _rules.Any((AssociationRule rule) => string.Equals(rule.AssociationType, normalizedType, StringComparison.OrdinalIgnoreCase) && Matches(rule.FromTable, containerOrTarget.TableName) && Matches(rule.FromAssetGroup, containerOrTarget.AssetGroup) && Matches(rule.FromAssetType, containerOrTarget.AssetType) && Matches(rule.ToTable, contentOrCreated.TableName) && Matches(rule.ToAssetGroup, contentOrCreated.AssetGroup) && Matches(rule.ToAssetType, contentOrCreated.AssetType));
+		return _rulesByType.TryGetValue(normalizedType, out List<AssociationRule> rules) && rules.Any((AssociationRule rule) => Matches(rule.FromTable, containerOrTarget.TableName) && Matches(rule.FromAssetGroup, containerOrTarget.AssetGroup) && Matches(rule.FromAssetType, containerOrTarget.AssetType) && Matches(rule.ToTable, contentOrCreated.TableName) && Matches(rule.ToAssetGroup, contentOrCreated.AssetGroup) && Matches(rule.ToAssetType, contentOrCreated.AssetType));
 	}
 
 	public HashSet<string> GetAllowedCounterpartTables(AssociationType associationType, FeatureLayerInfo knownSide, bool knownSideIsFrom)
@@ -64,12 +68,12 @@ internal sealed class AssociationRuleCatalog
 			return null;
 		}
 		HashSet<string> hashSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-		foreach (AssociationRule rule in _rules)
+		if (!_rulesByType.TryGetValue(ruleAssociationTypeName, out List<AssociationRule> rules))
 		{
-			if (!string.Equals(rule.AssociationType, ruleAssociationTypeName, StringComparison.OrdinalIgnoreCase))
-			{
-				continue;
-			}
+			return hashSet;
+		}
+		foreach (AssociationRule rule in rules)
+		{
 			string ruleValue = (knownSideIsFrom ? rule.FromTable : rule.ToTable);
 			string ruleValue2 = (knownSideIsFrom ? rule.FromAssetGroup : rule.ToAssetGroup);
 			string ruleValue3 = (knownSideIsFrom ? rule.FromAssetType : rule.ToAssetType);

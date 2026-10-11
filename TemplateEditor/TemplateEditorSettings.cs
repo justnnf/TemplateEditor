@@ -91,7 +91,7 @@ internal sealed class TemplateEditorSettings
 
 	public bool UseCompactDockpaneLayout { get; set; }
 
-	public bool UseSidebarDockpaneLayout { get; set; }
+	public bool UseSidebarDockpaneLayout { get; set; } = true;
 
 	public bool EnableContinuousPlacementMode { get; set; }
 

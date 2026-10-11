@@ -1,6 +1,8 @@
-# Template Editor
+# Template Editor 2.0.0
 
-Template Editor is an ArcGIS Pro add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
+Template Editor is an ArcGIS Pro 3.3 add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
+
+Version 2 opens in a narrow left sidebar tabbed with ArcGIS Pro's Contents pane by default. It also adds line-end terminal choices during sketching and reduces work during post-placement split and association checks.
 
 The add-in does not ship with a customer-specific template configuration. Each user or team selects their own template JSON and can generate their own optional association-rule JSON from the active map.
 
@@ -31,11 +33,17 @@ The ArcGIS Pro ribbon adds a `Templates` tab with three commands:
 
 ## Building, Packaging, and Deployment
 
-`dotnet build TemplateEditor.csproj` compiles the add-in and creates a package in the build output without changing the installed add-in or the `Release` folder.
+Build a versioned package from the repository root:
+
+```powershell
+dotnet build TemplateEditor.csproj -c Release
+```
+
+Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.0.0, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.0.0.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
 
 Use an explicit MSBuild target when needed:
 
-- `dotnet msbuild TemplateEditor.csproj -target:DeployArcGISAddIn` registers and installs the current package for ArcGIS Pro.
+- `dotnet msbuild TemplateEditor.csproj -target:DeployArcGISAddIn` builds and installs the current package for ArcGIS Pro. Restart ArcGIS Pro to load it.
 - `dotnet msbuild TemplateEditor.csproj -target:PublishArcGISAddIn` copies the current package to `Release` with its versioned filename.
 
 User preferences are stored outside the add-in package at:
@@ -93,6 +101,8 @@ The dockpane includes:
 - Placement status and configuration health indicators
 - Optional compact layout
 
+The editor uses the narrow sidebar layout by default and opens in the Contents pane's left-side dock group as another tab. You can switch the sidebar layout in `Settings > Interface`; ArcGIS Pro controls the saved position after you move the pane.
+
 Use `Groups` when you need to expand a group and place one part. Use `All` when you want one flat list for quick searching.
 
 ## Placing Templates
@@ -112,6 +122,10 @@ Template type behavior:
 - Non-spatial table templates run from the map click workflow and can prompt for association targets.
 - Group templates create all configured parts together.
 - Expanded group parts create only the selected part.
+
+Right-click a template to place it continuously, mirror its configured geometry, or set one-time attribute overrides. Continuous placement keeps the selected tool active after a successful placement until you stop it.
+
+For Utility Network line sketches, the add-in checks for coincident terminally configured devices after the first vertex and at the final vertex. If several eligible devices share an endpoint, choose the device first, then its terminal. The terminal list follows the junction-edge rules for the selected line asset type. The From and To choices follow the first and last sketch vertices and are written to the line's terminal fields when it is created. Canceling a choice leaves that endpoint's terminal at the template default. These prompts apply to line sketches; parallel copy uses its existing placement workflow.
 
 ## Preview, Rotation, and Mirror
 
@@ -165,6 +179,8 @@ Template Editor can create or prompt for several association types:
 
 Association behavior is controlled in `Settings > Associations`.
 
+Candidate prompts can highlight the selected feature on the map, controlled by `Settings > Interface`. The map zooms only when the placed feature and candidates fall outside the current view. Post-placement searches reuse layer and rule information where possible to reduce repeated work.
+
 Prompt modes:
 
 - `Always ask`
@@ -174,8 +190,10 @@ Prompt modes:
 
 Configured group associations can run in:
 
-- `Fast`: batch configured associations into one edit operation.
+- `Fast`: batch configured group associations into one edit operation.
 - `Debug`: create associations one at a time to isolate exact failures.
+
+Automatic prompts that create associations with multiple targets run the target edits together on the ArcGIS main thread while keeping each association as a separate operation.
 
 ## Placement Attribute Overrides
 
@@ -184,7 +202,7 @@ Template Editor supports two override scopes:
 - Session overrides: configured in Settings and applied across placements.
 - One-time placement overrides: opened from the template context workflow and applied only to the next placement.
 
-Override definitions are loaded from the optional app-data JSON file. Presets for one-time overrides are saved in:
+Override definitions and session selections are saved in `user-settings.json`. Favorites for one-time overrides are saved in:
 
 ```text
 %LOCALAPPDATA%\TemplateEditor\placement-override-favourites.json
@@ -199,7 +217,7 @@ The settings window is organized into:
 - `Parallel Copy`: offset defaults, multi-segment behavior, and selected-line automation.
 - `Associations`: prompt modes, search distances, fallback groups, and rule catalog generation.
 - `Attribute Overrides`: session-level placement attribute overrides.
-- `Interface`: compact layout, recent template count, map hint colors, and diagnostics.
+- `Interface`: sidebar and compact layouts, recent template count, map hint and preview colors, and diagnostics.
 
 ## Troubleshooting
 
@@ -231,6 +249,10 @@ Check:
 - A valid association rule exists or fallback target settings match the map.
 - Search distances are large enough for the placement.
 - The selected prompt mode allows prompting.
+
+### Terminal Choices Are Not Appearing
+
+Check that the line is being drawn with the line sketch tool, the endpoint is coincident with a device in the active map, the line belongs to a Utility Network, and a junction-edge rule permits a terminal on that device for the line's asset group and type. The line layer must have `FROMDEVICETERMINAL` and `TODEVICETERMINAL` fields.
 
 ### Split Prompts Are Not Appearing
 
@@ -280,5 +302,6 @@ feature classes, and overlay handles inside the scope that owns them.
 
 A successful build verifies compilation and packaging, but not DAML registration
 or interactive behavior. Before release, exercise point, line, polygon, and table
-placement; preview rotation; offset/parallel copy; line splitting; Utility Network
-associations; settings persistence; and light/dark UI resources in ArcGIS Pro 3.3.
+placement; terminal choices at both line ends; preview rotation; offset/parallel
+copy; line splitting; Utility Network associations; settings persistence; and
+light/dark UI resources in ArcGIS Pro 3.3.

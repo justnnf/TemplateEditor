@@ -67,6 +67,8 @@ internal static class PlacementEnhancementService
 
 	private static readonly Dictionary<string, LayerMetadata> LayerMetadataCache = new Dictionary<string, LayerMetadata>(StringComparer.Ordinal);
 
+	private static readonly Dictionary<string, SpatialReference> LayerSpatialReferenceCache = new Dictionary<string, SpatialReference>(StringComparer.Ordinal);
+
 	private static readonly object CacheLock = new object();
 
 	private static GeometryType GetFeatureLayerShapeType(FeatureLayer layer)
@@ -113,6 +115,7 @@ internal static class PlacementEnhancementService
 				((IDisposable)metadata.Definition)?.Dispose();
 			}
 			LayerMetadataCache.Clear();
+			LayerSpatialReferenceCache.Clear();
 			FacilityIdFieldCache.Clear();
 		}
 	}
@@ -580,18 +583,21 @@ internal static class PlacementEnhancementService
 		}
 		int createdCount = 0;
 		List<string> failures = new List<string>();
-		foreach (FeatureCandidate candidate in candidates)
+		await QueuedTask.Run((Action)delegate
 		{
-			try
+			foreach (FeatureCandidate candidate in candidates)
 			{
-				await ExecuteAssociationAsync(createdFeature, candidate);
-				createdCount++;
+				try
+				{
+					ExecuteAssociation(createdFeature, candidate, showProgressor: false);
+					createdCount++;
+				}
+				catch (Exception ex)
+				{
+					failures.Add(candidate.Label + ": " + ex.Message);
+				}
 			}
-			catch (Exception ex)
-			{
-				failures.Add(candidate.Label + ": " + ex.Message);
-			}
-		}
+		}, TaskCreationOptions.None);
 		if (failures.Count > 0)
 		{
 			string displayedFailures = string.Join("\n", failures.Take(8));
@@ -647,14 +653,14 @@ internal static class PlacementEnhancementService
 	private static async Task<List<FeatureCandidate>> FindAssociationCandidatesAsync(PlacedFeatureContext createdFeature, IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation, IEnumerable<string> targetGroups, IEnumerable<string> targetLayerNames, double searchDistance, AssociationType associationType, string labelPrefix, bool createdFeatureIsAssociationSource = false, Func<Geometry, bool> geometryPredicate = null)
 	{
 		Geometry searchGeometry = await CreateSearchGeometryAsync(createdFeature.Geometry, searchDistance);
-		bool useRuleCatalogSearchScope = AssociationRuleCatalog.Current.HasRules;
-		if (!AssociationRuleCatalog.Current.IsAvailable)
+		AssociationRuleCatalog catalog = AssociationRuleCatalog.Current;
+		bool useRuleCatalogSearchScope = catalog.HasRules;
+		if (!catalog.IsAvailable)
 		{
 			return new List<FeatureCandidate>();
 		}
-		FeatureLayerInfo createdFeatureInfo = await GetPlacedFeatureInfoAsync(createdFeature);
+		FeatureLayerInfo createdFeatureInfo = catalog.HasRules ? await GetPlacedFeatureInfoAsync(createdFeature) : null;
 		Func<LayerSearchContext, bool> layerContextPredicate = null;
-		AssociationRuleCatalog catalog = AssociationRuleCatalog.Current;
 		if (catalog.HasRules && createdFeatureInfo != null)
 		{
 			HashSet<string> allowedCounterpartTables = catalog.GetAllowedCounterpartTables(associationType, createdFeatureInfo, createdFeatureIsAssociationSource);
@@ -703,11 +709,15 @@ internal static class PlacementEnhancementService
 
 	private static async Task<FeatureLayerInfo> GetPlacedFeatureInfoAsync(PlacedFeatureContext createdFeature)
 	{
+		if (createdFeature?.AssociationInfo != null)
+		{
+			return createdFeature.AssociationInfo;
+		}
 		if (createdFeature?.Layer == null || createdFeature.ObjectID <= 0)
 		{
 			return null;
 		}
-		return await QueuedTask.Run<FeatureLayerInfo>((Func<FeatureLayerInfo>)delegate
+		createdFeature.AssociationInfo = await QueuedTask.Run<FeatureLayerInfo>((Func<FeatureLayerInfo>)delegate
 		{
 			QueryFilter val = new QueryFilter
 			{
@@ -735,6 +745,7 @@ internal static class PlacementEnhancementService
 				((IDisposable)val2)?.Dispose();
 			}
 		}, TaskCreationOptions.None);
+		return createdFeature.AssociationInfo;
 	}
 
 	private static bool IsAllowedAssociationCandidate(AssociationType associationType, FeatureLayer candidateLayer, Feature candidateFeature, FeatureLayerInfo createdFeatureInfo, bool createdFeatureIsAssociationSource)
@@ -1081,18 +1092,29 @@ internal static class PlacementEnhancementService
 
 	private static SpatialReference GetLayerSpatialReference(FeatureLayer layer)
 	{
-		object obj;
 		if (layer == null)
 		{
-			obj = null;
+			return null;
 		}
-		else
+		string uri = ((MapMember)layer).URI;
+		lock (CacheLock)
 		{
-			FeatureClass featureClass = layer.GetFeatureClass();
-			obj = ((featureClass != null) ? featureClass.GetDefinition() : null);
+			if (LayerSpatialReferenceCache.TryGetValue(uri, out SpatialReference cached))
+			{
+				return cached;
+			}
 		}
-		FeatureClassDefinition val = (FeatureClassDefinition)obj;
-		return (val != null) ? val.GetSpatialReference() : null;
+		SpatialReference spatialReference;
+		using (FeatureClass featureClass = layer.GetFeatureClass())
+		using (FeatureClassDefinition definition = featureClass?.GetDefinition())
+		{
+			spatialReference = definition?.GetSpatialReference();
+		}
+		lock (CacheLock)
+		{
+			LayerSpatialReferenceCache[uri] = spatialReference;
+		}
+		return spatialReference;
 	}
 
 	private static Geometry ProjectGeometry(Geometry geometry, SpatialReference outputSpatialReference)
@@ -1176,25 +1198,29 @@ internal static class PlacementEnhancementService
 
 	private static async Task ExecuteAssociationAsync(PlacedFeatureContext createdFeature, FeatureCandidate candidate)
 	{
-		await QueuedTask.Run((Action)delegate
+		await QueuedTask.Run((Action)(() => ExecuteAssociation(createdFeature, candidate, showProgressor: true)), TaskCreationOptions.None);
+	}
+
+	private static void ExecuteAssociation(PlacedFeatureContext createdFeature, FeatureCandidate candidate, bool showProgressor)
+	{
+		EditOperation operation = new EditOperation
 		{
-			EditOperation val = new EditOperation
-			{
-				Name = "Create association",
-				ProgressMessage = "Creating association...",
-				ShowProgressor = true
-			};
-			RowHandle val2 = new RowHandle((MapMember)(object)candidate.Layer, candidate.ObjectID);
-			RowHandle val3 = new RowHandle((MapMember)(object)createdFeature.Layer, createdFeature.ObjectID);
-			RowHandle val4 = (candidate.CreatedFeatureIsAssociationSource ? val3 : val2);
-			RowHandle val5 = (candidate.CreatedFeatureIsAssociationSource ? val2 : val3);
-			AssociationDescription val6 = (((int)candidate.AssociationType != 2) ? new AssociationDescription(candidate.AssociationType, val4, val5) : new AssociationDescription((AssociationType)2, val4, val5, !candidate.CreatedFeatureIsAssociationSource && createdFeature.Layer != null));
-			val.Create(val6);
-			if (!val.IsEmpty && !val.Execute())
-			{
-				throw new InvalidOperationException(string.IsNullOrWhiteSpace(val.ErrorMessage) ? "The association could not be created." : val.ErrorMessage);
-			}
-		}, TaskCreationOptions.None);
+			Name = "Create association",
+			ProgressMessage = "Creating association...",
+			ShowProgressor = showProgressor
+		};
+		RowHandle target = new RowHandle((MapMember)(object)candidate.Layer, candidate.ObjectID);
+		RowHandle source = new RowHandle((MapMember)(object)createdFeature.Layer, createdFeature.ObjectID);
+		RowHandle from = candidate.CreatedFeatureIsAssociationSource ? source : target;
+		RowHandle to = candidate.CreatedFeatureIsAssociationSource ? target : source;
+		AssociationDescription description = (int)candidate.AssociationType != 2
+			? new AssociationDescription(candidate.AssociationType, from, to)
+			: new AssociationDescription((AssociationType)2, from, to, !candidate.CreatedFeatureIsAssociationSource && createdFeature.Layer != null);
+		operation.Create(description);
+		if (!operation.IsEmpty && !operation.Execute())
+		{
+			throw new InvalidOperationException(string.IsNullOrWhiteSpace(operation.ErrorMessage) ? "The association could not be created." : operation.ErrorMessage);
+		}
 	}
 
 	private static async Task<FeatureCandidate> ChooseCandidateAsync(PlacedFeatureContext createdFeature, string title, string prompt, IReadOnlyList<FeatureCandidate> candidates, bool isSplitCandidate)

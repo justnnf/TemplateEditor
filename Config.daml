@@ -48,7 +48,7 @@
         </button>
       </controls>
       <dockPanes>
-        <dockPane id="TemplateEditor_EditorDockpane" caption="Template Editor" className="TemplateEditor.EditorDockpaneViewModel" dock="bottom">
+        <dockPane id="TemplateEditor_EditorDockpaneV2" caption="Template Editor" className="TemplateEditor.EditorDockpaneViewModel" dock="group" dockWith="esri_core_contentsDockPane">
           <content className="TemplateEditor.EditorDockpaneView" />
         </dockPane>
       </dockPanes>

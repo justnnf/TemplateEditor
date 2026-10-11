@@ -31,7 +31,7 @@ internal class AddinModule : Module
 	private void OnProjectOpened(ProjectEventArgs args)
 	{
 		TaskObservationService.Forget(PlacementEnhancementService.ClearMetadataCacheAsync(), "Could not clear cached map metadata after opening a project.");
-		DockPane val = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpane");
+		DockPane val = FrameworkApplication.DockPaneManager.Find("TemplateEditor_EditorDockpaneV2");
 		if (val != null && val.IsVisible)
 		{
 			val.Hide();

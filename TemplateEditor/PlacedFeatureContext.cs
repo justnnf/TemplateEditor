@@ -16,6 +16,8 @@ internal sealed class PlacedFeatureContext
 
 	public long ObjectID { get; set; }
 
+	public FeatureLayerInfo AssociationInfo { get; set; }
+
 	public bool AllowPlacementEnhancements { get; set; } = true;
 
 	public MapPoint SplitPointOverride { get; set; }

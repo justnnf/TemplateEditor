@@ -255,7 +255,7 @@ internal static class CommonFunctions
 		}
 	}
 
-	public static async Task<bool> CreateFeatures(Geometry sketchGeometry, double rotationDegrees = 0.0, MapPoint splitPointOverride = null)
+	public static async Task<bool> CreateFeatures(Geometry sketchGeometry, double rotationDegrees = 0.0, MapPoint splitPointOverride = null, LineTerminalSelection lineTerminals = null)
 	{
 		// Placement is staged: validate the request, build one edit operation,
 		// execute it, then run associations and post-placement enhancements.
@@ -287,7 +287,7 @@ internal static class CommonFunctions
 			}
 			if (selectedTemplate?.IsGroupChild ?? false)
 			{
-				return await CreateGroupChildFeature(selectedTemplate, sketchGeometry, rotationDegrees, splitPointOverride);
+				return await CreateGroupChildFeature(selectedTemplate, sketchGeometry, rotationDegrees, splitPointOverride, lineTerminals);
 			}
 			bool isSimpleTemplate = templates.SimpleTemplates.Any((SimpleTemplate n) => string.Equals(n.Name, templateName, StringComparison.OrdinalIgnoreCase));
 			if (isSimpleTemplate)
@@ -298,7 +298,7 @@ internal static class CommonFunctions
 					return false;
 				}
 			}
-			PlacementBuildResult placement = await BuildPlacementOperationAsync(templateName, sketchGeometry, isSimpleTemplate, PlacementOptions.Full, rotationDegrees, splitPointOverride);
+			PlacementBuildResult placement = await BuildPlacementOperationAsync(templateName, sketchGeometry, isSimpleTemplate, PlacementOptions.Full, rotationDegrees, splitPointOverride, lineTerminals);
 			EditorDockpaneViewModel.SetPlacementStatus("Creating " + selectedTemplate.DisplayName + ": adding features, rows, and configured attributes...");
 			string errorMessage = await ExecutePlacementOperationAsync(placement.Operation);
 			if (errorMessage == null)
@@ -316,7 +316,7 @@ internal static class CommonFunctions
 				return true;
 			}
 			EditorDockpaneViewModel.SetPlacementStatus("Placement failed. Choose a fallback option or cancel.");
-			return await TryPlaceWithFallbacksAsync(templateName, sketchGeometry, isSimpleTemplate, errorMessage, rotationDegrees);
+			return await TryPlaceWithFallbacksAsync(templateName, sketchGeometry, isSimpleTemplate, errorMessage, rotationDegrees, lineTerminals);
 		}
 		catch (OperationCanceledException)
 		{
@@ -519,7 +519,7 @@ internal static class CommonFunctions
 		return string.Equals(text, "DEFAULT", StringComparison.OrdinalIgnoreCase) || string.Equals(text, "SDE.DEFAULT", StringComparison.OrdinalIgnoreCase) || text.EndsWith(".DEFAULT", StringComparison.OrdinalIgnoreCase);
 	}
 
-	private static async Task<bool> CreateGroupChildFeature(DisplayTemplate childTemplate, Geometry sketchGeometry, double rotationDegrees, MapPoint splitPointOverride = null)
+	private static async Task<bool> CreateGroupChildFeature(DisplayTemplate childTemplate, Geometry sketchGeometry, double rotationDegrees, MapPoint splitPointOverride = null, LineTerminalSelection lineTerminals = null)
 	{
 		GetLoadedTemplateConfigOrThrow();
 		SimpleTemplateReference childTemplateRef = GetGroupChildReference(childTemplate);
@@ -548,7 +548,7 @@ internal static class CommonFunctions
 		}
 		else
 		{
-			TryTrackPlacedFeature(createdFeatures, template, featureGeometry, await CreateFeatureOrRowFromSimpleTemplate(template, featureGeometry, operation, includeDefaultAttributes: true, rotationDegrees, childTemplate.ParentTemplateName, childTemplate.FeatureId), IsPlacementEnhancementCandidate(childTemplateRef), splitPointOverride);
+			TryTrackPlacedFeature(createdFeatures, template, featureGeometry, await CreateFeatureOrRowFromSimpleTemplate(template, featureGeometry, operation, includeDefaultAttributes: true, rotationDegrees, childTemplate.ParentTemplateName, childTemplate.FeatureId, lineTerminals), IsPlacementEnhancementCandidate(childTemplateRef), splitPointOverride);
 		}
 		string errorMessage = await ExecutePlacementOperationAsync(operation);
 		if (errorMessage != null)
@@ -563,14 +563,14 @@ internal static class CommonFunctions
 		return true;
 	}
 
-	private static async Task<bool> TryPlaceWithFallbacksAsync(string templateName, Geometry sketchGeometry, bool isSimpleTemplate, string originalErrorMessage, double rotationDegrees)
+	private static async Task<bool> TryPlaceWithFallbacksAsync(string templateName, Geometry sketchGeometry, bool isSimpleTemplate, string originalErrorMessage, double rotationDegrees, LineTerminalSelection lineTerminals = null)
 	{
 		// Fallbacks let the user keep the core feature placement when optional
 		// configured associations or defaults are what caused ArcGIS to reject it.
 		if (DialogService.Show("Template placement failed.\n\n" + CleanErrorMessage(originalErrorMessage) + "\n\nYou can retry without configured associations, or cancel placement.", "Template Editor", new DialogButtonChoice("Place Without Associations", MessageBoxResult.Yes, isPrimary: true), new DialogButtonChoice("Cancel", MessageBoxResult.No, isPrimary: false, isCancel: true)) == MessageBoxResult.Yes)
 		{
 			EditorDockpaneViewModel.SetPlacementStatus("Retrying " + templateName + ": placing without configured associations...");
-			PlacementBuildResult placementWithoutAssociations = await BuildPlacementOperationAsync(templateName, sketchGeometry, isSimpleTemplate, PlacementOptions.WithoutAssociations, rotationDegrees);
+			PlacementBuildResult placementWithoutAssociations = await BuildPlacementOperationAsync(templateName, sketchGeometry, isSimpleTemplate, PlacementOptions.WithoutAssociations, rotationDegrees, lineTerminals: lineTerminals);
 			string associationFallbackError = await ExecutePlacementOperationAsync(placementWithoutAssociations.Operation);
 			if (associationFallbackError == null)
 			{
@@ -584,7 +584,7 @@ internal static class CommonFunctions
 		if (DialogService.Show("Template placement still failed.\n\n" + CleanErrorMessage(originalErrorMessage) + "\n\nYou can retry with only subtype and required attributes, or cancel placement.", "Template Editor", new DialogButtonChoice("Place Required Only", MessageBoxResult.Yes, isPrimary: true), new DialogButtonChoice("Cancel", MessageBoxResult.No, isPrimary: false, isCancel: true)) == MessageBoxResult.Yes)
 		{
 			EditorDockpaneViewModel.SetPlacementStatus("Retrying " + templateName + ": placing with only subtype and required attributes...");
-			PlacementBuildResult minimalPlacement = await BuildPlacementOperationAsync(templateName, sketchGeometry, isSimpleTemplate, PlacementOptions.MinimalAttributes, rotationDegrees);
+			PlacementBuildResult minimalPlacement = await BuildPlacementOperationAsync(templateName, sketchGeometry, isSimpleTemplate, PlacementOptions.MinimalAttributes, rotationDegrees, lineTerminals: lineTerminals);
 			string minimalError = await ExecutePlacementOperationAsync(minimalPlacement.Operation);
 			if (minimalError == null)
 			{
@@ -640,7 +640,7 @@ internal static class CommonFunctions
 		return string.IsNullOrWhiteSpace(details) ? text : (details + "\n" + text);
 	}
 
-	private static async Task<PlacementBuildResult> BuildPlacementOperationAsync(string templateName, Geometry sketchGeometry, bool isSimpleTemplate, PlacementOptions options, double rotationDegrees, MapPoint splitPointOverride = null)
+	private static async Task<PlacementBuildResult> BuildPlacementOperationAsync(string templateName, Geometry sketchGeometry, bool isSimpleTemplate, PlacementOptions options, double rotationDegrees, MapPoint splitPointOverride = null, LineTerminalSelection lineTerminals = null)
 	{
 		// Build first, execute later. The returned feature info tokens are resolved
 		// after execution and then used to create utility-network associations.
@@ -657,7 +657,7 @@ internal static class CommonFunctions
 		List<AssociationObject> configuredAssociations = new List<AssociationObject>();
 		if (!isSimpleTemplate)
 		{
-			await BuildGroupPlacementOperationAsync(templateName, sketchGeometry, operation, createdFeatures, featureInfos, configuredAssociations, options, rotationDegrees, splitPointOverride);
+			await BuildGroupPlacementOperationAsync(templateName, sketchGeometry, operation, createdFeatures, featureInfos, configuredAssociations, options, rotationDegrees, splitPointOverride, lineTerminals);
 		}
 		else
 		{
@@ -676,7 +676,7 @@ internal static class CommonFunctions
 			}
 			else
 			{
-				TryTrackPlacedFeature(createdFeatures, template, sketchGeometry, await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, rotationDegrees), allowPlacementEnhancements: true, splitPointOverride);
+				TryTrackPlacedFeature(createdFeatures, template, sketchGeometry, await CreateFeatureOrRowFromSimpleTemplate(template, sketchGeometry, operation, options.IncludeDefaultAttributes, rotationDegrees, lineTerminals: lineTerminals), allowPlacementEnhancements: true, splitPointOverride);
 			}
 		}
 		return new PlacementBuildResult
@@ -689,7 +689,7 @@ internal static class CommonFunctions
 		};
 	}
 
-	private static async Task BuildGroupPlacementOperationAsync(string templateName, Geometry sketchGeometry, EditOperation operation, List<PlacedFeatureContext> createdFeatures, List<FeatureInfo> featureTokens, List<AssociationObject> configuredAssociations, PlacementOptions options, double rotationDegrees, MapPoint splitPointOverride)
+	private static async Task BuildGroupPlacementOperationAsync(string templateName, Geometry sketchGeometry, EditOperation operation, List<PlacedFeatureContext> createdFeatures, List<FeatureInfo> featureTokens, List<AssociationObject> configuredAssociations, PlacementOptions options, double rotationDegrees, MapPoint splitPointOverride, LineTerminalSelection lineTerminals)
 	{
 		TemplateConfig templates = GetLoadedTemplateConfigOrThrow();
 		GroupTemplate groupTemplate = templates.GroupTemplates.FirstOrDefault((GroupTemplate n) => string.Equals(n.Name, templateName, StringComparison.OrdinalIgnoreCase));
@@ -707,7 +707,7 @@ internal static class CommonFunctions
 				throw new InvalidOperationException($"Group template '{groupTemplate.Name}' references missing simple template '{simpleTemplateRef.Name}'.");
 			}
 			Geometry featureGeometry = CreateGeometryForTemplate(simpleTemplateRef, sketchGeometry, rotationDegrees);
-			RowToken token = await CreateFeatureOrRowFromSimpleTemplate(template, featureGeometry, operation, options.IncludeDefaultAttributes, rotationDegrees, groupTemplate.Name, simpleTemplateRef.FeatureId);
+			RowToken token = await CreateFeatureOrRowFromSimpleTemplate(template, featureGeometry, operation, options.IncludeDefaultAttributes, rotationDegrees, groupTemplate.Name, simpleTemplateRef.FeatureId, simpleTemplateRef.FeatureId == 1 && ReferenceEquals(featureGeometry, sketchGeometry) ? lineTerminals : null);
 			TryTrackPlacedFeature(createdFeatures, template, featureGeometry, token, IsPlacementEnhancementCandidate(simpleTemplateRef), splitPointOverride);
 			featureTokens.Add(new FeatureInfo
 			{
@@ -1687,7 +1687,7 @@ internal static class CommonFunctions
 		return new RowHandle(featureInfo.Token);
 	}
 
-	private static async Task<RowToken> CreateFeatureOrRowFromSimpleTemplate(SimpleTemplate template, Geometry geometry, EditOperation operation, bool includeDefaultAttributes, double rotationDegrees = 0.0, string parentTemplateName = null, int featureId = 0)
+	private static async Task<RowToken> CreateFeatureOrRowFromSimpleTemplate(SimpleTemplate template, Geometry geometry, EditOperation operation, bool includeDefaultAttributes, double rotationDegrees = 0.0, string parentTemplateName = null, int featureId = 0, LineTerminalSelection lineTerminals = null)
 	{
 		if (template == null)
 		{
@@ -1702,7 +1702,7 @@ internal static class CommonFunctions
 			{
 				throw new InvalidOperationException($"Layer '{template.GroupLayer}/{template.SubtypeLayer}' was not found for template '{template.Name}'.");
 			}
-			token = await CreateFeature(layer, geometry, template, operation, includeDefaultAttributes, rotationDegrees, placementPartKey);
+			token = await CreateFeature(layer, geometry, template, operation, includeDefaultAttributes, rotationDegrees, placementPartKey, lineTerminals);
 		}
 		else
 		{
@@ -1716,7 +1716,7 @@ internal static class CommonFunctions
 		return token;
 	}
 
-	private static async Task<RowToken> CreateFeature(FeatureLayer layer, Geometry geometry, SimpleTemplate template, EditOperation operation, bool includeDefaultAttributes, double rotationDegrees = 0.0, string placementPartKey = null)
+	private static async Task<RowToken> CreateFeature(FeatureLayer layer, Geometry geometry, SimpleTemplate template, EditOperation operation, bool includeDefaultAttributes, double rotationDegrees = 0.0, string placementPartKey = null, LineTerminalSelection lineTerminals = null)
 	{
 		Dictionary<string, object> defaultFieldValues = template.DefaultFieldValues ?? new Dictionary<string, object>();
 		string subtypeField = null;
@@ -1755,6 +1755,17 @@ internal static class CommonFunctions
 			Dictionary<string, object> dictionary2 = dictionary;
 			string key2 = key;
 			dictionary2[key2] = await GetDatabaseFieldValueFromConfigValue(effectiveFieldValues, subtype, fields, fieldName, rotationDegrees);
+		}
+		if (geometry is Polyline && lineTerminals != null)
+		{
+			if (lineTerminals.FromTerminalId.HasValue)
+			{
+				attributes["FROMDEVICETERMINAL"] = lineTerminals.FromTerminalId.Value;
+			}
+			if (lineTerminals.ToTerminalId.HasValue)
+			{
+				attributes["TODEVICETERMINAL"] = lineTerminals.ToTerminalId.Value;
+			}
 		}
 		return operation.Create((MapMember)layer, attributes);
 	}

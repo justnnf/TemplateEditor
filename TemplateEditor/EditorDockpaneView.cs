@@ -82,7 +82,7 @@ public class EditorDockpaneView : UserControl
 
 	private bool IsCompactLayout => AddinConfiguration.Settings?.UseCompactDockpaneLayout ?? false;
 
-	private bool IsSidebarLayout => AddinConfiguration.Settings?.UseSidebarDockpaneLayout ?? false;
+	private bool IsSidebarLayout => AddinConfiguration.Settings?.UseSidebarDockpaneLayout ?? true;
 
 	public EditorDockpaneView()
 	{
