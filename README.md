@@ -1,4 +1,4 @@
-# Template Editor 2.0.1
+# Template Editor 2.0.2
 
 Template Editor is an ArcGIS Pro 3.3 add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
 
@@ -39,7 +39,7 @@ Build a versioned package from the repository root:
 dotnet build TemplateEditor.csproj -c Release
 ```
 
-Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.0.1, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.0.1.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
+Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.0.2, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.0.2.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
 
 Use an explicit MSBuild target when needed:
 
@@ -125,7 +125,7 @@ Template type behavior:
 
 Right-click a template to place it continuously, mirror its configured geometry, or set one-time attribute overrides. Continuous placement keeps the selected tool active after a successful placement until you stop it.
 
-For Utility Network line sketches, the add-in checks for coincident terminally configured devices after the first vertex and at the final vertex. If several eligible devices share an endpoint, choose the device first, then its terminal. The terminal list follows the junction-edge rules for the selected line asset type. The From and To choices follow the first and last sketch vertices and are written to the line's terminal fields when it is created. Canceling a choice leaves that endpoint's terminal at the template default. These prompts apply to line sketches; parallel copy uses its existing placement workflow.
+For Utility Network line sketches, the add-in uses the device each endpoint snaps to. It prompts for that device's terminal after the first vertex and at the final vertex, using the junction-edge rules for the selected line asset type. An endpoint without a valid device snap has no terminal prompt. The From and To choices follow the first and last sketch vertices and are written to the line's terminal fields when it is created. Canceling a choice leaves that endpoint's terminal at the template default. These prompts apply to line sketches; parallel copy uses its existing placement workflow.
 
 ## Preview, Rotation, and Mirror
 
@@ -149,7 +149,7 @@ Supported cases include:
 - Line endpoints placed on eligible target lines
 - Configured group line parts with start/end split behavior
 
-Settings control candidate distance, eligible placement groups, eligible target groups, duplicate prompt suppression, interior-only splitting, and whether the add-in always asks or auto-splits when only one candidate exists. The Line Split settings also include an excluded target asset groups list. It defaults to `ElectricLine: Overhead Primary` and `ElectricLine: Underground Primary`, so those lines are not offered as split candidates. Entries are comma-separated `FeatureClass: Asset Group` pairs; an asset group name without a feature class applies to all target line classes. Clear the list to allow every asset group.
+Settings control candidate distance, eligible placement groups, eligible target groups, duplicate prompt suppression, interior-only splitting, and whether the add-in always asks or auto-splits when only one candidate exists. The Line Split settings also include an included target asset groups list. It defaults to `ElectricLine: Overhead Primary` and `ElectricLine: Underground Primary`, so only those lines are offered as split candidates. Entries are comma-separated `FeatureClass: Asset Group` pairs; an asset group name without a feature class applies to all target line classes. Clear the list to allow every asset group.
 
 ## Parallel Copy
 
@@ -252,7 +252,7 @@ Check:
 
 ### Terminal Choices Are Not Appearing
 
-Check that the line is being drawn with the line sketch tool, the endpoint is coincident with a device in the active map, the line belongs to a Utility Network, and a junction-edge rule permits a terminal on that device for the line's asset group and type. The line layer must have `FROMDEVICETERMINAL` and `TODEVICETERMINAL` fields.
+Check that the line is being drawn with the line sketch tool, the endpoint snaps to a device feature in the active map, the line belongs to a Utility Network, and a junction-edge rule permits a terminal on that device for the line's asset group and type. The line layer must have `FROMDEVICETERMINAL` and `TODEVICETERMINAL` fields.
 
 ### Split Prompts Are Not Appearing
 

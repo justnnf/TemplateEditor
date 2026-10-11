@@ -80,21 +80,22 @@ public sealed class TemplateValidationTests
     }
 
     [Fact]
-    public void SplitCandidateExclusions_DefaultToElectricPrimaryAssetGroups()
+    public void SplitCandidateInclusions_DefaultToElectricPrimaryAssetGroups()
     {
-        var settings = JsonSerializer.Deserialize<TemplateEditorSettings>("{}")!;
+        var settings = JsonSerializer.Deserialize<TemplateEditorSettings>("{\"SplitExcludedAssetGroups\":[\"ElectricLine: Overhead Primary\"]}")!;
 
-        Assert.True(settings.IsSplitCandidateExcluded("ElectricLine", "Overhead Primary"));
-        Assert.True(settings.IsSplitCandidateExcluded("ELECTRICLINE", "underground primary"));
-        Assert.False(settings.IsSplitCandidateExcluded("StructureLine", "Overhead Primary"));
-        Assert.False(settings.IsSplitCandidateExcluded("ElectricLine", "Overhead Secondary"));
+        Assert.True(settings.IsSplitCandidateIncluded("ElectricLine", "Overhead Primary"));
+        Assert.True(settings.IsSplitCandidateIncluded("ELECTRICLINE", "underground primary"));
+        Assert.False(settings.IsSplitCandidateIncluded("StructureLine", "Overhead Primary"));
+        Assert.False(settings.IsSplitCandidateIncluded("ElectricLine", "Overhead Secondary"));
 
-        settings.SplitExcludedAssetGroups = TemplateEditorSettings.ParseGroupNames(" ElectricLine: Overhead Primary, electricline: overhead primary, Underground Secondary ");
-        Assert.Equal(2, settings.SplitExcludedAssetGroups.Count);
-        Assert.True(settings.IsSplitCandidateExcluded("ElectricLine", "Overhead Primary"));
-        Assert.True(settings.IsSplitCandidateExcluded("ElectricLine", "Underground Secondary"));
+        settings.SplitIncludedAssetGroups = TemplateEditorSettings.ParseGroupNames(" ElectricLine: Overhead Primary, electricline: overhead primary, Underground Secondary ");
+        Assert.Equal(2, settings.SplitIncludedAssetGroups.Count);
+        Assert.True(settings.IsSplitCandidateIncluded("ElectricLine", "Overhead Primary"));
+        Assert.True(settings.IsSplitCandidateIncluded("ElectricLine", "Underground Secondary"));
+        Assert.False(settings.IsSplitCandidateIncluded("ElectricLine", "Underground Primary"));
 
-        settings.SplitExcludedAssetGroups.Clear();
-        Assert.False(settings.IsSplitCandidateExcluded("ElectricLine", "Overhead Primary"));
+        settings.SplitIncludedAssetGroups.Clear();
+        Assert.True(settings.IsSplitCandidateIncluded("ElectricLine", "Overhead Secondary"));
     }
 }

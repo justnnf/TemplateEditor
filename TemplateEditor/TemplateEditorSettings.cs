@@ -45,7 +45,7 @@ internal sealed class TemplateEditorSettings
 
 	public List<string> SplitTargetLayerNames { get; set; } = new List<string>();
 
-	public List<string> SplitExcludedAssetGroups { get; set; } = new List<string> { "ElectricLine: Overhead Primary", "ElectricLine: Underground Primary" };
+	public List<string> SplitIncludedAssetGroups { get; set; } = new List<string> { "ElectricLine: Overhead Primary", "ElectricLine: Underground Primary" };
 
 	public bool EnableMultiSegmentParallelCopy { get; set; } = true;
 
@@ -200,7 +200,7 @@ internal sealed class TemplateEditorSettings
 		SplitLinePlacementGroups = NormalizeGroupNames(SplitLinePlacementGroups);
 		SplitTargetLineGroups = NormalizeGroupNames(SplitTargetLineGroups);
 		SplitTargetLayerNames = NormalizeGroupNames(SplitTargetLayerNames);
-		SplitExcludedAssetGroups = NormalizeGroupNames(SplitExcludedAssetGroups);
+		SplitIncludedAssetGroups = NormalizeGroupNames(SplitIncludedAssetGroups);
 		AssociationPlacementGroups = NormalizeGroupNames(AssociationPlacementGroups);
 		StructuralAttachmentTargetGroups = NormalizeGroupNames(StructuralAttachmentTargetGroups);
 		StructuralAttachmentTargetLayerNames = NormalizeGroupNames(StructuralAttachmentTargetLayerNames);
@@ -228,13 +228,17 @@ internal sealed class TemplateEditorSettings
 		return string.Join(", ", NormalizeGroupNames(groupNames));
 	}
 
-	public bool IsSplitCandidateExcluded(string tableName, string assetGroup)
+	public bool IsSplitCandidateIncluded(string tableName, string assetGroup)
 	{
+		if (SplitIncludedAssetGroups == null || SplitIncludedAssetGroups.Count == 0)
+		{
+			return true;
+		}
 		if (string.IsNullOrWhiteSpace(assetGroup))
 		{
 			return false;
 		}
-		return (SplitExcludedAssetGroups ?? new List<string>()).Any(entry =>
+		return SplitIncludedAssetGroups.Any(entry =>
 		{
 			int separator = entry.LastIndexOf(':');
 			return separator < 0

@@ -8,6 +8,8 @@ namespace TemplateEditor;
 internal class SketchPolylineTool : PreviewSketchTool
 {
 	private MapPoint _fromPoint;
+	private FeatureLayer _fromSnapLayer;
+	private long _fromSnapObjectId = -1;
 	private int? _fromTerminalId;
 	private bool _choosingFrom;
 
@@ -23,6 +25,8 @@ internal class SketchPolylineTool : PreviewSketchTool
 	protected override Task OnToolActivateAsync(bool active)
 	{
 		_fromPoint = null;
+		_fromSnapLayer = null;
+		_fromSnapObjectId = -1;
 		_fromTerminalId = null;
 		return base.OnToolActivateAsync(active);
 	}
@@ -37,11 +41,17 @@ internal class SketchPolylineTool : PreviewSketchTool
 		if (await GetCurrentSketchAsync() is not Polyline line || line.PointCount == 0)
 		{
 			_fromPoint = null;
+			_fromSnapLayer = null;
+			_fromSnapObjectId = -1;
 			_fromTerminalId = null;
 			return modified;
 		}
 		MapPoint first = line.Points[0];
-		if (_fromPoint != null && GeometryEngine.Instance.Equals(_fromPoint, first))
+		var snapResults = SnappingResults;
+		SnapResult firstSnap = snapResults?.Count > 0 ? snapResults[0] : null;
+		FeatureLayer firstLayer = firstSnap?.Layer as FeatureLayer;
+		long firstObjectId = firstSnap?.ObjectID ?? -1;
+		if (_fromPoint != null && GeometryEngine.Instance.Equals(_fromPoint, first) && _fromSnapLayer == firstLayer && _fromSnapObjectId == firstObjectId)
 		{
 			return modified;
 		}
@@ -49,7 +59,9 @@ internal class SketchPolylineTool : PreviewSketchTool
 		try
 		{
 			_fromPoint = first;
-			_fromTerminalId = await LineTerminalPromptService.ChooseTerminalAsync(first, "From");
+			_fromSnapLayer = firstLayer;
+			_fromSnapObjectId = firstObjectId;
+			_fromTerminalId = await LineTerminalPromptService.ChooseTerminalAsync(firstLayer, firstObjectId, "From");
 		}
 		finally
 		{
@@ -61,6 +73,8 @@ internal class SketchPolylineTool : PreviewSketchTool
 	protected override Task<bool> OnSketchCanceledAsync()
 	{
 		_fromPoint = null;
+		_fromSnapLayer = null;
+		_fromSnapObjectId = -1;
 		_fromTerminalId = null;
 		return base.OnSketchCanceledAsync();
 	}
@@ -71,13 +85,20 @@ internal class SketchPolylineTool : PreviewSketchTool
 		if (geometry is Polyline line && line.PointCount > 1 && LineTerminalPromptService.HasEligibleTemplate())
 		{
 			MapPoint first = line.Points[0];
-			int? from = _fromPoint != null && GeometryEngine.Instance.Equals(_fromPoint, first)
+			var snapResults = SnappingResults;
+			SnapResult firstSnap = snapResults?.Count > 0 ? snapResults[0] : null;
+			SnapResult lastSnap = snapResults?.Count > 0 ? snapResults[snapResults.Count - 1] : null;
+			FeatureLayer firstLayer = firstSnap?.Layer as FeatureLayer;
+			long firstObjectId = firstSnap?.ObjectID ?? -1;
+			FeatureLayer lastLayer = lastSnap?.Layer as FeatureLayer;
+			long lastObjectId = lastSnap?.ObjectID ?? -1;
+			int? from = _fromPoint != null && GeometryEngine.Instance.Equals(_fromPoint, first) && _fromSnapLayer == firstLayer && _fromSnapObjectId == firstObjectId
 				? _fromTerminalId
-				: await LineTerminalPromptService.ChooseTerminalAsync(first, "From");
+				: await LineTerminalPromptService.ChooseTerminalAsync(firstLayer, firstObjectId, "From");
 			terminals = new LineTerminalSelection
 			{
 				FromTerminalId = from,
-				ToTerminalId = await LineTerminalPromptService.ChooseTerminalAsync(line.Points[line.PointCount - 1], "To")
+				ToTerminalId = await LineTerminalPromptService.ChooseTerminalAsync(lastLayer, lastObjectId, "To")
 			};
 		}
 		// Preview rotation may have supplied an anchor different from the final
@@ -98,6 +119,8 @@ internal class SketchPolylineTool : PreviewSketchTool
 		bool completed = await base.OnSketchCompleteAsync(geometry);
 		ResetAfterPlacement(!returnToSelect);
 		_fromPoint = null;
+		_fromSnapLayer = null;
+		_fromSnapObjectId = -1;
 		_fromTerminalId = null;
 		return completed;
 	}

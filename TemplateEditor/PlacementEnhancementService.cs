@@ -616,19 +616,19 @@ internal static class PlacementEnhancementService
 		TemplateEditorSettings settings = AddinConfiguration.Settings;
 		Geometry searchGeometry = await CreateSearchGeometryAsync((Geometry)(object)point, settings.SplitSearchDistance);
 		HashSet<string> createdFeatureKeys = BuildCreatedFeatureKeySet(featuresCreatedByOperation);
-		return await FindFeatureCandidatesAsync(settings.SplitTargetLineGroups, settings.SplitTargetLayerNames, searchGeometry, point, (FeatureLayer layer, Feature feature, Geometry geometry) => !IsFeatureInSet(createdFeatureKeys, layer, ((Row)feature).GetObjectID()) && (!settings.SplitOnlyInteriorCandidates || IsInteriorSplitCandidate(geometry, point)) && !IsExcludedSplitCandidate(settings, layer, feature), "Line", useRuleCatalogSearchScope: false, settings.MaxSplitCandidatesToReview);
+		return await FindFeatureCandidatesAsync(settings.SplitTargetLineGroups, settings.SplitTargetLayerNames, searchGeometry, point, (FeatureLayer layer, Feature feature, Geometry geometry) => !IsFeatureInSet(createdFeatureKeys, layer, ((Row)feature).GetObjectID()) && (!settings.SplitOnlyInteriorCandidates || IsInteriorSplitCandidate(geometry, point)) && IsIncludedSplitCandidate(settings, layer, feature), "Line", useRuleCatalogSearchScope: false, settings.MaxSplitCandidatesToReview);
 	}
 
-	private static bool IsExcludedSplitCandidate(TemplateEditorSettings settings, FeatureLayer layer, Feature feature)
+	private static bool IsIncludedSplitCandidate(TemplateEditorSettings settings, FeatureLayer layer, Feature feature)
 	{
-		if (settings.SplitExcludedAssetGroups == null || settings.SplitExcludedAssetGroups.Count == 0)
+		if (settings.SplitIncludedAssetGroups == null || settings.SplitIncludedAssetGroups.Count == 0)
 		{
-			return false;
+			return true;
 		}
 		try
 		{
 			FeatureLayerInfo info = GetFeatureLayerInfo(layer, feature);
-			return settings.IsSplitCandidateExcluded(info?.TableName, info?.AssetGroup);
+			return settings.IsSplitCandidateIncluded(info?.TableName, info?.AssetGroup);
 		}
 		catch (Exception exception)
 		{

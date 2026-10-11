@@ -26,17 +26,17 @@ internal static class LineTerminalPromptService
 		return GetLineTemplate() != null;
 	}
 
-	public static async Task<int?> ChooseTerminalAsync(MapPoint endpoint, string endName)
+	public static async Task<int?> ChooseTerminalAsync(FeatureLayer snappedLayer, long snappedObjectId, string endName)
 	{
 		SimpleTemplate template = GetLineTemplate();
-		if (template == null || endpoint == null)
+		if (template == null || snappedLayer == null || snappedObjectId <= 0)
 		{
 			return null;
 		}
-		List<DeviceChoice> devices;
+		DeviceChoice device;
 		try
 		{
-			devices = await QueuedTask.Run(() => FindDevices(endpoint, template));
+			device = await QueuedTask.Run(() => FindDevice(snappedLayer, snappedObjectId, template));
 		}
 		catch (Exception exception)
 		{
@@ -44,19 +44,9 @@ internal static class LineTerminalPromptService
 			DialogService.ShowToast("Terminal choices could not be loaded. The line can still be placed without an endpoint terminal.", "Template Editor", FeedbackSeverity.Warning);
 			return null;
 		}
-		if (devices.Count == 0)
+		if (device == null)
 		{
 			return null;
-		}
-		DeviceChoice device = devices[0];
-		if (devices.Count > 1)
-		{
-			int? index = Choose($"{endName} device", $"Choose the device at the {endName.ToLowerInvariant()} end of the line.", devices.Select(d => d.Label).ToList());
-			if (!index.HasValue)
-			{
-				return null;
-			}
-			device = devices[index.Value];
 		}
 		int? terminalIndex = Choose($"{endName} terminal", $"Choose the terminal on {device.Label} for the {endName.ToLowerInvariant()} end.", device.Terminals.Select(t => t.Name).ToList());
 		return terminalIndex.HasValue ? device.Terminals[terminalIndex.Value].Id : null;
@@ -102,12 +92,12 @@ internal static class LineTerminalPromptService
 		return template != null && AddinConfiguration.GroupFeatureLayerNames.Contains(template.GroupLayer?.ToUpperInvariant() ?? string.Empty) ? template : null;
 	}
 
-	private static List<DeviceChoice> FindDevices(MapPoint endpoint, SimpleTemplate template)
+	private static DeviceChoice FindDevice(FeatureLayer snappedLayer, long snappedObjectId, SimpleTemplate template)
 	{
 		FeatureLayer lineLayer = MapMemberLookupService.GetFeatureLayerByName(template.SubtypeLayer, template.GroupLayer);
 		if (lineLayer == null)
 		{
-			return new List<DeviceChoice>();
+			return null;
 		}
 		using FeatureClass lineClass = lineLayer.GetFeatureClass();
 		using FeatureClassDefinition lineDefinition = lineClass?.GetDefinition();
@@ -115,7 +105,7 @@ internal static class LineTerminalPromptService
 			!lineDefinition.GetFields().Any(f => string.Equals(f.Name, "FROMDEVICETERMINAL", StringComparison.OrdinalIgnoreCase)) ||
 			!lineDefinition.GetFields().Any(f => string.Equals(f.Name, "TODEVICETERMINAL", StringComparison.OrdinalIgnoreCase)))
 		{
-			return new List<DeviceChoice>();
+			return null;
 		}
 		UtilityNetwork network = null;
 		try
@@ -161,7 +151,7 @@ internal static class LineTerminalPromptService
 		}
 		if (network == null)
 		{
-			return new List<DeviceChoice>();
+			return null;
 		}
 		using (network)
 		using (UtilityNetworkDefinition definition = network.GetDefinition())
@@ -174,65 +164,41 @@ internal static class LineTerminalPromptService
 				rule.RuleElements[0].Terminal != null).ToList();
 			if (rules.Count == 0)
 			{
-				return new List<DeviceChoice>();
+				return null;
 			}
-			List<DeviceChoice> results = new List<DeviceChoice>();
-			HashSet<string> seenDevices = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-			foreach (FeatureLayer layer in MapView.Active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>())
+			using FeatureClass featureClass = snappedLayer.GetFeatureClass();
+			if (featureClass == null)
 			{
-				try
-				{
-					using FeatureClass featureClass = layer.GetFeatureClass();
-					if (featureClass == null)
-					{
-						continue;
-					}
-					using FeatureClassDefinition featureDefinition = featureClass.GetDefinition();
-					if (featureDefinition.GetShapeType() != GeometryType.Point)
-					{
-						continue;
-					}
-					string sourceName = ((Dataset)featureClass).GetName();
-					List<Rule> sourceRules = rules.Where(rule => SameSource(rule.RuleElements[0].NetworkSource?.Name, sourceName, featureDefinition.GetAliasName(), layer.Name, (layer.Parent as MapMember)?.Name)).ToList();
-					if (sourceRules.Count == 0)
-					{
-						continue;
-					}
-					SpatialReference spatialReference = featureDefinition.GetSpatialReference();
-					Geometry searchPoint = GeometryEngine.Instance.Project(endpoint, spatialReference);
-					double tolerance = Math.Max(spatialReference.XYTolerance * 4, spatialReference.XYResolution * 4);
-					Geometry searchArea = GeometryEngine.Instance.Buffer(searchPoint, tolerance);
-					SpatialQueryFilter filter = new SpatialQueryFilter { FilterGeometry = searchArea, SpatialRelationship = SpatialRelationship.Intersects };
-					using RowCursor cursor = ((BasicFeatureLayer)layer).Search(filter);
-					while (cursor.MoveNext())
-					{
-						using Feature feature = (Feature)cursor.Current;
-						if (GeometryEngine.Instance.Distance(searchPoint, feature.GetShape()) > tolerance)
-						{
-							continue;
-						}
-						int group = Convert.ToInt32(feature["ASSETGROUP"], CultureInfo.InvariantCulture);
-						int type = Convert.ToInt32(feature["ASSETTYPE"], CultureInfo.InvariantCulture);
-						List<Rule> deviceRules = sourceRules.Where(rule => rule.RuleElements[0].AssetGroup?.Code == group && rule.RuleElements[0].AssetType?.Code == type).ToList();
-						if (deviceRules.Count == 0)
-						{
-							continue;
-						}
-						if (!seenDevices.Add(sourceName + ":" + feature.GetObjectID().ToString(CultureInfo.InvariantCulture)))
-						{
-							continue;
-						}
-						DeviceChoice device = new DeviceChoice { Label = $"{layer.Name}: {deviceRules[0].RuleElements[0].AssetGroup?.Name} / {deviceRules[0].RuleElements[0].AssetType?.Name} (OID {feature.GetObjectID()})" };
-						device.Terminals.AddRange(deviceRules.Select(rule => (rule.RuleElements[0].Terminal.ID, rule.RuleElements[0].Terminal.Name)).Distinct().OrderBy(t => t.Name));
-						results.Add(device);
-					}
-				}
-				catch (Exception exception)
-				{
-					LogService.LogException($"Could not inspect terminal candidates in layer '{layer.Name}'.", exception);
-				}
+				return null;
 			}
-			return results;
+			using FeatureClassDefinition featureDefinition = featureClass.GetDefinition();
+			if (featureDefinition.GetShapeType() != GeometryType.Point)
+			{
+				return null;
+			}
+			string sourceName = ((Dataset)featureClass).GetName();
+			List<Rule> sourceRules = rules.Where(rule => SameSource(rule.RuleElements[0].NetworkSource?.Name, sourceName, featureDefinition.GetAliasName(), snappedLayer.Name, (snappedLayer.Parent as MapMember)?.Name)).ToList();
+			if (sourceRules.Count == 0)
+			{
+				return null;
+			}
+			QueryFilter filter = new QueryFilter { ObjectIDs = new List<long> { snappedObjectId } };
+			using RowCursor cursor = ((BasicFeatureLayer)snappedLayer).Search(filter);
+			if (!cursor.MoveNext())
+			{
+				return null;
+			}
+			using Feature feature = (Feature)cursor.Current;
+			int group = Convert.ToInt32(feature["ASSETGROUP"], CultureInfo.InvariantCulture);
+			int type = Convert.ToInt32(feature["ASSETTYPE"], CultureInfo.InvariantCulture);
+			List<Rule> deviceRules = sourceRules.Where(rule => rule.RuleElements[0].AssetGroup?.Code == group && rule.RuleElements[0].AssetType?.Code == type).ToList();
+			if (deviceRules.Count == 0)
+			{
+				return null;
+			}
+			DeviceChoice device = new DeviceChoice { Label = $"{snappedLayer.Name}: {deviceRules[0].RuleElements[0].AssetGroup?.Name} / {deviceRules[0].RuleElements[0].AssetType?.Name} (OID {snappedObjectId})" };
+			device.Terminals.AddRange(deviceRules.Select(rule => (rule.RuleElements[0].Terminal.ID, rule.RuleElements[0].Terminal.Name)).Distinct().OrderBy(t => t.Name));
+			return device;
 		}
 	}
 
