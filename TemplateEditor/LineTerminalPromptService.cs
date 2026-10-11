@@ -118,17 +118,44 @@ internal static class LineTerminalPromptService
 			return new List<DeviceChoice>();
 		}
 		UtilityNetwork network = null;
-		if (((Table)lineClass).IsControllerDatasetSupported())
+		try
 		{
-			foreach (Dataset controller in ((Table)lineClass).GetControllerDatasets())
+			if (((Table)lineClass).IsControllerDatasetSupported())
 			{
-				if (controller is UtilityNetwork utilityNetwork && network == null)
+				foreach (Dataset controller in ((Table)lineClass).GetControllerDatasets())
 				{
-					network = utilityNetwork;
+					if (controller is UtilityNetwork utilityNetwork && network == null)
+					{
+						network = utilityNetwork;
+					}
+					else
+					{
+						((CoreObjectsBase)controller).Dispose();
+					}
 				}
-				else
+			}
+		}
+		catch (Exception exception)
+		{
+			LogService.LogException("Could not get the line layer's utility network controller; checking map layers.", exception);
+		}
+		// Service-backed feature classes may not expose their controller dataset.
+		// The Utility Network layer in the map provides the same rule definition.
+		if (network == null)
+		{
+			foreach (UtilityNetworkLayer networkLayer in MapView.Active?.Map.GetLayersAsFlattenedList().OfType<UtilityNetworkLayer>() ?? Enumerable.Empty<UtilityNetworkLayer>())
+			{
+				try
 				{
-					((CoreObjectsBase)controller).Dispose();
+					network = networkLayer.GetUtilityNetwork();
+					if (network != null)
+					{
+						break;
+					}
+				}
+				catch (Exception exception)
+				{
+					LogService.LogException($"Could not read utility network layer '{networkLayer.Name}'.", exception);
 				}
 			}
 		}
@@ -141,7 +168,7 @@ internal static class LineTerminalPromptService
 		{
 			string lineClassName = ((Dataset)lineClass).GetName();
 			List<Rule> rules = definition.GetRules().Where(rule => rule.Type == RuleType.JunctionEdgeConnectivity && rule.RuleElements.Count >= 2 &&
-				SameSource(rule.RuleElements[1].NetworkSource?.Name, lineClassName) &&
+				SameSource(rule.RuleElements[1].NetworkSource?.Name, lineClassName, lineDefinition.GetAliasName(), lineLayer.Name, (lineLayer.Parent as MapMember)?.Name, template.GroupLayer) &&
 				Matches(template.DefaultFieldValues, "ASSETGROUP", rule.RuleElements[1].AssetGroup?.Name, rule.RuleElements[1].AssetGroup?.Code) &&
 				Matches(template.DefaultFieldValues, "ASSETTYPE", rule.RuleElements[1].AssetType?.Name, rule.RuleElements[1].AssetType?.Code) &&
 				rule.RuleElements[0].Terminal != null).ToList();
@@ -153,42 +180,56 @@ internal static class LineTerminalPromptService
 			HashSet<string> seenDevices = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 			foreach (FeatureLayer layer in MapView.Active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>())
 			{
-				using FeatureClass featureClass = layer.GetFeatureClass();
-				if (featureClass == null)
+				try
 				{
-					continue;
-				}
-				using FeatureClassDefinition featureDefinition = featureClass.GetDefinition();
-				if (featureDefinition.GetShapeType() != GeometryType.Point)
-				{
-					continue;
-				}
-				string sourceName = ((Dataset)featureClass).GetName();
-				List<Rule> sourceRules = rules.Where(rule => SameSource(rule.RuleElements[0].NetworkSource?.Name, sourceName)).ToList();
-				if (sourceRules.Count == 0)
-				{
-					continue;
-				}
-				Geometry searchPoint = GeometryEngine.Instance.Project(endpoint, featureDefinition.GetSpatialReference());
-				SpatialQueryFilter filter = new SpatialQueryFilter { FilterGeometry = searchPoint, SpatialRelationship = SpatialRelationship.Intersects };
-				using RowCursor cursor = ((BasicFeatureLayer)layer).Search(filter);
-				while (cursor.MoveNext())
-				{
-					using Feature feature = (Feature)cursor.Current;
-					int group = Convert.ToInt32(feature["ASSETGROUP"], CultureInfo.InvariantCulture);
-					int type = Convert.ToInt32(feature["ASSETTYPE"], CultureInfo.InvariantCulture);
-					List<Rule> deviceRules = sourceRules.Where(rule => rule.RuleElements[0].AssetGroup?.Code == group && rule.RuleElements[0].AssetType?.Code == type).ToList();
-					if (deviceRules.Count == 0)
+					using FeatureClass featureClass = layer.GetFeatureClass();
+					if (featureClass == null)
 					{
 						continue;
 					}
-					if (!seenDevices.Add(sourceName + ":" + feature.GetObjectID().ToString(CultureInfo.InvariantCulture)))
+					using FeatureClassDefinition featureDefinition = featureClass.GetDefinition();
+					if (featureDefinition.GetShapeType() != GeometryType.Point)
 					{
 						continue;
 					}
-					DeviceChoice device = new DeviceChoice { Label = $"{layer.Name}: {deviceRules[0].RuleElements[0].AssetGroup?.Name} / {deviceRules[0].RuleElements[0].AssetType?.Name} (OID {feature.GetObjectID()})" };
-					device.Terminals.AddRange(deviceRules.Select(rule => (rule.RuleElements[0].Terminal.ID, rule.RuleElements[0].Terminal.Name)).Distinct().OrderBy(t => t.Name));
-					results.Add(device);
+					string sourceName = ((Dataset)featureClass).GetName();
+					List<Rule> sourceRules = rules.Where(rule => SameSource(rule.RuleElements[0].NetworkSource?.Name, sourceName, featureDefinition.GetAliasName(), layer.Name, (layer.Parent as MapMember)?.Name)).ToList();
+					if (sourceRules.Count == 0)
+					{
+						continue;
+					}
+					SpatialReference spatialReference = featureDefinition.GetSpatialReference();
+					Geometry searchPoint = GeometryEngine.Instance.Project(endpoint, spatialReference);
+					double tolerance = Math.Max(spatialReference.XYTolerance * 4, spatialReference.XYResolution * 4);
+					Geometry searchArea = GeometryEngine.Instance.Buffer(searchPoint, tolerance);
+					SpatialQueryFilter filter = new SpatialQueryFilter { FilterGeometry = searchArea, SpatialRelationship = SpatialRelationship.Intersects };
+					using RowCursor cursor = ((BasicFeatureLayer)layer).Search(filter);
+					while (cursor.MoveNext())
+					{
+						using Feature feature = (Feature)cursor.Current;
+						if (GeometryEngine.Instance.Distance(searchPoint, feature.GetShape()) > tolerance)
+						{
+							continue;
+						}
+						int group = Convert.ToInt32(feature["ASSETGROUP"], CultureInfo.InvariantCulture);
+						int type = Convert.ToInt32(feature["ASSETTYPE"], CultureInfo.InvariantCulture);
+						List<Rule> deviceRules = sourceRules.Where(rule => rule.RuleElements[0].AssetGroup?.Code == group && rule.RuleElements[0].AssetType?.Code == type).ToList();
+						if (deviceRules.Count == 0)
+						{
+							continue;
+						}
+						if (!seenDevices.Add(sourceName + ":" + feature.GetObjectID().ToString(CultureInfo.InvariantCulture)))
+						{
+							continue;
+						}
+						DeviceChoice device = new DeviceChoice { Label = $"{layer.Name}: {deviceRules[0].RuleElements[0].AssetGroup?.Name} / {deviceRules[0].RuleElements[0].AssetType?.Name} (OID {feature.GetObjectID()})" };
+						device.Terminals.AddRange(deviceRules.Select(rule => (rule.RuleElements[0].Terminal.ID, rule.RuleElements[0].Terminal.Name)).Distinct().OrderBy(t => t.Name));
+						results.Add(device);
+					}
+				}
+				catch (Exception exception)
+				{
+					LogService.LogException($"Could not inspect terminal candidates in layer '{layer.Name}'.", exception);
 				}
 			}
 			return results;
@@ -205,9 +246,19 @@ internal static class LineTerminalPromptService
 		return string.Equals(value, name, StringComparison.OrdinalIgnoreCase) || string.Equals(value, code.Value.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
 	}
 
-	private static bool SameSource(string networkName, string className)
+	internal static bool SameSource(string networkName, params string[] names)
 	{
-		return !string.IsNullOrEmpty(networkName) && !string.IsNullOrEmpty(className) &&
-			(string.Equals(networkName, className, StringComparison.OrdinalIgnoreCase) || className.EndsWith("." + networkName, StringComparison.OrdinalIgnoreCase));
+		string normalizedNetworkName = NormalizeSourceName(networkName);
+		return normalizedNetworkName.Length > 0 && names.Any(name => NormalizeSourceName(name) == normalizedNetworkName);
+	}
+
+	private static string NormalizeSourceName(string name)
+	{
+		if (string.IsNullOrWhiteSpace(name))
+		{
+			return string.Empty;
+		}
+		string unqualified = name.Substring(name.LastIndexOf('.') + 1);
+		return new string(unqualified.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 	}
 }

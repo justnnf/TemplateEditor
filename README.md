@@ -1,4 +1,4 @@
-# Template Editor 2.0.0
+# Template Editor 2.0.1
 
 Template Editor is an ArcGIS Pro 3.3 add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
 
@@ -39,7 +39,7 @@ Build a versioned package from the repository root:
 dotnet build TemplateEditor.csproj -c Release
 ```
 
-Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.0.0, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.0.0.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
+Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.0.1, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.0.1.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
 
 Use an explicit MSBuild target when needed:
 
@@ -149,7 +149,7 @@ Supported cases include:
 - Line endpoints placed on eligible target lines
 - Configured group line parts with start/end split behavior
 
-Settings control candidate distance, eligible placement groups, eligible target groups, duplicate prompt suppression, interior-only splitting, and whether the add-in always asks or auto-splits when only one candidate exists.
+Settings control candidate distance, eligible placement groups, eligible target groups, duplicate prompt suppression, interior-only splitting, and whether the add-in always asks or auto-splits when only one candidate exists. The Line Split settings also include an excluded target asset groups list. It defaults to `ElectricLine: Overhead Primary` and `ElectricLine: Underground Primary`, so those lines are not offered as split candidates. Entries are comma-separated `FeatureClass: Asset Group` pairs; an asset group name without a feature class applies to all target line classes. Clear the list to allow every asset group.
 
 ## Parallel Copy
 
@@ -179,7 +179,7 @@ Template Editor can create or prompt for several association types:
 
 Association behavior is controlled in `Settings > Associations`.
 
-Candidate prompts can highlight the selected feature on the map, controlled by `Settings > Interface`. The map zooms only when the placed feature and candidates fall outside the current view. Post-placement searches reuse layer and rule information where possible to reduce repeated work.
+Candidate prompts can highlight the selected feature on the map, controlled by `Settings > Interface`. Association prompts zoom only when the placed feature and candidates fall outside the current view. Line split prompts keep the current map extent so a long candidate line does not pull the view away from the placement point. Post-placement searches reuse layer and rule information where possible to reduce repeated work.
 
 Prompt modes:
 

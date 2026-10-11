@@ -616,7 +616,25 @@ internal static class PlacementEnhancementService
 		TemplateEditorSettings settings = AddinConfiguration.Settings;
 		Geometry searchGeometry = await CreateSearchGeometryAsync((Geometry)(object)point, settings.SplitSearchDistance);
 		HashSet<string> createdFeatureKeys = BuildCreatedFeatureKeySet(featuresCreatedByOperation);
-		return await FindFeatureCandidatesAsync(settings.SplitTargetLineGroups, settings.SplitTargetLayerNames, searchGeometry, point, (FeatureLayer layer, Feature feature, Geometry geometry) => !IsFeatureInSet(createdFeatureKeys, layer, ((Row)feature).GetObjectID()) && (!settings.SplitOnlyInteriorCandidates || IsInteriorSplitCandidate(geometry, point)), "Line", useRuleCatalogSearchScope: false, settings.MaxSplitCandidatesToReview);
+		return await FindFeatureCandidatesAsync(settings.SplitTargetLineGroups, settings.SplitTargetLayerNames, searchGeometry, point, (FeatureLayer layer, Feature feature, Geometry geometry) => !IsFeatureInSet(createdFeatureKeys, layer, ((Row)feature).GetObjectID()) && (!settings.SplitOnlyInteriorCandidates || IsInteriorSplitCandidate(geometry, point)) && !IsExcludedSplitCandidate(settings, layer, feature), "Line", useRuleCatalogSearchScope: false, settings.MaxSplitCandidatesToReview);
+	}
+
+	private static bool IsExcludedSplitCandidate(TemplateEditorSettings settings, FeatureLayer layer, Feature feature)
+	{
+		if (settings.SplitExcludedAssetGroups == null || settings.SplitExcludedAssetGroups.Count == 0)
+		{
+			return false;
+		}
+		try
+		{
+			FeatureLayerInfo info = GetFeatureLayerInfo(layer, feature);
+			return settings.IsSplitCandidateExcluded(info?.TableName, info?.AssetGroup);
+		}
+		catch (Exception exception)
+		{
+			LogService.LogException($"Could not resolve the asset group for split candidate layer '{layer.Name}'.", exception);
+			return false;
+		}
 	}
 
 	private static HashSet<string> BuildCreatedFeatureKeySet(IReadOnlyList<PlacedFeatureContext> featuresCreatedByOperation)
@@ -1231,7 +1249,10 @@ internal static class PlacementEnhancementService
 		}
 		using (await ShowSourceContextAsync(createdFeature))
 		{
-			await FocusCandidatesAsync(createdFeature, candidates);
+			if (!isSplitCandidate)
+			{
+				await FocusCandidatesAsync(createdFeature, candidates);
+			}
 			CandidateSelectionOverlay selectedOverlay = new CandidateSelectionOverlay(createdFeature, isSplitCandidate);
 			try
 			{
@@ -1283,7 +1304,10 @@ internal static class PlacementEnhancementService
 		{
 			return null;
 		}
-		await FocusCandidatesAsync(createdFeature, candidateList);
+		if (!isSplitCandidate)
+		{
+			await FocusCandidatesAsync(createdFeature, candidateList);
+		}
 		TemplateEditorSettings settings = AddinConfiguration.Settings;
 		int num;
 		if (!isSplitCandidate)

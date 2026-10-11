@@ -1,4 +1,5 @@
 using TemplateEditor;
+using System.Text.Json;
 using Xunit;
 
 namespace TemplateEditor.Tests;
@@ -76,5 +77,24 @@ public sealed class TemplateValidationTests
 
         Assert.Equal("#DE7BCF", settings.PreviewFillColorHex);
         Assert.Equal("#0085CA", settings.PreviewOutlineColorHex);
+    }
+
+    [Fact]
+    public void SplitCandidateExclusions_DefaultToElectricPrimaryAssetGroups()
+    {
+        var settings = JsonSerializer.Deserialize<TemplateEditorSettings>("{}")!;
+
+        Assert.True(settings.IsSplitCandidateExcluded("ElectricLine", "Overhead Primary"));
+        Assert.True(settings.IsSplitCandidateExcluded("ELECTRICLINE", "underground primary"));
+        Assert.False(settings.IsSplitCandidateExcluded("StructureLine", "Overhead Primary"));
+        Assert.False(settings.IsSplitCandidateExcluded("ElectricLine", "Overhead Secondary"));
+
+        settings.SplitExcludedAssetGroups = TemplateEditorSettings.ParseGroupNames(" ElectricLine: Overhead Primary, electricline: overhead primary, Underground Secondary ");
+        Assert.Equal(2, settings.SplitExcludedAssetGroups.Count);
+        Assert.True(settings.IsSplitCandidateExcluded("ElectricLine", "Overhead Primary"));
+        Assert.True(settings.IsSplitCandidateExcluded("ElectricLine", "Underground Secondary"));
+
+        settings.SplitExcludedAssetGroups.Clear();
+        Assert.False(settings.IsSplitCandidateExcluded("ElectricLine", "Overhead Primary"));
     }
 }

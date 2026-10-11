@@ -45,6 +45,8 @@ internal sealed class TemplateEditorSettings
 
 	public List<string> SplitTargetLayerNames { get; set; } = new List<string>();
 
+	public List<string> SplitExcludedAssetGroups { get; set; } = new List<string> { "ElectricLine: Overhead Primary", "ElectricLine: Underground Primary" };
+
 	public bool EnableMultiSegmentParallelCopy { get; set; } = true;
 
 	public bool RequireConnectedParallelCopySpan { get; set; } = true;
@@ -198,6 +200,7 @@ internal sealed class TemplateEditorSettings
 		SplitLinePlacementGroups = NormalizeGroupNames(SplitLinePlacementGroups);
 		SplitTargetLineGroups = NormalizeGroupNames(SplitTargetLineGroups);
 		SplitTargetLayerNames = NormalizeGroupNames(SplitTargetLayerNames);
+		SplitExcludedAssetGroups = NormalizeGroupNames(SplitExcludedAssetGroups);
 		AssociationPlacementGroups = NormalizeGroupNames(AssociationPlacementGroups);
 		StructuralAttachmentTargetGroups = NormalizeGroupNames(StructuralAttachmentTargetGroups);
 		StructuralAttachmentTargetLayerNames = NormalizeGroupNames(StructuralAttachmentTargetLayerNames);
@@ -223,6 +226,22 @@ internal sealed class TemplateEditorSettings
 	public static string FormatGroupNames(IEnumerable<string> groupNames)
 	{
 		return string.Join(", ", NormalizeGroupNames(groupNames));
+	}
+
+	public bool IsSplitCandidateExcluded(string tableName, string assetGroup)
+	{
+		if (string.IsNullOrWhiteSpace(assetGroup))
+		{
+			return false;
+		}
+		return (SplitExcludedAssetGroups ?? new List<string>()).Any(entry =>
+		{
+			int separator = entry.LastIndexOf(':');
+			return separator < 0
+				? string.Equals(entry.Trim(), assetGroup, StringComparison.OrdinalIgnoreCase)
+				: string.Equals(entry.Substring(0, separator).Trim(), tableName, StringComparison.OrdinalIgnoreCase) &&
+				  string.Equals(entry.Substring(separator + 1).Trim(), assetGroup, StringComparison.OrdinalIgnoreCase);
+		});
 	}
 
 	private static List<string> NormalizeGroupNames(IEnumerable<string> groupNames)

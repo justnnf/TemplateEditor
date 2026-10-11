@@ -111,6 +111,8 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly TextBox _splitTargetLayerNamesTextBox;
 
+	private readonly TextBox _splitExcludedAssetGroupsTextBox;
+
 	private readonly CheckBox _enableMultiSegmentParallelCopyCheckBox;
 
 	private readonly CheckBox _requireConnectedParallelCopySpanCheckBox;
@@ -265,6 +267,7 @@ internal sealed class TemplateSettingsWindow : Window
 		_splitLinePlacementGroupsTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.SplitLinePlacementGroups));
 		_splitTargetLineGroupsTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.SplitTargetLineGroups));
 		_splitTargetLayerNamesTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.SplitTargetLayerNames));
+		_splitExcludedAssetGroupsTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.SplitExcludedAssetGroups));
 		_enableMultiSegmentParallelCopyCheckBox = CreateCheckBox("Enable multi-segment parallel copy", Settings.EnableMultiSegmentParallelCopy);
 		_requireConnectedParallelCopySpanCheckBox = CreateCheckBox("Require selected line segments to form a connected span", Settings.RequireConnectedParallelCopySpan);
 		_parallelCopyEndpointMatchToleranceTextBox = CreateTextBox(Settings.ParallelCopyEndpointMatchTolerance.ToString("0.###"));
@@ -480,7 +483,7 @@ internal sealed class TemplateSettingsWindow : Window
 		StackPanel stackPanel = CreateTabPanel();
 		stackPanel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableLineSplitPromptsCheckBox, _enablePointPlacementSplitPromptCheckBox, _enableLineEndpointSplitPromptCheckBox, _enableSplitAtLineStartPointCheckBox, _enableSplitAtLineEndPointCheckBox, _enableConfiguredLinePartSplitsCheckBox, _suppressDuplicateSplitPromptsCheckBox, _splitOnlyInteriorCandidatesCheckBox)));
 		stackPanel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("Split prompt mode", _splitPromptModeComboBox), ("Maximum split candidates to review", _maxSplitCandidatesToReviewTextBox))));
-		stackPanel.Children.Add(CreateGroupBox("Eligible Groups", CreateFormGrid(("Split search distance (map units)", _splitSearchDistanceTextBox), ("Eligible point placement groups", _splitPointPlacementGroupsTextBox), ("Eligible line placement groups", _splitLinePlacementGroupsTextBox), ("Underlying target line groups", _splitTargetLineGroupsTextBox), ("Underlying target subtype/layer names", _splitTargetLayerNamesTextBox))));
+		stackPanel.Children.Add(CreateGroupBox("Eligible Groups", CreateFormGrid(("Split search distance (map units)", _splitSearchDistanceTextBox), ("Eligible point placement groups", _splitPointPlacementGroupsTextBox), ("Eligible line placement groups", _splitLinePlacementGroupsTextBox), ("Underlying target line groups", _splitTargetLineGroupsTextBox), ("Underlying target subtype/layer names", _splitTargetLayerNamesTextBox), ("Excluded target asset groups", _splitExcludedAssetGroupsTextBox))));
 		return WrapTab(stackPanel);
 	}
 
@@ -1208,6 +1211,7 @@ internal sealed class TemplateSettingsWindow : Window
 			Settings.SplitLinePlacementGroups = TemplateEditorSettings.ParseGroupNames(_splitLinePlacementGroupsTextBox.Text);
 			Settings.SplitTargetLineGroups = TemplateEditorSettings.ParseGroupNames(_splitTargetLineGroupsTextBox.Text);
 			Settings.SplitTargetLayerNames = TemplateEditorSettings.ParseGroupNames(_splitTargetLayerNamesTextBox.Text);
+			Settings.SplitExcludedAssetGroups = TemplateEditorSettings.ParseGroupNames(_splitExcludedAssetGroupsTextBox.Text);
 			Settings.EnableMultiSegmentParallelCopy = _enableMultiSegmentParallelCopyCheckBox.IsChecked == true;
 			Settings.RequireConnectedParallelCopySpan = _requireConnectedParallelCopySpanCheckBox.IsChecked == true;
 			Settings.ParallelCopyEndpointMatchTolerance = ParseDistance(_parallelCopyEndpointMatchToleranceTextBox.Text, "parallel copy endpoint match tolerance");
@@ -1514,6 +1518,7 @@ internal sealed class TemplateSettingsWindow : Window
 		SetToolTip(_splitLinePlacementGroupsTextBox, "Comma-separated group layer names for line templates that can trigger endpoint split prompts.");
 		SetToolTip(_splitTargetLineGroupsTextBox, "Comma-separated group layer names for underlying lines that may be split.");
 		SetToolTip(_splitTargetLayerNamesTextBox, "Optional comma-separated subtype or layer names within the target line groups.");
+		SetToolTip(_splitExcludedAssetGroupsTextBox, "Comma-separated feature class and asset group pairs to exclude, such as ElectricLine: Overhead Primary. A name without a feature class excludes that asset group in all target line classes. Clear to allow all.");
 		SetToolTip(_enableParallelCopyPromptCheckBox, "Shows the parallel-copy prompt when a line template is selected and existing lines are selected.");
 		SetToolTip(_enableMultiSegmentParallelCopyCheckBox, "Allows several selected line segments to be stitched into one copied span.");
 		SetToolTip(_requireConnectedParallelCopySpanCheckBox, "Requires selected segments to touch end-to-end before creating one offset line.");
