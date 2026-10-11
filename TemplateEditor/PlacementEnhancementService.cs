@@ -1329,6 +1329,10 @@ internal static class PlacementEnhancementService
 				xmax = Math.Max(xmax, extent.XMax);
 				ymax = Math.Max(ymax, extent.YMax);
 			}
+			if (xmin >= current.XMin && ymin >= current.YMin && xmax <= current.XMax && ymax <= current.YMax)
+			{
+				return null;
+			}
 			double xPadding = Math.Max((xmax - xmin) * 0.25, current.Width * 0.2);
 			double yPadding = Math.Max((ymax - ymin) * 0.25, current.Height * 0.2);
 			return EnvelopeBuilderEx.CreateEnvelope(xmin - xPadding, ymin - yPadding, xmax + xPadding, ymax + yPadding, spatialReference);

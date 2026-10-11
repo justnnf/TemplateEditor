@@ -68,6 +68,11 @@ internal sealed class CandidateChoiceDialog : Window
 		{
 			candidates.Items.Add(item);
 		}
+		if (candidates.Items.Count > 0)
+		{
+			candidates.SelectedIndex = 0;
+			SelectedIndex = 0;
+		}
 		candidates.SelectionChanged += delegate
 		{
 			SelectedIndex = candidates.SelectedIndex;
@@ -76,10 +81,6 @@ internal sealed class CandidateChoiceDialog : Window
 				selectionChanged?.Invoke(SelectedIndex);
 			}
 		};
-		if (candidates.Items.Count > 0)
-		{
-			candidates.SelectedIndex = 0;
-		}
 		stackPanel.Children.Add(candidates);
 		StackPanel stackPanel2 = new StackPanel
 		{
