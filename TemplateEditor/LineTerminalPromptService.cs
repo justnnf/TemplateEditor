@@ -48,8 +48,22 @@ internal static class LineTerminalPromptService
 		{
 			return null;
 		}
-		int? terminalIndex = Choose($"{endName} terminal", $"Choose the terminal on {device.Label} for the {endName.ToLowerInvariant()} end.", device.Terminals.Select(t => t.Name).ToList());
-		return terminalIndex.HasValue ? device.Terminals[terminalIndex.Value].Id : null;
+		List<(int Id, string Name)> terminals = FilterTerminals(device.Terminals, AddinConfiguration.Settings);
+		if (terminals.Count == 0)
+		{
+			return 0; // The Utility Network terminal domain uses 0 for None.
+		}
+		List<string> labels = terminals.Select(t => t.Name).ToList();
+		labels.Add("None (no terminal)");
+		int? terminalIndex = Choose($"{endName} terminal", $"Choose the terminal on {device.Label} for the {endName.ToLowerInvariant()} end.", labels);
+		return terminalIndex.HasValue ? (terminalIndex.Value == terminals.Count ? 0 : terminals[terminalIndex.Value].Id) : null;
+	}
+
+	internal static List<(int Id, string Name)> FilterTerminals(IEnumerable<(int Id, string Name)> terminals, TemplateEditorSettings settings)
+	{
+		HashSet<string> ignored = new HashSet<string>(settings?.IgnoredLineTerminalNames ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+		HashSet<string> allowed = new HashSet<string>(settings?.AllowedLineTerminalNames ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+		return terminals.Where(t => !ignored.Contains(t.Name) && (allowed.Count == 0 || allowed.Contains(t.Name))).ToList();
 	}
 
 	private static int? Choose(string title, string prompt, IReadOnlyList<string> labels)

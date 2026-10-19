@@ -127,6 +127,8 @@ Right-click a template to place it continuously, mirror its configured geometry,
 
 For Utility Network line sketches, the add-in uses the device each endpoint snaps to. It prompts for that device's terminal after the first vertex and at the final vertex, using the junction-edge rules for the selected line asset type. An endpoint without a valid device snap has no terminal prompt. The From and To choices follow the first and last sketch vertices and are written to the line's terminal fields when it is created. Canceling a choice leaves that endpoint's terminal at the template default. These prompts apply to line sketches; parallel copy uses its existing placement workflow.
 
+`Settings > General > Line End Terminals` filters these choices by terminal name. `Ignored terminal names` defaults to `Single Terminal`, so those endpoints are placed with terminal `None` without a prompt. Add other comma-separated names to ignore, or enter `Allowed terminal names` as a whitelist; a blank whitelist allows all names not ignored. If filtering removes every terminal at an endpoint, the add-in writes `None` (code `0`) for that endpoint, even when the line template specifies a terminal default. The terminal prompt also offers an explicit `None` choice. Matching is case-insensitive. These settings do not affect parallel copy.
+
 ## Preview, Rotation, and Mirror
 
 Configured group layouts can show a preview before placement. Point, line, and polygon placement tools keep preview state in sync with the selected template.

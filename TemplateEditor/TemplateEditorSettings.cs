@@ -13,6 +13,10 @@ internal sealed class TemplateEditorSettings
 
 	public bool PreventDefaultVersionPlacement { get; set; }
 
+	public List<string> IgnoredLineTerminalNames { get; set; } = new List<string> { "Single Terminal" };
+
+	public List<string> AllowedLineTerminalNames { get; set; } = new List<string>();
+
 	public bool EnableLineSplitPrompts { get; set; } = true;
 
 	public bool EnablePointPlacementSplitPrompt { get; set; } = true;
@@ -201,6 +205,8 @@ internal sealed class TemplateEditorSettings
 		SplitTargetLineGroups = NormalizeGroupNames(SplitTargetLineGroups);
 		SplitTargetLayerNames = NormalizeGroupNames(SplitTargetLayerNames);
 		SplitIncludedAssetGroups = NormalizeGroupNames(SplitIncludedAssetGroups);
+		IgnoredLineTerminalNames = NormalizeGroupNames(IgnoredLineTerminalNames);
+		AllowedLineTerminalNames = NormalizeGroupNames(AllowedLineTerminalNames);
 		AssociationPlacementGroups = NormalizeGroupNames(AssociationPlacementGroups);
 		StructuralAttachmentTargetGroups = NormalizeGroupNames(StructuralAttachmentTargetGroups);
 		StructuralAttachmentTargetLayerNames = NormalizeGroupNames(StructuralAttachmentTargetLayerNames);

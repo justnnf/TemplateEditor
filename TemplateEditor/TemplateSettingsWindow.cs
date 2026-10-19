@@ -79,6 +79,10 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private readonly CheckBox _preventDefaultVersionPlacementCheckBox;
 
+	private readonly TextBox _ignoredLineTerminalNamesTextBox;
+
+	private readonly TextBox _allowedLineTerminalNamesTextBox;
+
 	private readonly CheckBox _enableLineSplitPromptsCheckBox;
 
 	private readonly CheckBox _enablePointPlacementSplitPromptCheckBox;
@@ -251,6 +255,8 @@ internal sealed class TemplateSettingsWindow : Window
 		_templateConfigPathTextBox = CreateTextBox(Settings.TemplateConfigFilePath ?? string.Empty);
 		_validateConfigCheckBox = CreateCheckBox("Validate template configuration before opening the editor", Settings.ValidateConfig);
 		_preventDefaultVersionPlacementCheckBox = CreateCheckBox("Prevent template placement into DEFAULT versions", Settings.PreventDefaultVersionPlacement);
+		_ignoredLineTerminalNamesTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.IgnoredLineTerminalNames));
+		_allowedLineTerminalNamesTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.AllowedLineTerminalNames));
 		_enableLineSplitPromptsCheckBox = CreateCheckBox("Enable line split prompts", Settings.EnableLineSplitPrompts);
 		_enablePointPlacementSplitPromptCheckBox = CreateCheckBox("Prompt when eligible point features are placed on lines", Settings.EnablePointPlacementSplitPrompt);
 		_enableLineEndpointSplitPromptCheckBox = CreateCheckBox("Prompt when eligible line feature endpoints land on lines", Settings.EnableLineEndpointSplitPrompt);
@@ -475,6 +481,7 @@ internal sealed class TemplateSettingsWindow : Window
 		StackPanel stackPanel = CreateTabPanel();
 		stackPanel.Children.Add(CreateGroupBox("Template Configuration", BuildTemplateConfigSection()));
 		stackPanel.Children.Add(CreateGroupBox("Placement Safety", CreateCheckBoxPanel(_preventDefaultVersionPlacementCheckBox)));
+		stackPanel.Children.Add(CreateGroupBox("Line End Terminals", CreateFormGrid(("Ignored terminal names", _ignoredLineTerminalNamesTextBox), ("Allowed terminal names (blank = all)", _allowedLineTerminalNamesTextBox))));
 		return WrapTab(stackPanel);
 	}
 
@@ -1195,6 +1202,8 @@ internal sealed class TemplateSettingsWindow : Window
 			}
 			Settings.ValidateConfig = _validateConfigCheckBox.IsChecked == true;
 			Settings.PreventDefaultVersionPlacement = _preventDefaultVersionPlacementCheckBox.IsChecked == true;
+			Settings.IgnoredLineTerminalNames = TemplateEditorSettings.ParseGroupNames(_ignoredLineTerminalNamesTextBox.Text);
+			Settings.AllowedLineTerminalNames = TemplateEditorSettings.ParseGroupNames(_allowedLineTerminalNamesTextBox.Text);
 			Settings.EnableLineSplitPrompts = _enableLineSplitPromptsCheckBox.IsChecked == true;
 			Settings.EnablePointPlacementSplitPrompt = _enablePointPlacementSplitPromptCheckBox.IsChecked == true;
 			Settings.EnableLineEndpointSplitPrompt = _enableLineEndpointSplitPromptCheckBox.IsChecked == true;
@@ -1501,6 +1510,8 @@ internal sealed class TemplateSettingsWindow : Window
 
 	private void ApplyControlToolTips()
 	{
+		SetToolTip(_ignoredLineTerminalNamesTextBox, "Comma-separated terminal names to leave as None without prompting. Defaults to Single Terminal.");
+		SetToolTip(_allowedLineTerminalNamesTextBox, "Optional comma-separated terminal-name whitelist. Blank allows every name except ignored names. If no names remain at an endpoint, its terminal is set to None.");
 		SetToolTip(_validateConfigCheckBox, "Checks the template JSON and referenced layers before opening the editor.");
 		SetToolTip(_preventDefaultVersionPlacementCheckBox, "Blocks template placement when a target feature service layer or table is connected to DEFAULT/sde.DEFAULT.");
 		SetToolTip(_enableLineSplitPromptsCheckBox, "Controls whether placed point and line templates can prompt to split an underlying line.");

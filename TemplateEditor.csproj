@@ -23,8 +23,8 @@
     <AddInImageSource>Images\TemplatesVectorIcon.xaml</AddInImageSource>
     <AddInImageWidth>128</AddInImageWidth>
     <AddInImageHeight>128</AddInImageHeight>
-    <AddInAuthor>TemplateEditor</AddInAuthor>
-    <AddInCompany>TemplateEditor</AddInCompany>
+    <AddInAuthor>J. Foltinek</AddInAuthor>
+    <AddInCompany>FortisAlberta</AddInCompany>
     <AddInVersion>2.0.2</AddInVersion>
     <ArcGISProReleaseVersion>3.3</ArcGISProReleaseVersion>
     <ReleaseDirectory>$(MSBuildProjectDirectory)\Release\</ReleaseDirectory>
