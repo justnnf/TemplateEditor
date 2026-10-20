@@ -19,11 +19,22 @@
       </tabs>
       <groups>
         <group id="TemplateEditor_EditorGroup" caption="Templates" appearsOnAddInTab="false" keytip="">
-          <button refID="TemplateEditor_TemplateSettings" size="large" />
-          <button refID="TemplateEditor_OpenEditorDockpane" size="large" />
-          <button refID="TemplateEditor_ReloadConfig" size="large" />
+          <subgroup refID="TemplateEditor_OpenSubgroup" />
+          <subgroup refID="TemplateEditor_ReloadSubgroup" />
+          <subgroup refID="TemplateEditor_SettingsSubgroup" />
         </group>
       </groups>
+      <subgroups>
+        <subgroup id="TemplateEditor_OpenSubgroup" size="AlwaysLarge" verticalAlignment="Center">
+          <button refID="TemplateEditor_OpenEditorDockpane" />
+        </subgroup>
+        <subgroup id="TemplateEditor_ReloadSubgroup" size="AlwaysLarge" verticalAlignment="Center">
+          <button refID="TemplateEditor_ReloadConfig" />
+        </subgroup>
+        <subgroup id="TemplateEditor_SettingsSubgroup" size="AlwaysLarge" verticalAlignment="Center">
+          <button refID="TemplateEditor_TemplateSettings" />
+        </subgroup>
+      </subgroups>
       <controls>
         <tool id="TemplateEditor_SketchPointTool" caption="SketchPointTool" className="TemplateEditor.SketchPointTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
           <tooltip heading="Place Point Template">Place the selected point template.<disabledText /></tooltip>
@@ -40,10 +51,10 @@
         <button id="TemplateEditor_TemplateSettings" caption="Settings" className="TemplateEditor.TemplateSettingsButton" loadOnClick="true" smallImage="Images\SettingsVectorIcon.xaml" largeImage="Images\SettingsVectorIcon.xaml" keytip="">
           <tooltip heading="Settings">Choose the template config file and placement options.<disabledText /></tooltip>
         </button>
-        <button id="TemplateEditor_OpenEditorDockpane" caption="Open Editor" className="TemplateEditor.EditorDockpane_ShowButton" loadOnClick="true" smallImage="Images\TemplatesVectorIcon.xaml" largeImage="Images\TemplatesVectorIcon.xaml" keytip="">
+        <button id="TemplateEditor_OpenEditorDockpane" caption="Open" className="TemplateEditor.EditorDockpane_ShowButton" loadOnClick="true" smallImage="Images\TemplatesVectorIcon.xaml" largeImage="Images\TemplatesVectorIcon.xaml" keytip="">
           <tooltip heading="Open Editor">Open the template editor.<disabledText /></tooltip>
         </button>
-        <button id="TemplateEditor_ReloadConfig" caption="Reload Config" className="TemplateEditor.TemplateReloadConfigButton" loadOnClick="true" smallImage="Images\ReloadVectorIcon.xaml" largeImage="Images\ReloadVectorIcon.xaml" keytip="">
+        <button id="TemplateEditor_ReloadConfig" caption="Reload" className="TemplateEditor.TemplateReloadConfigButton" loadOnClick="true" smallImage="Images\ReloadVectorIcon.xaml" largeImage="Images\ReloadVectorIcon.xaml" keytip="">
           <tooltip heading="Reload Config">Reload the selected template configuration file.<disabledText /></tooltip>
         </button>
       </controls>
