@@ -14,4 +14,13 @@ public sealed class AssetSearchServiceTests
         Assert.Equal("GLOBALID = '{11111111-2222-3333-4444-555555555555}'", AssetSearchService.BuildWhereClause("GLOBALID", FieldType.GlobalID, "11111111-2222-3333-4444-555555555555"));
         Assert.Null(AssetSearchService.BuildWhereClause("GLOBALID", FieldType.GlobalID, "not-a-guid"));
     }
+
+    [Theory]
+    [InlineData("27B21776", "assetid LIKE '%27B21776%'")]
+    [InlineData(" TEST_SWITCH ", "assetid LIKE '%TEST$_SWITCH%' ESCAPE '$'")]
+    [InlineData("A%$'B", "assetid LIKE '%A$%$$''B%' ESCAPE '$'")]
+    public void SwitchNumberMatchesLiteralTextAnywhereInTheId(string input, string expected)
+    {
+        Assert.Equal(expected, AssetSearchService.BuildWhereClause("assetid", FieldType.String, input));
+    }
 }

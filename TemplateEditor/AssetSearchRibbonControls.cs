@@ -73,7 +73,7 @@ internal sealed class AssetSearchInputView : UserControl
 			Padding = new Thickness(8, 0, 2, 0),
 			HorizontalContentAlignment = HorizontalAlignment.Left,
 			VerticalContentAlignment = VerticalAlignment.Center,
-			ToolTip = "Enter an exact ID and press Enter"
+			ToolTip = "Enter an ID and press Enter. Switch Number also finds prefixes and suffixes."
 		};
 		_value.SetResourceReference(Control.ForegroundProperty, "Esri_TextControlBrush");
 		_value.KeyDown += (_, e) =>

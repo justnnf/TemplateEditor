@@ -147,6 +147,18 @@ internal static class AssetSearchService
 			return long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long number)
 				? fieldName + " = " + number.ToString(CultureInfo.InvariantCulture) : null;
 		}
-		return fieldType == FieldType.String ? fieldName + " = '" + value.Trim().Replace("'", "''") + "'" : null;
+		if (fieldType != FieldType.String)
+		{
+			return null;
+		}
+		string text = value.Trim().Replace("'", "''");
+		if (string.Equals(fieldName, "assetid", StringComparison.OrdinalIgnoreCase))
+		{
+			// Escape LIKE wildcards so a typed switch number is treated as literal text.
+			bool needsEscape = text.IndexOfAny(new[] { '$', '%', '_' }) >= 0;
+			string pattern = needsEscape ? text.Replace("$", "$$").Replace("%", "$%").Replace("_", "$_") : text;
+			return fieldName + " LIKE '%" + pattern + "%'" + (needsEscape ? " ESCAPE '$'" : string.Empty);
+		}
+		return fieldName + " = '" + text + "'";
 	}
 }
