@@ -22,6 +22,7 @@
           <subgroup refID="TemplateEditor_OpenSubgroup" />
           <subgroup refID="TemplateEditor_ReloadSubgroup" />
           <subgroup refID="TemplateEditor_SettingsSubgroup" />
+          <subgroup refID="TemplateEditor_SearchSubgroup" />
         </group>
       </groups>
       <subgroups>
@@ -34,8 +35,18 @@
         <subgroup id="TemplateEditor_SettingsSubgroup" size="AlwaysLarge" verticalAlignment="Center">
           <button refID="TemplateEditor_TemplateSettings" />
         </subgroup>
+        <subgroup id="TemplateEditor_SearchSubgroup" size="AlwaysSmall" verticalAlignment="Center">
+          <comboBox refID="TemplateEditor_SearchField" />
+          <editBox refID="TemplateEditor_SearchValue" />
+        </subgroup>
       </subgroups>
       <controls>
+        <comboBox id="TemplateEditor_SearchField" caption="Search field" className="TemplateEditor.AssetSearchFieldComboBox" itemWidth="130" isEditable="false" isReadOnly="true" condition="esri_mapping_mapPane">
+          <tooltip heading="Search field">Choose the field to search across the current map's layers and tables.<disabledText /></tooltip>
+        </comboBox>
+        <editBox id="TemplateEditor_SearchValue" caption="Find asset" className="TemplateEditor.AssetSearchEditBox" sizeString="12345678901234567890" condition="esri_mapping_mapPane">
+          <tooltip heading="Find asset">Enter an exact value and press Enter to add matching features and table rows to the current selection.<disabledText /></tooltip>
+        </editBox>
         <tool id="TemplateEditor_SketchPointTool" caption="SketchPointTool" className="TemplateEditor.SketchPointTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
           <tooltip heading="Place Point Template">Place the selected point template.<disabledText /></tooltip>
         </tool>

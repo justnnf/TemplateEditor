@@ -1,4 +1,4 @@
-# Template Editor 2.0.6
+# Template Editor 2.0.7
 
 Template Editor is an ArcGIS Pro 3.3 add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
 
@@ -15,11 +15,13 @@ The add-in does not ship with a customer-specific template configuration. Each u
 
 ## Add-In Commands
 
-The ArcGIS Pro ribbon adds a `Templates` tab with three commands:
+The ArcGIS Pro ribbon adds a `Templates` tab with three buttons:
 
 - `Settings`: choose configuration files and workflow options.
 - `Open Editor`: open the Template Editor dockpane.
 - `Reload Config`: reload the selected template configuration JSON.
+
+The ribbon also has **Find asset**. Choose Facility ID (`facilityid`), Switch Number (`assetid`), Site ID (`SITE_ID`), or Global ID (`GLOBALID`), enter an exact value, and press Enter. The add-in searches matching fields in the active map's feature layers and standalone tables, then adds up to 100 matching rows to the existing selection. Non-spatial matches are selected in their standalone tables. Search errors are logged to `%LOCALAPPDATA%\TemplateEditor\template-editor.log`.
 
 ## First-Time Setup
 
@@ -39,7 +41,7 @@ Build a versioned package from the repository root:
 dotnet build TemplateEditor.csproj -c Release
 ```
 
-Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.0.6, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.0.6.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
+Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.0.7, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.0.7.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
 
 Use an explicit MSBuild target when needed:
 
