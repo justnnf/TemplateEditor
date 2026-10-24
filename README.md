@@ -21,7 +21,7 @@ The ArcGIS Pro ribbon adds a `Templates` tab with three buttons:
 - `Open Editor`: open the Template Editor dockpane.
 - `Reload Config`: reload the selected template configuration JSON.
 
-The ribbon has a separate **Find Asset** button to the right of Templates. It opens a results pane with Facility ID (`facilityid`), Switch Number (`assetid`), Site ID (`SITE_ID`), and Global ID (`GLOBALID`) search choices. Enter an exact value and click **Find and add to selection** or press Enter. The add-in searches matching fields in the active map's feature layers and standalone tables, lists up to 100 matches, and adds them to the existing selection. Non-spatial matches are selected in their standalone tables. Search errors are logged to `%LOCALAPPDATA%\TemplateEditor\template-editor.log`.
+The ribbon has a separate **Find Asset** group to the right of Templates. Choose Facility ID (`facilityid`), Switch Number (`assetid`), Site ID (`SITE_ID`), or Global ID (`GLOBALID`), enter an exact value, and click **Find and Select** or press Enter. Open the **Search results** dropdown in the same ribbon group to review up to 100 matches. The add-in searches the active map's feature layers and standalone tables and adds matches to the existing selection. Non-spatial matches are selected in their standalone tables. Search errors are logged to `%LOCALAPPDATA%\TemplateEditor\template-editor.log`.
 
 ## First-Time Setup
 

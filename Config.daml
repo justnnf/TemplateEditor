@@ -25,7 +25,8 @@
           <subgroup refID="TemplateEditor_SettingsSubgroup" />
         </group>
         <group id="TemplateEditor_AssetSearchGroup" caption="Find Asset" appearsOnAddInTab="false" keytip="FA">
-          <subgroup refID="TemplateEditor_FindAssetSubgroup" />
+          <subgroup refID="TemplateEditor_SearchInputSubgroup" />
+          <subgroup refID="TemplateEditor_SearchResultsSubgroup" />
         </group>
       </groups>
       <subgroups>
@@ -38,14 +39,30 @@
         <subgroup id="TemplateEditor_SettingsSubgroup" size="AlwaysLarge" verticalAlignment="Center">
           <button refID="TemplateEditor_TemplateSettings" />
         </subgroup>
-        <subgroup id="TemplateEditor_FindAssetSubgroup" size="AlwaysLarge" verticalAlignment="Center">
+        <subgroup id="TemplateEditor_SearchInputSubgroup" size="AlwaysSmall" verticalAlignment="Center">
+          <comboBox refID="TemplateEditor_SearchField" />
+          <editBox refID="TemplateEditor_SearchValue" />
           <button refID="TemplateEditor_FindAsset" />
+        </subgroup>
+        <subgroup id="TemplateEditor_SearchResultsSubgroup" size="AlwaysSmall" verticalAlignment="Center">
+          <labelControl refID="TemplateEditor_SearchResultsLabel" />
+          <comboBox refID="TemplateEditor_SearchResults" />
         </subgroup>
       </subgroups>
       <controls>
-        <button id="TemplateEditor_FindAsset" caption="Find Asset" className="TemplateEditor.AssetSearchShowButton" loadOnClick="true" smallImage="Images\SearchVectorIcon.xaml" largeImage="Images\SearchVectorIcon.xaml" keytip="F" condition="esri_mapping_mapPane">
-          <tooltip heading="Find Asset">Search the current map's layers and tables, review matches, and add them to the selection.<disabledText /></tooltip>
+        <comboBox id="TemplateEditor_SearchField" caption="Search by" className="TemplateEditor.AssetSearchFieldComboBox" itemWidth="150" isEditable="false" isReadOnly="true" keytip="SF" condition="esri_mapping_mapPane">
+          <tooltip heading="Search by">Choose Facility ID, Switch Number, Site ID, or Global ID.<disabledText /></tooltip>
+        </comboBox>
+        <editBox id="TemplateEditor_SearchValue" caption="Exact ID" className="TemplateEditor.AssetSearchEditBox" sizeString="12345678901234567890" editHint="Enter exact ID" keytip="SV" condition="esri_mapping_mapPane">
+          <tooltip heading="Exact ID">Enter an ID and press Enter to search the current map's layers and tables.<disabledText /></tooltip>
+        </editBox>
+        <button id="TemplateEditor_FindAsset" caption="Find and Select" className="TemplateEditor.AssetSearchRunButton" loadOnClick="true" smallImage="Images\SearchVectorIcon.xaml" largeImage="Images\SearchVectorIcon.xaml" keytip="F" condition="esri_mapping_mapPane">
+          <tooltip heading="Find and Select">Find exact matches and add features and table rows to the current selection.<disabledText /></tooltip>
         </button>
+        <labelControl id="TemplateEditor_SearchResultsLabel" caption="Matches added to selection" hasTwoLines="false" />
+        <comboBox id="TemplateEditor_SearchResults" caption="Search results" className="TemplateEditor.AssetSearchResultsComboBox" itemWidth="290" rows="12" sizeString="123456789012345678901234" isEditable="false" isReadOnly="true" keytip="SR" condition="esri_mapping_mapPane">
+          <tooltip heading="Search results">Open this list to review matching features and table rows.<disabledText /></tooltip>
+        </comboBox>
         <tool id="TemplateEditor_SketchPointTool" caption="SketchPointTool" className="TemplateEditor.SketchPointTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="P">
           <tooltip heading="Place Point Template">Place the selected point template.<disabledText /></tooltip>
         </tool>
@@ -71,9 +88,6 @@
       <dockPanes>
         <dockPane id="TemplateEditor_EditorDockpaneV2" caption="Template Editor" className="TemplateEditor.EditorDockpaneViewModel" dock="group" dockWith="esri_core_contentsDockPane">
           <content className="TemplateEditor.EditorDockpaneView" />
-        </dockPane>
-        <dockPane id="TemplateEditor_AssetSearchDockpane" caption="Find Asset" className="TemplateEditor.AssetSearchDockpaneViewModel" dock="right" width="380">
-          <content className="TemplateEditor.AssetSearchView" />
         </dockPane>
       </dockPanes>
     </insertModule>
