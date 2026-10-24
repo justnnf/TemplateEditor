@@ -15,7 +15,7 @@ internal class AddinModule : Module
 	{
 		try
 		{
-			LogService.Write("AddinModule constructor starting.");
+			LogService.Write("AddinModule " + typeof(AddinModule).Assembly.GetName().Version + " constructor starting.");
 			AddinConfiguration.Initialize();
 			LogService.Write("AddinConfiguration initialized successfully.");
 			ProjectOpenedEvent.Subscribe((Action<ProjectEventArgs>)OnProjectOpened, false);
