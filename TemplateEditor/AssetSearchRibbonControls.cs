@@ -6,7 +6,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using ArcGIS.Desktop.Framework.Contracts;
 
@@ -22,6 +21,8 @@ internal sealed class AssetSearchInputView : UserControl
 	private readonly System.Windows.Controls.ComboBox _field;
 	private readonly TextBox _value;
 	private bool _searching;
+	private bool _hasSearch;
+	private int _searchVersion;
 	private string _lastSearchKey;
 	private DateTime _lastSearchStarted;
 
@@ -52,6 +53,7 @@ internal sealed class AssetSearchInputView : UserControl
 
 		Grid searchBar = new Grid { Width = width, Height = 29 };
 		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
 		Border searchBorder = new Border
 		{
@@ -78,6 +80,36 @@ internal sealed class AssetSearchInputView : UserControl
 			}
 		};
 		searchBar.Children.Add(_value);
+		System.Windows.Controls.Button clear = new System.Windows.Controls.Button
+		{
+			Content = "×",
+			Width = 20,
+			Height = 27,
+			FontSize = 17,
+			FontWeight = FontWeights.Bold,
+			Visibility = Visibility.Collapsed,
+			ToolTip = "Clear search and results",
+			Cursor = Cursors.Hand,
+			Focusable = false
+		};
+		clear.SetResourceReference(Control.ForegroundProperty, "Esri_TextStyleSubduedBrush");
+		clear.Template = IconButtonTemplate();
+		clear.Click += (_, _) =>
+		{
+			_searchVersion++;
+			_searching = false;
+			_hasSearch = false;
+			_lastSearchKey = null;
+			_lastSearchStarted = default;
+			_value.Clear();
+			AssetSearchResultsControl.Clear();
+			clear.Visibility = Visibility.Collapsed;
+			_value.Focus();
+		};
+		_value.TextChanged += (_, _) =>
+			clear.Visibility = _value.Text.Length > 0 || _hasSearch ? Visibility.Visible : Visibility.Collapsed;
+		Grid.SetColumn(clear, 1);
+		searchBar.Children.Add(clear);
 		System.Windows.Controls.Button find = new System.Windows.Controls.Button
 		{
 			Width = 27,
@@ -88,14 +120,9 @@ internal sealed class AssetSearchInputView : UserControl
 			ToolTip = "Search live layers and tables",
 			Cursor = Cursors.Hand
 		};
-		ControlTemplate iconButton = new ControlTemplate(typeof(System.Windows.Controls.Button));
-		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
-		content.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-		content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		iconButton.VisualTree = content;
-		find.Template = iconButton;
+		find.Template = IconButtonTemplate();
 		find.Click += (_, _) => StartSearch();
-		Grid.SetColumn(find, 1);
+		Grid.SetColumn(find, 2);
 		searchBar.Children.Add(find);
 		layout.Children.Add(searchBorder);
 		Content = layout;
@@ -133,6 +160,16 @@ internal sealed class AssetSearchInputView : UserControl
 		return glyph;
 	}
 
+	private static ControlTemplate IconButtonTemplate()
+	{
+		ControlTemplate template = new ControlTemplate(typeof(System.Windows.Controls.Button));
+		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
+		content.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+		content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		template.VisualTree = content;
+		return template;
+	}
+
 	private static void FlattenCorners(DependencyObject parent)
 	{
 		for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
@@ -161,12 +198,18 @@ internal sealed class AssetSearchInputView : UserControl
 		}
 
 		_searching = true;
+		_hasSearch = true;
+		int searchVersion = ++_searchVersion;
 		_lastSearchKey = searchKey;
 		_lastSearchStarted = DateTime.UtcNow;
 		AssetSearchResultsControl.ShowSearching();
 		try
 		{
 			AssetSearchResult result = await AssetSearchService.SearchAsync(fieldName, value);
+			if (searchVersion != _searchVersion)
+			{
+				return;
+			}
 			AssetSearchResultsControl.ShowResults(result);
 			string message = result.MatchCount == 0
 				? "No matches found in the current map."
@@ -183,13 +226,20 @@ internal sealed class AssetSearchInputView : UserControl
 		}
 		catch (Exception ex)
 		{
+			if (searchVersion != _searchVersion)
+			{
+				return;
+			}
 			LogService.LogException("Asset search failed.", ex);
 			AssetSearchResultsControl.ShowMessage("Search failed", "See the Template Editor log.");
 			DialogService.ShowToast("Search failed; see the Template Editor log.", "Find Asset", FeedbackSeverity.Warning);
 		}
 		finally
 		{
-			_searching = false;
+			if (searchVersion == _searchVersion)
+			{
+				_searching = false;
+			}
 		}
 	}
 }
@@ -213,6 +263,12 @@ internal sealed class AssetSearchResultsControl : CustomControl
 	}
 
 	internal static void ShowSearching() => ShowMessage("Searching", "Checking live layers and tables...");
+
+	internal static void Clear()
+	{
+		_cards = Array.Empty<AssetSearchResultCard>();
+		_current?.Refresh();
+	}
 
 	internal static void ShowMessage(string title, string detail)
 	{
@@ -309,10 +365,9 @@ internal sealed class AssetSearchResultsView : UserControl
 		Image image = new Image
 		{
 			Width = 16,
-			Height = 16,
-			Source = new BitmapImage(new Uri(
-				"pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/" + icon + ".png"))
+			Height = 16
 		};
+		image.SetResourceReference(Image.SourceProperty, icon);
 		System.Windows.Controls.Button button = new System.Windows.Controls.Button
 		{
 			Width = 20,

@@ -48,7 +48,7 @@
       </subgroups>
       <controls>
         <customControl id="TemplateEditor_SearchInput" caption="Search" className="TemplateEditor.AssetSearchInputControl" isDropDown="false" loadOnClick="false" keytip="FI" condition="esri_mapping_mapPane">
-          <tooltip heading="Find asset">Choose an ID field, enter an exact value, and press Enter or the search icon.<disabledText /></tooltip>
+          <tooltip heading="Find asset">Choose an ID field, enter an exact value, and press Enter or the search icon. Use × to clear the search and results.<disabledText /></tooltip>
         </customControl>
         <customControl id="TemplateEditor_SearchResults" caption="Results" className="TemplateEditor.AssetSearchResultsControl" isDropDown="false" loadOnClick="false" keytip="SR" condition="esri_mapping_mapPane">
           <tooltip heading="Search results">Scroll through matches in the ribbon. Use each row's icons to add it to the selection, zoom to it, or pan to it.<disabledText /></tooltip>
