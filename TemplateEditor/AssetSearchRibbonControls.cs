@@ -6,7 +6,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Shapes;
 using ArcGIS.Desktop.Framework.Contracts;
 
 namespace TemplateEditor;
@@ -34,8 +33,11 @@ internal sealed class AssetSearchInputView : UserControl
 		{
 			Width = width,
 			Height = 28,
+			FontSize = 13,
 			BorderThickness = new Thickness(1),
-			Padding = new Thickness(8, 2, 6, 2),
+			Padding = new Thickness(11, 0, 8, 0),
+			HorizontalContentAlignment = HorizontalAlignment.Left,
+			VerticalContentAlignment = VerticalAlignment.Center,
 			Margin = new Thickness(0, 2, 0, 5),
 			ToolTip = "Search by field"
 		};
@@ -52,9 +54,9 @@ internal sealed class AssetSearchInputView : UserControl
 		layout.Children.Add(_field);
 
 		Grid searchBar = new Grid { Width = width, Height = 29 };
+		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
 		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
 		Border searchBorder = new Border
 		{
 			BorderThickness = new Thickness(1),
@@ -66,8 +68,11 @@ internal sealed class AssetSearchInputView : UserControl
 		_value = new TextBox
 		{
 			Background = Brushes.Transparent,
+			FontSize = 13,
 			BorderThickness = new Thickness(0),
-			Padding = new Thickness(9, 4, 2, 3),
+			Padding = new Thickness(8, 0, 2, 0),
+			HorizontalContentAlignment = HorizontalAlignment.Left,
+			VerticalContentAlignment = VerticalAlignment.Center,
 			ToolTip = "Enter an exact ID and press Enter"
 		};
 		_value.SetResourceReference(Control.ForegroundProperty, "Esri_TextControlBrush");
@@ -79,7 +84,18 @@ internal sealed class AssetSearchInputView : UserControl
 				StartSearch();
 			}
 		};
+		Grid.SetColumn(_value, 1);
 		searchBar.Children.Add(_value);
+		TextBlock searchIndicator = new TextBlock
+		{
+			Text = "⌕",
+			FontSize = 18,
+			VerticalAlignment = VerticalAlignment.Center,
+			HorizontalAlignment = HorizontalAlignment.Center,
+			IsHitTestVisible = false
+		};
+		searchIndicator.SetResourceReference(TextBlock.ForegroundProperty, "Esri_TextStyleSubduedBrush");
+		searchBar.Children.Add(searchIndicator);
 		System.Windows.Controls.Button clear = new System.Windows.Controls.Button
 		{
 			Content = "×",
@@ -108,22 +124,8 @@ internal sealed class AssetSearchInputView : UserControl
 		};
 		_value.TextChanged += (_, _) =>
 			clear.Visibility = _value.Text.Length > 0 || _hasSearch ? Visibility.Visible : Visibility.Collapsed;
-		Grid.SetColumn(clear, 1);
+		Grid.SetColumn(clear, 2);
 		searchBar.Children.Add(clear);
-		System.Windows.Controls.Button find = new System.Windows.Controls.Button
-		{
-			Width = 27,
-			Height = 27,
-			Background = Brushes.Transparent,
-			BorderThickness = new Thickness(0),
-			Content = SearchGlyph(),
-			ToolTip = "Search live layers and tables",
-			Cursor = Cursors.Hand
-		};
-		find.Template = IconButtonTemplate();
-		find.Click += (_, _) => StartSearch();
-		Grid.SetColumn(find, 2);
-		searchBar.Children.Add(find);
 		layout.Children.Add(searchBorder);
 		Content = layout;
 	}
@@ -131,34 +133,10 @@ internal sealed class AssetSearchInputView : UserControl
 	private void AddField(string label, string name) => _field.Items.Add(new System.Windows.Controls.ComboBoxItem
 	{
 		Content = label,
-		Tag = name
+		Tag = name,
+		HorizontalContentAlignment = HorizontalAlignment.Left,
+		VerticalContentAlignment = VerticalAlignment.Center
 	});
-
-	private static Canvas SearchGlyph()
-	{
-		Canvas glyph = new Canvas { Width = 15, Height = 15 };
-		Ellipse ring = new Ellipse
-		{
-			Width = 9,
-			Height = 9,
-			StrokeThickness = 1.6
-		};
-		ring.SetResourceReference(Shape.StrokeProperty, "Esri_TextControlBrush");
-		glyph.Children.Add(ring);
-		Line handle = new Line
-		{
-			X1 = 8,
-			Y1 = 8,
-			X2 = 14,
-			Y2 = 14,
-			StrokeThickness = 1.6,
-			StrokeStartLineCap = PenLineCap.Round,
-			StrokeEndLineCap = PenLineCap.Round
-		};
-		handle.SetResourceReference(Shape.StrokeProperty, "Esri_TextControlBrush");
-		glyph.Children.Add(handle);
-		return glyph;
-	}
 
 	private static ControlTemplate IconButtonTemplate()
 	{

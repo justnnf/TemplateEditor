@@ -70,7 +70,9 @@ internal static class AssetSearchService
 			bool limitReached = false;
 			List<AssetSearchMatch> matches = new List<AssetSearchMatch>();
 			IEnumerable<MapMember> members = map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Cast<MapMember>()
-				.Concat(map.GetStandaloneTablesAsFlattenedList().Cast<MapMember>());
+				.Concat(map.GetStandaloneTablesAsFlattenedList()
+					.Where(table => table is not SubtypeGroupTable)
+					.Cast<MapMember>());
 			foreach (MapMember member in members)
 			{
 				if (matchCount == MaxMatches)

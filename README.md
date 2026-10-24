@@ -1,4 +1,4 @@
-# Template Editor 2.0.7
+# Template Editor 2.1.0
 
 Template Editor is an ArcGIS Pro 3.3 add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
 
@@ -21,7 +21,7 @@ The ArcGIS Pro ribbon adds a `Templates` tab with three buttons:
 - `Open Editor`: open the Template Editor dockpane.
 - `Reload Config`: reload the selected template configuration JSON.
 
-The ribbon has a separate **Find Asset** group to the right of Templates. Choose Facility ID (`facilityid`), Switch Number (`assetid`), Site ID (`SITE_ID`), or Global ID (`GLOBALID`), enter an exact value, and click the search icon inside the box or press Enter. The **×** in the search bar clears the text and current results. The results viewer stays visible in the ribbon, displays three matches at a time, and scrolls through up to 100 matches. Each row shows its layer name and matched field value. Use the icons on a row to add it to the existing selection or, for spatial features, zoom or pan to it. The action icons use ArcGIS Pro's theme-aware image resources. Search errors are logged to `%LOCALAPPDATA%\TemplateEditor\template-editor.log`.
+The ribbon has a separate **Find Asset** group to the right of Templates. Choose Facility ID (`facilityid`), Switch Number (`assetid`), Site ID (`SITE_ID`), or Global ID (`GLOBALID`), enter an exact value, and press Enter to search. The magnifier indicates the search field; the **×** clears the text and current results. The results viewer stays visible in the ribbon, displays three matches at a time, and scrolls through up to 100 matches. Each row shows its layer name and matched field value. Subtype group tables are omitted so results appear under their subtype tables only. Use the icons on a row to add it to the existing selection or, for spatial features, zoom or pan to it. The action icons use ArcGIS Pro's theme-aware image resources. Search errors are logged to `%LOCALAPPDATA%\TemplateEditor\template-editor.log`.
 
 ## First-Time Setup
 
@@ -41,7 +41,7 @@ Build a versioned package from the repository root:
 dotnet build TemplateEditor.csproj -c Release
 ```
 
-Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.0.7, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.0.7.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
+Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.1.0, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.1.0.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
 
 Use an explicit MSBuild target when needed:
 
