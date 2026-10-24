@@ -8,7 +8,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using ArcGIS.Desktop.Framework.Contracts;
-using ComboBoxItem = ArcGIS.Desktop.Framework.Contracts.ComboBoxItem;
 
 namespace TemplateEditor;
 
@@ -33,14 +32,16 @@ internal sealed class AssetSearchInputView : UserControl
 		{
 			Width = width,
 			Height = 28,
-			Background = DialogAppearance.InputBackground,
-			Foreground = DialogAppearance.Foreground,
-			BorderBrush = DialogAppearance.Border,
 			BorderThickness = new Thickness(1),
 			Padding = new Thickness(8, 2, 6, 2),
 			Margin = new Thickness(0, 2, 0, 5),
 			ToolTip = "Search by field"
 		};
+		_field.SetResourceReference(Control.BackgroundProperty, "Esri_ControlBackgroundBrush");
+		_field.SetResourceReference(Control.ForegroundProperty, "Esri_TextControlBrush");
+		_field.SetResourceReference(Control.BorderBrushProperty, "Esri_BorderBrush");
+		_field.Loaded += (_, _) => FlattenCorners(_field);
+		_field.DropDownOpened += (_, _) => FlattenCorners(_field);
 		AddField("Facility ID", "facilityid");
 		AddField("Switch Number", "assetid");
 		AddField("Site ID", "SITE_ID");
@@ -53,20 +54,20 @@ internal sealed class AssetSearchInputView : UserControl
 		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
 		Border searchBorder = new Border
 		{
-			Background = DialogAppearance.InputBackground,
-			BorderBrush = DialogAppearance.Border,
 			BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(4),
+			CornerRadius = new CornerRadius(0),
 			Child = searchBar
 		};
+		searchBorder.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
+		searchBorder.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
 		_value = new TextBox
 		{
 			Background = Brushes.Transparent,
-			Foreground = DialogAppearance.Foreground,
 			BorderThickness = new Thickness(0),
 			Padding = new Thickness(9, 4, 2, 3),
 			ToolTip = "Enter an exact ID and press Enter"
 		};
+		_value.SetResourceReference(Control.ForegroundProperty, "Esri_TextControlBrush");
 		_value.KeyDown += (_, e) =>
 		{
 			if (e.Key == Key.Return)
@@ -76,24 +77,22 @@ internal sealed class AssetSearchInputView : UserControl
 			}
 		};
 		searchBar.Children.Add(_value);
-		TextBlock hint = new TextBlock
-		{
-			Text = "Enter exact ID",
-			Foreground = DialogAppearance.SecondaryForeground,
-			Margin = new Thickness(11, 5, 0, 0),
-			IsHitTestVisible = false
-		};
-		_value.TextChanged += (_, _) => hint.Visibility = _value.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-		searchBar.Children.Add(hint);
 		System.Windows.Controls.Button find = new System.Windows.Controls.Button
 		{
-			Width = 30,
+			Width = 27,
 			Height = 27,
 			Background = Brushes.Transparent,
 			BorderThickness = new Thickness(0),
 			Content = SearchGlyph(),
-			ToolTip = "Search live layers and tables"
+			ToolTip = "Search live layers and tables",
+			Cursor = Cursors.Hand
 		};
+		ControlTemplate iconButton = new ControlTemplate(typeof(System.Windows.Controls.Button));
+		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
+		content.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+		content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		iconButton.VisualTree = content;
+		find.Template = iconButton;
 		find.Click += (_, _) => StartSearch();
 		Grid.SetColumn(find, 1);
 		searchBar.Children.Add(find);
@@ -104,33 +103,46 @@ internal sealed class AssetSearchInputView : UserControl
 	private void AddField(string label, string name) => _field.Items.Add(new System.Windows.Controls.ComboBoxItem
 	{
 		Content = label,
-		Tag = name,
-		Foreground = DialogAppearance.Foreground,
-		Background = DialogAppearance.InputBackground
+		Tag = name
 	});
 
 	private static Canvas SearchGlyph()
 	{
-		Canvas glyph = new Canvas { Width = 17, Height = 17 };
-		glyph.Children.Add(new Ellipse
+		Canvas glyph = new Canvas { Width = 15, Height = 15 };
+		Ellipse ring = new Ellipse
 		{
-			Width = 10,
-			Height = 10,
-			Stroke = DialogAppearance.Accent,
-			StrokeThickness = 2
-		});
-		glyph.Children.Add(new Line
+			Width = 9,
+			Height = 9,
+			StrokeThickness = 1.6
+		};
+		ring.SetResourceReference(Shape.StrokeProperty, "Esri_TextControlBrush");
+		glyph.Children.Add(ring);
+		Line handle = new Line
 		{
-			X1 = 9,
-			Y1 = 9,
-			X2 = 16,
-			Y2 = 16,
-			Stroke = DialogAppearance.Accent,
-			StrokeThickness = 2,
+			X1 = 8,
+			Y1 = 8,
+			X2 = 14,
+			Y2 = 14,
+			StrokeThickness = 1.6,
 			StrokeStartLineCap = PenLineCap.Round,
 			StrokeEndLineCap = PenLineCap.Round
-		});
+		};
+		handle.SetResourceReference(Shape.StrokeProperty, "Esri_TextControlBrush");
+		glyph.Children.Add(handle);
 		return glyph;
+	}
+
+	private static void FlattenCorners(DependencyObject parent)
+	{
+		for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+		{
+			DependencyObject child = VisualTreeHelper.GetChild(parent, i);
+			if (child is Border border)
+			{
+				border.CornerRadius = new CornerRadius(0);
+			}
+			FlattenCorners(child);
+		}
 	}
 
 	private void StartSearch() => TaskObservationService.Forget(SearchAsync(), "Asset search failed.");
@@ -158,7 +170,7 @@ internal sealed class AssetSearchInputView : UserControl
 			AssetSearchResultsControl.ShowResults(result, fieldLabel, value);
 			string message = result.MatchCount == 0
 				? "No matches found in the current map."
-				: $"Found {result.MatchCount} match(es). Open Results to review them.";
+				: $"Found {result.MatchCount} match(es) in the ribbon.";
 			if (result.LimitReached)
 			{
 				message += " Limited to 100 matches; use a more specific value.";
@@ -232,40 +244,23 @@ internal sealed class AssetSearchResultsView : UserControl
 
 	public AssetSearchResultsView()
 	{
-		Grid layout = new Grid { Width = 360, Background = DialogAppearance.Background };
-		layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-		layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-		StackPanel header = new StackPanel { Margin = new Thickness(12, 10, 12, 7) };
-		header.Children.Add(new TextBlock
-		{
-			Text = "Search results",
-			FontSize = 14,
-			FontWeight = FontWeights.SemiBold,
-			Foreground = DialogAppearance.Foreground
-		});
-		header.Children.Add(new TextBlock
-		{
-			Text = "Click to select · Right-click for more actions",
-			FontSize = 11,
-			Foreground = DialogAppearance.SecondaryForeground
-		});
-		layout.Children.Add(header);
 		ScrollViewer scroll = new ScrollViewer
 		{
 			Content = _cards,
-			MaxHeight = 420,
+			Height = 66,
 			VerticalScrollBarVisibility = ScrollBarVisibility.Auto
 		};
-		Grid.SetRow(scroll, 1);
-		layout.Children.Add(scroll);
-		Content = new Border
+		Border frame = new Border
 		{
-			Background = DialogAppearance.Background,
-			BorderBrush = DialogAppearance.Border,
+			Width = 280,
+			Height = 68,
 			BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(5),
-			Child = layout
+			CornerRadius = new CornerRadius(0),
+			Child = scroll
 		};
+		frame.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
+		frame.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
+		Content = frame;
 	}
 
 	internal void Show(IEnumerable<AssetSearchResultCard> cards)
@@ -273,34 +268,46 @@ internal sealed class AssetSearchResultsView : UserControl
 		_cards.Children.Clear();
 		foreach (AssetSearchResultCard card in cards)
 		{
-			StackPanel text = new StackPanel();
-			text.Children.Add(new TextBlock
+			Grid row = new Grid { Height = 21 };
+			row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+			row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+			TextBlock title = new TextBlock
 			{
 				Text = card.Title,
-				FontSize = 13,
+				FontSize = 11,
 				FontWeight = FontWeights.SemiBold,
-				Foreground = DialogAppearance.Foreground,
-				TextTrimming = TextTrimming.CharacterEllipsis
-			});
-			text.Children.Add(new TextBlock { Text = card.Detail, FontSize = 11, Foreground = DialogAppearance.SecondaryForeground });
-			if (!string.IsNullOrEmpty(card.Identifier))
+				TextTrimming = TextTrimming.CharacterEllipsis,
+				VerticalAlignment = VerticalAlignment.Center,
+				Margin = new Thickness(7, 0, 3, 0)
+			};
+			title.SetResourceReference(TextBlock.ForegroundProperty, "Esri_TextControlBrush");
+			row.Children.Add(title);
+			TextBlock detail = new TextBlock
 			{
-				text.Children.Add(new TextBlock { Text = card.Identifier, FontSize = 11, Foreground = DialogAppearance.SecondaryForeground });
-			}
+				Text = card.Detail,
+				FontSize = 10,
+				TextTrimming = TextTrimming.CharacterEllipsis,
+				VerticalAlignment = VerticalAlignment.Center,
+				Margin = new Thickness(3, 0, 5, 0)
+			};
+			detail.SetResourceReference(TextBlock.ForegroundProperty, "Esri_TextStyleSubduedBrush");
+			Grid.SetColumn(detail, 1);
+			row.Children.Add(detail);
 			Border tile = new Border
 			{
-				Background = DialogAppearance.InputBackground,
-				BorderBrush = DialogAppearance.Border,
-				BorderThickness = new Thickness(1),
-				CornerRadius = new CornerRadius(5),
-				Padding = new Thickness(10, 8, 10, 8),
-				Margin = new Thickness(8, 3, 8, 3),
+				BorderThickness = new Thickness(0, 0, 0, 1),
+				CornerRadius = new CornerRadius(0),
 				ContextMenu = card.Menu,
-				Child = text
+				ToolTip = string.Join(" · ", new[] { card.Title, card.Detail, card.Identifier }.Where(s => !string.IsNullOrEmpty(s))),
+				Child = row
 			};
+			tile.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
+			tile.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
 			if (card.Match != null)
 			{
 				tile.Cursor = Cursors.Hand;
+				tile.MouseEnter += (_, _) => tile.SetResourceReference(Border.BackgroundProperty, "Esri_DialogFrameBackgroundBrush");
+				tile.MouseLeave += (_, _) => tile.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
 				tile.MouseLeftButtonUp += (_, e) =>
 				{
 					e.Handled = true;
@@ -331,7 +338,7 @@ public sealed class AssetSearchResultCard
 	{
 		Match = match;
 		Title = match.Source;
-		Detail = $"{match.Kind}  ·  Object ID {match.ObjectID}";
+		Detail = $"{(match.IsSpatial ? "Feature" : "Row")} · {match.ObjectID}";
 		Identifier = $"{fieldName}: {value}";
 		Menu = new ContextMenu();
 		AddAction("Add to selection", AssetSearchService.ResultAction.AddToSelection);

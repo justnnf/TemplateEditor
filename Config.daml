@@ -50,8 +50,8 @@
         <customControl id="TemplateEditor_SearchInput" caption="Search" className="TemplateEditor.AssetSearchInputControl" isDropDown="false" loadOnClick="false" keytip="FI" condition="esri_mapping_mapPane">
           <tooltip heading="Find asset">Choose an ID field, enter an exact value, and press Enter or the search icon.<disabledText /></tooltip>
         </customControl>
-        <customControl id="TemplateEditor_SearchResults" caption="Results" className="TemplateEditor.AssetSearchResultsControl" isDropDown="true" staysOpenOnClick="true" loadOnClick="false" smallImage="Images\SearchVectorIcon.xaml" largeImage="Images\SearchVectorIcon.xaml" keytip="SR" condition="esri_mapping_mapPane">
-          <tooltip heading="Search results">Review matches. Right-click a card to add it to the selection. Feature cards also offer zoom and pan.<disabledText /></tooltip>
+        <customControl id="TemplateEditor_SearchResults" caption="Results" className="TemplateEditor.AssetSearchResultsControl" isDropDown="false" loadOnClick="false" keytip="SR" condition="esri_mapping_mapPane">
+          <tooltip heading="Search results">Scroll through matches in the ribbon. Click to add to selection, or right-click for more actions.<disabledText /></tooltip>
         </customControl>
         <tool id="TemplateEditor_SketchPointTool" caption="SketchPointTool" className="TemplateEditor.SketchPointTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="P">
           <tooltip heading="Place Point Template">Place the selected point template.<disabledText /></tooltip>
