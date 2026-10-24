@@ -97,15 +97,15 @@ internal static class MapMemberLookupService
 
 	private static List<FeatureLayer> GetFeatureLayersForGroupsCore(IEnumerable<string> groupNames)
 	{
-		MapView active = MapView.Active;
-		if (active == null || groupNames == null)
+		Map map = MapView.Active?.Map;
+		if (map == null || groupNames == null)
 		{
 			return new List<FeatureLayer>();
 		}
 		HashSet<string> groupNameLookup = groupNames
 			.Where(name => !string.IsNullOrWhiteSpace(name))
 			.ToHashSet(StringComparer.OrdinalIgnoreCase);
-		return active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Where(layer =>
+		return map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Where(layer =>
 		{
 			string owningGroupName = GetOwningGroupNameCore(layer);
 			return groupNameLookup.Contains(layer.Name) || groupNameLookup.Contains(owningGroupName);

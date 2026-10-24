@@ -439,8 +439,18 @@ internal static class PlacementEnhancementService
 			}
 			foreach (FeatureLayer item in (IEnumerable<FeatureLayer>)obj)
 			{
-				List<long> list2 = ((BasicFeatureLayer)item).GetSelection().GetObjectIDs().ToList();
-				if (list2.Count != 0)
+				List<long> list2;
+				try
+				{
+					using Selection selection = item.GetSelection();
+					list2 = selection?.GetObjectIDs()?.ToList();
+				}
+				catch (Exception exception)
+				{
+					LogService.LogException("Selected association candidate selection could not be read for layer '" + item.Name + "'.", exception);
+					continue;
+				}
+				if (list2 != null && list2.Count != 0)
 				{
 					RowCursor val;
 					try
@@ -997,21 +1007,28 @@ internal static class PlacementEnhancementService
 		{
 			return new List<LayerSearchContext>();
 		}
-		IEnumerable<FeatureLayer> enumerable = (useRuleCatalogSearchScope ? MapView.Active.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>() : MapMemberLookupService.GetFeatureLayersForGroups(hashSet));
+		IEnumerable<FeatureLayer> enumerable = (useRuleCatalogSearchScope ? MapView.Active?.Map?.GetLayersAsFlattenedList().OfType<FeatureLayer>() ?? Enumerable.Empty<FeatureLayer>() : MapMemberLookupService.GetFeatureLayersForGroups(hashSet));
 		List<LayerSearchContext> list = new List<LayerSearchContext>();
 		foreach (FeatureLayer item in enumerable)
 		{
-			if (useRuleCatalogSearchScope || hashSet2.Count <= 0 || hashSet2.Contains(((MapMember)item).Name.ToUpperInvariant()))
+			try
 			{
-				LayerSearchContext layerSearchContext = new LayerSearchContext
+				if (useRuleCatalogSearchScope || hashSet2.Count <= 0 || hashSet2.Contains(item.Name.ToUpperInvariant()))
 				{
-					Layer = item,
-					OwningGroupName = MapMemberLookupService.GetOwningGroupName(item)
-				};
-				if (layerContextPredicate == null || layerContextPredicate(layerSearchContext))
-				{
-					list.Add(layerSearchContext);
+					LayerSearchContext layerSearchContext = new LayerSearchContext
+					{
+						Layer = item,
+						OwningGroupName = MapMemberLookupService.GetOwningGroupName(item)
+					};
+					if (layerContextPredicate == null || layerContextPredicate(layerSearchContext))
+					{
+						list.Add(layerSearchContext);
+					}
 				}
+			}
+			catch (Exception exception)
+			{
+				LogService.LogException("Automatic candidate search could not inspect a map layer.", exception);
 			}
 		}
 		return list;
@@ -1023,13 +1040,9 @@ internal static class PlacementEnhancementService
 		{
 			return new List<FeatureCandidate>();
 		}
-		List<LayerSearchContext> layerContexts = BuildLayerSearchContexts(targetGroupNames, targetLayerNames, useRuleCatalogSearchScope, layerContextPredicate);
-		if (layerContexts.Count == 0)
-		{
-			return new List<FeatureCandidate>();
-		}
 		return await QueuedTask.Run<List<FeatureCandidate>>((Func<List<FeatureCandidate>>)delegate
 		{
+			List<LayerSearchContext> layerContexts = BuildLayerSearchContexts(targetGroupNames, targetLayerNames, useRuleCatalogSearchScope, layerContextPredicate);
 			int capacity = Math.Min(maxCandidates, 100);
 			List<FeatureCandidate> list = new List<FeatureCandidate>(capacity);
 			foreach (LayerSearchContext item in layerContexts)
@@ -1039,11 +1052,11 @@ internal static class PlacementEnhancementService
 					break;
 				}
 				FeatureLayer layer = item.Layer;
-				SpatialReference layerSpatialReference = GetLayerSpatialReference(layer);
 				Geometry filterGeometry;
 				Geometry sourceGeometry2;
 				try
 				{
+					SpatialReference layerSpatialReference = GetLayerSpatialReference(layer);
 					filterGeometry = ProjectGeometry(searchGeometry, layerSpatialReference);
 					sourceGeometry2 = ProjectGeometry(sourceGeometry, layerSpatialReference);
 				}
