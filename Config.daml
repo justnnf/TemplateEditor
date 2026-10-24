@@ -13,15 +13,18 @@
   <modules>
     <insertModule id="TemplateEditor_Module" className="TemplateEditor.AddinModule" autoLoad="true" caption="AddinModule">
       <tabs>
-        <tab id="TemplateEditor_EditorTab" caption="Templates" keytip="">
+        <tab id="TemplateEditor_EditorTab" caption="Templates" keytip="TP">
           <group refID="TemplateEditor_EditorGroup" />
+          <group refID="TemplateEditor_AssetSearchGroup" />
         </tab>
       </tabs>
       <groups>
-        <group id="TemplateEditor_EditorGroup" caption="Templates" appearsOnAddInTab="false" keytip="">
+        <group id="TemplateEditor_EditorGroup" caption="Templates" appearsOnAddInTab="false" keytip="TE">
           <subgroup refID="TemplateEditor_OpenSubgroup" />
           <subgroup refID="TemplateEditor_ReloadSubgroup" />
           <subgroup refID="TemplateEditor_SettingsSubgroup" />
+        </group>
+        <group id="TemplateEditor_AssetSearchGroup" caption="Find Asset" appearsOnAddInTab="false" keytip="FA">
           <subgroup refID="TemplateEditor_SearchSubgroup" />
         </group>
       </groups>
@@ -41,31 +44,31 @@
         </subgroup>
       </subgroups>
       <controls>
-        <comboBox id="TemplateEditor_SearchField" caption="Search field" className="TemplateEditor.AssetSearchFieldComboBox" itemWidth="130" isEditable="false" isReadOnly="true" condition="esri_mapping_mapPane">
+        <comboBox id="TemplateEditor_SearchField" caption="Search field" className="TemplateEditor.AssetSearchFieldComboBox" itemWidth="130" isEditable="false" isReadOnly="true" keytip="SF" condition="esri_mapping_mapPane">
           <tooltip heading="Search field">Choose the field to search across the current map's layers and tables.<disabledText /></tooltip>
         </comboBox>
-        <editBox id="TemplateEditor_SearchValue" caption="Find asset" className="TemplateEditor.AssetSearchEditBox" sizeString="12345678901234567890" condition="esri_mapping_mapPane">
+        <editBox id="TemplateEditor_SearchValue" caption="Find asset" className="TemplateEditor.AssetSearchEditBox" sizeString="12345678901234567890" editHint="Enter exact ID" keytip="SV" condition="esri_mapping_mapPane">
           <tooltip heading="Find asset">Enter an exact value and press Enter to add matching features and table rows to the current selection.<disabledText /></tooltip>
         </editBox>
-        <tool id="TemplateEditor_SketchPointTool" caption="SketchPointTool" className="TemplateEditor.SketchPointTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
+        <tool id="TemplateEditor_SketchPointTool" caption="SketchPointTool" className="TemplateEditor.SketchPointTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="P">
           <tooltip heading="Place Point Template">Place the selected point template.<disabledText /></tooltip>
         </tool>
-        <tool id="TemplateEditor_SketchPolylineTool" caption="SketchPolylineTool" className="TemplateEditor.SketchPolylineTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
+        <tool id="TemplateEditor_SketchPolylineTool" caption="SketchPolylineTool" className="TemplateEditor.SketchPolylineTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="L">
           <tooltip heading="Place Line Template">Sketch a line for the selected template.<disabledText /></tooltip>
         </tool>
-        <tool id="TemplateEditor_SketchPolygonTool" caption="SketchPolygonTool" className="TemplateEditor.SketchPolygonTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
+        <tool id="TemplateEditor_SketchPolygonTool" caption="SketchPolygonTool" className="TemplateEditor.SketchPolygonTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="G">
           <tooltip heading="Place Polygon Template">Sketch a polygon for the selected template.<disabledText /></tooltip>
         </tool>
-        <tool id="TemplateEditor_AddRowTool" caption="AddRowTool" className="TemplateEditor.AddRowTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="">
+        <tool id="TemplateEditor_AddRowTool" caption="AddRowTool" className="TemplateEditor.AddRowTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="A">
           <tooltip heading="Create Table Row">Create a non-spatial row for the selected template.<disabledText /></tooltip>
         </tool>
-        <button id="TemplateEditor_TemplateSettings" caption="Settings" className="TemplateEditor.TemplateSettingsButton" loadOnClick="true" smallImage="Images\SettingsVectorIcon.xaml" largeImage="Images\SettingsVectorIcon.xaml" keytip="">
+        <button id="TemplateEditor_TemplateSettings" caption="Settings" className="TemplateEditor.TemplateSettingsButton" loadOnClick="true" smallImage="Images\SettingsVectorIcon.xaml" largeImage="Images\SettingsVectorIcon.xaml" keytip="S">
           <tooltip heading="Settings">Choose the template config file and placement options.<disabledText /></tooltip>
         </button>
-        <button id="TemplateEditor_OpenEditorDockpane" caption="Open" className="TemplateEditor.EditorDockpane_ShowButton" loadOnClick="true" smallImage="Images\TemplatesVectorIcon.xaml" largeImage="Images\TemplatesVectorIcon.xaml" keytip="">
+        <button id="TemplateEditor_OpenEditorDockpane" caption="Open" className="TemplateEditor.EditorDockpane_ShowButton" loadOnClick="true" smallImage="Images\TemplatesVectorIcon.xaml" largeImage="Images\TemplatesVectorIcon.xaml" keytip="O">
           <tooltip heading="Open Editor">Open the template editor.<disabledText /></tooltip>
         </button>
-        <button id="TemplateEditor_ReloadConfig" caption="Reload" className="TemplateEditor.TemplateReloadConfigButton" loadOnClick="true" smallImage="Images\ReloadVectorIcon.xaml" largeImage="Images\ReloadVectorIcon.xaml" keytip="">
+        <button id="TemplateEditor_ReloadConfig" caption="Reload" className="TemplateEditor.TemplateReloadConfigButton" loadOnClick="true" smallImage="Images\ReloadVectorIcon.xaml" largeImage="Images\ReloadVectorIcon.xaml" keytip="R">
           <tooltip heading="Reload Config">Reload the selected template configuration file.<disabledText /></tooltip>
         </button>
       </controls>
