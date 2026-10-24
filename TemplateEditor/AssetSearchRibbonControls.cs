@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using ArcGIS.Desktop.Framework.Contracts;
 
@@ -152,7 +153,6 @@ internal sealed class AssetSearchInputView : UserControl
 		string value = _value.Text.Trim();
 		System.Windows.Controls.ComboBoxItem selectedField = _field.SelectedItem as System.Windows.Controls.ComboBoxItem;
 		string fieldName = selectedField?.Tag as string ?? "facilityid";
-		string fieldLabel = selectedField?.Content as string ?? "Facility ID";
 		string searchKey = fieldName + "\n" + value;
 		if (_searching || string.IsNullOrEmpty(value) ||
 			(searchKey == _lastSearchKey && DateTime.UtcNow - _lastSearchStarted < TimeSpan.FromMilliseconds(500)))
@@ -167,7 +167,7 @@ internal sealed class AssetSearchInputView : UserControl
 		try
 		{
 			AssetSearchResult result = await AssetSearchService.SearchAsync(fieldName, value);
-			AssetSearchResultsControl.ShowResults(result, fieldLabel, value);
+			AssetSearchResultsControl.ShowResults(result);
 			string message = result.MatchCount == 0
 				? "No matches found in the current map."
 				: $"Found {result.MatchCount} match(es) in the ribbon.";
@@ -197,10 +197,7 @@ internal sealed class AssetSearchInputView : UserControl
 internal sealed class AssetSearchResultsControl : CustomControl
 {
 	private static AssetSearchResultsControl _current;
-	private static IReadOnlyList<AssetSearchResultCard> _cards = new[]
-	{
-		new AssetSearchResultCard("No search yet", "Enter an exact ID and press Enter.")
-	};
+	private static IReadOnlyList<AssetSearchResultCard> _cards = Array.Empty<AssetSearchResultCard>();
 	private AssetSearchResultsView _view;
 
 	public AssetSearchResultsControl()
@@ -223,18 +220,18 @@ internal sealed class AssetSearchResultsControl : CustomControl
 		_current?.Refresh();
 	}
 
-	internal static void ShowResults(AssetSearchResult result, string fieldName, string value)
+	internal static void ShowResults(AssetSearchResult result)
 	{
 		_cards = result.MatchCount == 0
 			? new[] { new AssetSearchResultCard("No matches", "Try another ID or field.") }
-			: result.Matches.Select(match => new AssetSearchResultCard(match, fieldName, value)).ToArray();
+			: result.Matches.Select(match => new AssetSearchResultCard(match)).ToArray();
 		_current?.Refresh();
 	}
 
 	private void Refresh()
 	{
 		_view?.Show(_cards);
-		Caption = _cards.Count == 1 && _cards[0].Match == null ? "Results" : $"Results ({_cards.Count})";
+		Caption = _cards.Count == 0 || _cards[0].Match == null ? "Results" : $"Results ({_cards.Count})";
 	}
 }
 
@@ -270,52 +267,75 @@ internal sealed class AssetSearchResultsView : UserControl
 		{
 			Grid row = new Grid { Height = 21 };
 			row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-			row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) });
+			row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 			TextBlock title = new TextBlock
 			{
 				Text = card.Title,
 				FontSize = 11,
-				FontWeight = FontWeights.SemiBold,
 				TextTrimming = TextTrimming.CharacterEllipsis,
 				VerticalAlignment = VerticalAlignment.Center,
 				Margin = new Thickness(7, 0, 3, 0)
 			};
 			title.SetResourceReference(TextBlock.ForegroundProperty, "Esri_TextControlBrush");
 			row.Children.Add(title);
-			TextBlock detail = new TextBlock
+			if (card.Match != null)
 			{
-				Text = card.Detail,
-				FontSize = 10,
-				TextTrimming = TextTrimming.CharacterEllipsis,
-				VerticalAlignment = VerticalAlignment.Center,
-				Margin = new Thickness(3, 0, 5, 0)
-			};
-			detail.SetResourceReference(TextBlock.ForegroundProperty, "Esri_TextStyleSubduedBrush");
-			Grid.SetColumn(detail, 1);
-			row.Children.Add(detail);
+				StackPanel actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 0, 2, 0) };
+				actions.Children.Add(ActionButton(card, "SelectionMethodAdd16", "Add to selection", AssetSearchService.ResultAction.AddToSelection));
+				if (card.Match.IsSpatial)
+				{
+					actions.Children.Add(ActionButton(card, "SelectionZoomToSelected16", "Zoom to", AssetSearchService.ResultAction.ZoomTo));
+					actions.Children.Add(ActionButton(card, "SelectionPanToSelected16", "Pan to", AssetSearchService.ResultAction.PanTo));
+				}
+				Grid.SetColumn(actions, 1);
+				row.Children.Add(actions);
+			}
 			Border tile = new Border
 			{
 				BorderThickness = new Thickness(0, 0, 0, 1),
 				CornerRadius = new CornerRadius(0),
-				ContextMenu = card.Menu,
-				ToolTip = string.Join(" · ", new[] { card.Title, card.Detail, card.Identifier }.Where(s => !string.IsNullOrEmpty(s))),
+				ToolTip = string.IsNullOrEmpty(card.Detail) ? card.Title : card.Title + " · " + card.Detail,
 				Child = row
 			};
 			tile.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
 			tile.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
-			if (card.Match != null)
-			{
-				tile.Cursor = Cursors.Hand;
-				tile.MouseEnter += (_, _) => tile.SetResourceReference(Border.BackgroundProperty, "Esri_DialogFrameBackgroundBrush");
-				tile.MouseLeave += (_, _) => tile.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
-				tile.MouseLeftButtonUp += (_, e) =>
-				{
-					e.Handled = true;
-					card.Run(AssetSearchService.ResultAction.AddToSelection);
-				};
-			}
 			_cards.Children.Add(tile);
 		}
+	}
+
+	private static System.Windows.Controls.Button ActionButton(
+		AssetSearchResultCard card, string icon, string tooltip, AssetSearchService.ResultAction action)
+	{
+		Image image = new Image
+		{
+			Width = 16,
+			Height = 16,
+			Source = new BitmapImage(new Uri(
+				"pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/" + icon + ".png"))
+		};
+		System.Windows.Controls.Button button = new System.Windows.Controls.Button
+		{
+			Width = 20,
+			Height = 20,
+			Padding = new Thickness(0),
+			Background = Brushes.Transparent,
+			BorderThickness = new Thickness(0),
+			Content = image,
+			ToolTip = tooltip,
+			Cursor = Cursors.Hand
+		};
+		ControlTemplate template = new ControlTemplate(typeof(System.Windows.Controls.Button));
+		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
+		content.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+		content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+		template.VisualTree = content;
+		button.Template = template;
+		button.Click += (_, e) =>
+		{
+			e.Handled = true;
+			card.Run(action);
+		};
+		return button;
 	}
 }
 
@@ -324,29 +344,18 @@ public sealed class AssetSearchResultCard
 	internal AssetSearchMatch Match { get; }
 	public string Title { get; }
 	public string Detail { get; }
-	public string Identifier { get; }
-	public ContextMenu Menu { get; }
 
 	internal AssetSearchResultCard(string title, string detail)
 	{
 		Title = title;
 		Detail = detail;
-		Identifier = string.Empty;
 	}
 
-	internal AssetSearchResultCard(AssetSearchMatch match, string fieldName, string value)
+	internal AssetSearchResultCard(AssetSearchMatch match)
 	{
 		Match = match;
-		Title = match.Source;
-		Detail = $"{(match.IsSpatial ? "Feature" : "Row")} · {match.ObjectID}";
-		Identifier = $"{fieldName}: {value}";
-		Menu = new ContextMenu();
-		AddAction("Add to selection", AssetSearchService.ResultAction.AddToSelection);
-		if (match.IsSpatial)
-		{
-			AddAction("Zoom to", AssetSearchService.ResultAction.ZoomTo);
-			AddAction("Pan to", AssetSearchService.ResultAction.PanTo);
-		}
+		Title = match.Source + " - " + match.Value;
+		Detail = $"{(match.IsSpatial ? "Feature" : "Table row")} · Object ID {match.ObjectID}";
 	}
 
 	internal void Run(AssetSearchService.ResultAction action)
@@ -355,13 +364,6 @@ public sealed class AssetSearchResultCard
 		{
 			TaskObservationService.Forget(RunAsync(action), "Asset search result action failed.");
 		}
-	}
-
-	private void AddAction(string title, AssetSearchService.ResultAction action)
-	{
-		MenuItem menuItem = new MenuItem { Header = title };
-		menuItem.Click += (_, _) => Run(action);
-		Menu.Items.Add(menuItem);
 	}
 
 	private async Task RunAsync(AssetSearchService.ResultAction action)

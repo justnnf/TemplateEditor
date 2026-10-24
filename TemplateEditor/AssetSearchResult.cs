@@ -3,7 +3,7 @@ using ArcGIS.Desktop.Mapping;
 
 namespace TemplateEditor;
 
-internal sealed record AssetSearchMatch(Map Map, MapMember Member, string Kind, long ObjectID)
+internal sealed record AssetSearchMatch(Map Map, MapMember Member, long ObjectID, string Value)
 {
 	internal string Source => Member.Name;
 	internal bool IsSpatial => Member is FeatureLayer;

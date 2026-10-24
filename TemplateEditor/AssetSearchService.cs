@@ -97,25 +97,28 @@ internal static class AssetSearchService
 					{
 						continue;
 					}
-					using RowCursor cursor = displayTable.Search(new QueryFilter { WhereClause = whereClause, SubFields = objectIdField });
+					using RowCursor cursor = displayTable.Search(new QueryFilter
+					{
+						WhereClause = whereClause,
+						SubFields = string.Equals(objectIdField, field.Name, StringComparison.OrdinalIgnoreCase)
+							? objectIdField : objectIdField + "," + field.Name
+					});
 					if (cursor == null)
 					{
 						throw new InvalidOperationException("The search returned no cursor.");
 					}
-					List<long> objectIds = new List<long>();
 					while (cursor.MoveNext())
 					{
 						using Row row = cursor.Current;
-						if (matchCount + objectIds.Count == MaxMatches)
+						if (matchCount == MaxMatches)
 						{
 							limitReached = true;
 							break;
 						}
-						objectIds.Add(row.GetObjectID());
+						string matchedValue = Convert.ToString(row[field.Name], CultureInfo.InvariantCulture) ?? string.Empty;
+						matches.Add(new AssetSearchMatch(map, member, row.GetObjectID(), matchedValue));
+						matchCount++;
 					}
-					matchCount += objectIds.Count;
-					string kind = member is FeatureLayer ? "Feature" : "Table row";
-					matches.AddRange(objectIds.Select(id => new AssetSearchMatch(map, member, kind, id)));
 				}
 				catch (Exception ex)
 				{
