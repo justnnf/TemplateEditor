@@ -20,12 +20,13 @@ internal static class AssetSearchService
 			Map map = MapView.Active?.Map;
 			if (map == null)
 			{
-				return new AssetSearchResult(0, 0, false);
+				return new AssetSearchResult(Array.Empty<AssetSearchMatch>(), 0, false);
 			}
 
 			int selectedCount = 0;
 			int failedTables = 0;
 			bool limitReached = false;
+			List<AssetSearchMatch> matches = new List<AssetSearchMatch>();
 			IEnumerable<MapMember> members = map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Cast<MapMember>()
 				.Concat(map.GetStandaloneTablesAsFlattenedList().Cast<MapMember>());
 			foreach (MapMember member in members)
@@ -73,7 +74,13 @@ internal static class AssetSearchService
 					if (objectIds.Count > 0)
 					{
 						using Selection selection = displayTable.Select(new QueryFilter { ObjectIDs = objectIds }, SelectionCombinationMethod.Add);
+						if (selection == null)
+						{
+							throw new InvalidOperationException("The matching rows could not be selected.");
+						}
 						selectedCount += objectIds.Count;
+						string kind = member is FeatureLayer ? "Feature" : "Table row";
+						matches.AddRange(objectIds.Select(id => new AssetSearchMatch(member.Name, kind, id)));
 					}
 				}
 				catch (Exception ex)
@@ -82,7 +89,7 @@ internal static class AssetSearchService
 					LogService.LogException("Asset search failed for '" + member.Name + "'.", ex);
 				}
 			}
-			return new AssetSearchResult(selectedCount, failedTables, limitReached);
+			return new AssetSearchResult(matches, failedTables, limitReached);
 		});
 	}
 

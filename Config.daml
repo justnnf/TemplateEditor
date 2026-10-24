@@ -25,7 +25,7 @@
           <subgroup refID="TemplateEditor_SettingsSubgroup" />
         </group>
         <group id="TemplateEditor_AssetSearchGroup" caption="Find Asset" appearsOnAddInTab="false" keytip="FA">
-          <subgroup refID="TemplateEditor_SearchSubgroup" />
+          <subgroup refID="TemplateEditor_FindAssetSubgroup" />
         </group>
       </groups>
       <subgroups>
@@ -38,18 +38,14 @@
         <subgroup id="TemplateEditor_SettingsSubgroup" size="AlwaysLarge" verticalAlignment="Center">
           <button refID="TemplateEditor_TemplateSettings" />
         </subgroup>
-        <subgroup id="TemplateEditor_SearchSubgroup" size="AlwaysSmall" verticalAlignment="Center">
-          <comboBox refID="TemplateEditor_SearchField" />
-          <editBox refID="TemplateEditor_SearchValue" />
+        <subgroup id="TemplateEditor_FindAssetSubgroup" size="AlwaysLarge" verticalAlignment="Center">
+          <button refID="TemplateEditor_FindAsset" />
         </subgroup>
       </subgroups>
       <controls>
-        <comboBox id="TemplateEditor_SearchField" caption="Search field" className="TemplateEditor.AssetSearchFieldComboBox" itemWidth="130" isEditable="false" isReadOnly="true" keytip="SF" condition="esri_mapping_mapPane">
-          <tooltip heading="Search field">Choose the field to search across the current map's layers and tables.<disabledText /></tooltip>
-        </comboBox>
-        <editBox id="TemplateEditor_SearchValue" caption="Find asset" className="TemplateEditor.AssetSearchEditBox" sizeString="12345678901234567890" editHint="Enter exact ID" keytip="SV" condition="esri_mapping_mapPane">
-          <tooltip heading="Find asset">Enter an exact value and press Enter to add matching features and table rows to the current selection.<disabledText /></tooltip>
-        </editBox>
+        <button id="TemplateEditor_FindAsset" caption="Find Asset" className="TemplateEditor.AssetSearchShowButton" loadOnClick="true" smallImage="Images\SearchVectorIcon.xaml" largeImage="Images\SearchVectorIcon.xaml" keytip="F" condition="esri_mapping_mapPane">
+          <tooltip heading="Find Asset">Search the current map's layers and tables, review matches, and add them to the selection.<disabledText /></tooltip>
+        </button>
         <tool id="TemplateEditor_SketchPointTool" caption="SketchPointTool" className="TemplateEditor.SketchPointTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="P">
           <tooltip heading="Place Point Template">Place the selected point template.<disabledText /></tooltip>
         </tool>
@@ -75,6 +71,9 @@
       <dockPanes>
         <dockPane id="TemplateEditor_EditorDockpaneV2" caption="Template Editor" className="TemplateEditor.EditorDockpaneViewModel" dock="group" dockWith="esri_core_contentsDockPane">
           <content className="TemplateEditor.EditorDockpaneView" />
+        </dockPane>
+        <dockPane id="TemplateEditor_AssetSearchDockpane" caption="Find Asset" className="TemplateEditor.AssetSearchDockpaneViewModel" dock="right" width="380">
+          <content className="TemplateEditor.AssetSearchView" />
         </dockPane>
       </dockPanes>
     </insertModule>

@@ -1,0 +1,7 @@
+<Image xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Stretch="Uniform">
+  <Image.Source><DrawingImage><DrawingImage.Drawing><DrawingGroup>
+    <GeometryDrawing Brush="Transparent" Geometry="M0,0 L32,0 L32,32 L0,32 Z" />
+    <GeometryDrawing><GeometryDrawing.Pen><Pen Brush="#287eaf" Thickness="2.7" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen><GeometryDrawing.Geometry><EllipseGeometry Center="13,13" RadiusX="8" RadiusY="8" /></GeometryDrawing.Geometry></GeometryDrawing>
+    <GeometryDrawing><GeometryDrawing.Pen><Pen Brush="#287eaf" Thickness="3.2" StartLineCap="Round" EndLineCap="Round" /></GeometryDrawing.Pen><GeometryDrawing.Geometry><LineGeometry StartPoint="19,19" EndPoint="28,28" /></GeometryDrawing.Geometry></GeometryDrawing>
+  </DrawingGroup></DrawingImage.Drawing></DrawingImage></Image.Source>
+</Image>

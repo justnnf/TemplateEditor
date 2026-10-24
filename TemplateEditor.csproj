@@ -47,9 +47,11 @@
     <Content Include="Images\SettingsVectorIcon.xaml" />
     <Content Include="Images\ReloadVectorIcon.xaml" />
     <Content Include="Images\TemplatesVectorIcon.xaml" />
+    <Content Include="Images\SearchVectorIcon.xaml" />
     <Content Include="DarkImages\SettingsVectorIcon.xaml" />
     <Content Include="DarkImages\ReloadVectorIcon.xaml" />
     <Content Include="DarkImages\TemplatesVectorIcon.xaml" />
+    <Content Include="DarkImages\SearchVectorIcon.xaml" />
     <Content Include="Images\lineCursor.cur">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
