@@ -39,30 +39,20 @@
         <subgroup id="TemplateEditor_SettingsSubgroup" size="AlwaysLarge" verticalAlignment="Center">
           <button refID="TemplateEditor_TemplateSettings" />
         </subgroup>
-        <subgroup id="TemplateEditor_SearchInputSubgroup" size="AlwaysSmall" verticalAlignment="Center">
-          <comboBox refID="TemplateEditor_SearchField" />
-          <editBox refID="TemplateEditor_SearchValue" />
-          <button refID="TemplateEditor_FindAsset" />
+        <subgroup id="TemplateEditor_SearchInputSubgroup" size="AlwaysLarge" verticalAlignment="Center">
+          <customControl refID="TemplateEditor_SearchInput" size="large" />
         </subgroup>
-        <subgroup id="TemplateEditor_SearchResultsSubgroup" size="AlwaysSmall" verticalAlignment="Center">
-          <labelControl refID="TemplateEditor_SearchResultsLabel" />
-          <comboBox refID="TemplateEditor_SearchResults" />
+        <subgroup id="TemplateEditor_SearchResultsSubgroup" size="AlwaysLarge" verticalAlignment="Center">
+          <customControl refID="TemplateEditor_SearchResults" size="large" />
         </subgroup>
       </subgroups>
       <controls>
-        <comboBox id="TemplateEditor_SearchField" caption="Search by" className="TemplateEditor.AssetSearchFieldComboBox" itemWidth="150" isEditable="false" isReadOnly="true" keytip="SF" condition="esri_mapping_mapPane">
-          <tooltip heading="Search by">Choose Facility ID, Switch Number, Site ID, or Global ID.<disabledText /></tooltip>
-        </comboBox>
-        <editBox id="TemplateEditor_SearchValue" caption="Exact ID" className="TemplateEditor.AssetSearchEditBox" sizeString="12345678901234567890" editHint="Enter exact ID" keytip="SV" condition="esri_mapping_mapPane">
-          <tooltip heading="Exact ID">Enter an ID and press Enter to search the current map's layers and tables.<disabledText /></tooltip>
-        </editBox>
-        <button id="TemplateEditor_FindAsset" caption="Find and Select" className="TemplateEditor.AssetSearchRunButton" loadOnClick="true" smallImage="Images\SearchVectorIcon.xaml" largeImage="Images\SearchVectorIcon.xaml" keytip="F" condition="esri_mapping_mapPane">
-          <tooltip heading="Find and Select">Find exact matches and add features and table rows to the current selection.<disabledText /></tooltip>
-        </button>
-        <labelControl id="TemplateEditor_SearchResultsLabel" caption="Matches added to selection" hasTwoLines="false" />
-        <comboBox id="TemplateEditor_SearchResults" caption="Search results" className="TemplateEditor.AssetSearchResultsComboBox" itemWidth="290" rows="12" sizeString="123456789012345678901234" isEditable="false" isReadOnly="true" keytip="SR" condition="esri_mapping_mapPane">
-          <tooltip heading="Search results">Open this list to review matching features and table rows.<disabledText /></tooltip>
-        </comboBox>
+        <customControl id="TemplateEditor_SearchInput" caption="Search" className="TemplateEditor.AssetSearchInputControl" isDropDown="false" loadOnClick="false" keytip="FI" condition="esri_mapping_mapPane">
+          <tooltip heading="Find asset">Choose an ID field, enter an exact value, and press Enter or the search icon.<disabledText /></tooltip>
+        </customControl>
+        <customControl id="TemplateEditor_SearchResults" caption="Results" className="TemplateEditor.AssetSearchResultsControl" isDropDown="true" staysOpenOnClick="true" loadOnClick="false" smallImage="Images\SearchVectorIcon.xaml" largeImage="Images\SearchVectorIcon.xaml" keytip="SR" condition="esri_mapping_mapPane">
+          <tooltip heading="Search results">Review matches. Right-click a card to add it to the selection. Feature cards also offer zoom and pan.<disabledText /></tooltip>
+        </customControl>
         <tool id="TemplateEditor_SketchPointTool" caption="SketchPointTool" className="TemplateEditor.SketchPointTool" loadOnClick="true" smallImage="GenericButtonRed16" largeImage="GenericButtonRed32" condition="esri_mapping_mapPane" keytip="P">
           <tooltip heading="Place Point Template">Place the selected point template.<disabledText /></tooltip>
         </tool>

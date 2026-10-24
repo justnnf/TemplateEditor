@@ -12,8 +12,50 @@ namespace TemplateEditor;
 internal static class AssetSearchService
 {
 	private const int MaxMatches = 100;
+	internal enum ResultAction { AddToSelection, ZoomTo, PanTo }
 
-	internal static Task<AssetSearchResult> SearchAndSelectAsync(string fieldName, string value)
+	internal static async Task ApplyResultAsync(AssetSearchMatch match, ResultAction action)
+	{
+		MapView view = MapView.Active;
+		if (view == null || !ReferenceEquals(view.Map, match.Map))
+		{
+			throw new InvalidOperationException("The search result belongs to a different map. Run the search again.");
+		}
+		if (action == ResultAction.AddToSelection)
+		{
+			await QueuedTask.Run(() =>
+			{
+				bool stillInMap = view.Map.GetLayersAsFlattenedList().Contains(match.Member as Layer) ||
+					view.Map.GetStandaloneTablesAsFlattenedList().Contains(match.Member as StandaloneTable);
+				if (!stillInMap || match.Member is not IDisplayTable displayTable)
+				{
+					throw new InvalidOperationException("The search result is no longer in the map. Run the search again.");
+				}
+				using Selection selection = displayTable.Select(
+					new QueryFilter { ObjectIDs = new[] { match.ObjectID } }, SelectionCombinationMethod.Add);
+				if (selection == null)
+				{
+					throw new InvalidOperationException("The search result could not be selected.");
+				}
+			});
+			return;
+		}
+		if (match.Member is not FeatureLayer layer ||
+			!await QueuedTask.Run(() => view.Map.GetLayersAsFlattenedList().Contains(layer)))
+		{
+			throw new InvalidOperationException("This result has no feature to navigate to. Run the search again if the layer changed.");
+		}
+		if (action == ResultAction.ZoomTo)
+		{
+			await view.ZoomToAsync(layer, match.ObjectID, TimeSpan.FromMilliseconds(350));
+		}
+		else
+		{
+			await view.PanToAsync(layer, match.ObjectID, TimeSpan.FromMilliseconds(350));
+		}
+	}
+
+	internal static Task<AssetSearchResult> SearchAsync(string fieldName, string value)
 	{
 		return QueuedTask.Run(() =>
 		{
@@ -23,7 +65,7 @@ internal static class AssetSearchService
 				return new AssetSearchResult(Array.Empty<AssetSearchMatch>(), 0, false);
 			}
 
-			int selectedCount = 0;
+			int matchCount = 0;
 			int failedTables = 0;
 			bool limitReached = false;
 			List<AssetSearchMatch> matches = new List<AssetSearchMatch>();
@@ -31,7 +73,7 @@ internal static class AssetSearchService
 				.Concat(map.GetStandaloneTablesAsFlattenedList().Cast<MapMember>());
 			foreach (MapMember member in members)
 			{
-				if (selectedCount == MaxMatches)
+				if (matchCount == MaxMatches)
 				{
 					limitReached = true;
 					break;
@@ -64,24 +106,16 @@ internal static class AssetSearchService
 					while (cursor.MoveNext())
 					{
 						using Row row = cursor.Current;
-						if (selectedCount + objectIds.Count == MaxMatches)
+						if (matchCount + objectIds.Count == MaxMatches)
 						{
 							limitReached = true;
 							break;
 						}
 						objectIds.Add(row.GetObjectID());
 					}
-					if (objectIds.Count > 0)
-					{
-						using Selection selection = displayTable.Select(new QueryFilter { ObjectIDs = objectIds }, SelectionCombinationMethod.Add);
-						if (selection == null)
-						{
-							throw new InvalidOperationException("The matching rows could not be selected.");
-						}
-						selectedCount += objectIds.Count;
-						string kind = member is FeatureLayer ? "Feature" : "Table row";
-						matches.AddRange(objectIds.Select(id => new AssetSearchMatch(member.Name, kind, id)));
-					}
+					matchCount += objectIds.Count;
+					string kind = member is FeatureLayer ? "Feature" : "Table row";
+					matches.AddRange(objectIds.Select(id => new AssetSearchMatch(map, member, kind, id)));
 				}
 				catch (Exception ex)
 				{
