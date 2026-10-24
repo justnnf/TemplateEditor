@@ -159,6 +159,7 @@ internal static class PlacementEnhancementService
 		}
 		catch (Exception ex)
 		{
+			LogService.LogException("Automatic " + stepName + " step failed.", ex);
 			TemplateEditorSettings settings = AddinConfiguration.Settings;
 			if (settings != null && !settings.ShowAutomaticStepDiagnostics)
 			{
@@ -441,10 +442,24 @@ internal static class PlacementEnhancementService
 				List<long> list2 = ((BasicFeatureLayer)item).GetSelection().GetObjectIDs().ToList();
 				if (list2.Count != 0)
 				{
-					RowCursor val = ((BasicFeatureLayer)item).Search(new QueryFilter
+					RowCursor val;
+					try
 					{
-						ObjectIDs = list2
-					}, (TimeRange)null, (RangeExtent)null, (CIMFloorFilterSettings)null);
+						val = ((BasicFeatureLayer)item).Search(new QueryFilter
+						{
+							ObjectIDs = list2
+						}, (TimeRange)null, (RangeExtent)null, (CIMFloorFilterSettings)null);
+					}
+					catch (Exception exception)
+					{
+						LogService.LogException("Selected association candidate search failed for layer '" + ((MapMember)item).Name + "'.", exception);
+						continue;
+					}
+					if (val == null)
+					{
+						LogService.Write("Selected association candidate search returned no cursor for layer '" + ((MapMember)item).Name + "'.");
+						continue;
+					}
 					try
 					{
 						while (val.MoveNext())
@@ -472,6 +487,10 @@ internal static class PlacementEnhancementService
 								((IDisposable)val2)?.Dispose();
 							}
 						}
+					}
+					catch (Exception exception)
+					{
+						LogService.LogException("Selected association candidate results could not be read for layer '" + ((MapMember)item).Name + "'.", exception);
 					}
 					finally
 					{
@@ -678,6 +697,10 @@ internal static class PlacementEnhancementService
 			return new List<FeatureCandidate>();
 		}
 		FeatureLayerInfo createdFeatureInfo = catalog.HasRules ? await GetPlacedFeatureInfoAsync(createdFeature) : null;
+		if (catalog.HasRules && createdFeatureInfo == null)
+		{
+			return new List<FeatureCandidate>();
+		}
 		Func<LayerSearchContext, bool> layerContextPredicate = null;
 		if (catalog.HasRules && createdFeatureInfo != null)
 		{
@@ -741,7 +764,21 @@ internal static class PlacementEnhancementService
 			{
 				ObjectIDs = new List<long> { createdFeature.ObjectID }
 			};
-			RowCursor val2 = ((BasicFeatureLayer)createdFeature.Layer).Search(val, (TimeRange)null, (RangeExtent)null, (CIMFloorFilterSettings)null);
+			RowCursor val2;
+			try
+			{
+				val2 = ((BasicFeatureLayer)createdFeature.Layer).Search(val, (TimeRange)null, (RangeExtent)null, (CIMFloorFilterSettings)null);
+			}
+			catch (Exception exception)
+			{
+				LogService.LogException("Placed feature association lookup failed for layer '" + ((MapMember)createdFeature.Layer).Name + "'.", exception);
+				return null;
+			}
+			if (val2 == null)
+			{
+				LogService.Write("Placed feature association lookup returned no cursor for layer '" + ((MapMember)createdFeature.Layer).Name + "'.");
+				return null;
+			}
 			try
 			{
 				if (val2.MoveNext())
@@ -757,6 +794,11 @@ internal static class PlacementEnhancementService
 					}
 				}
 				return (FeatureLayerInfo)null;
+			}
+			catch (Exception exception)
+			{
+				LogService.LogException("Placed feature association results could not be read for layer '" + ((MapMember)createdFeature.Layer).Name + "'.", exception);
+				return null;
 			}
 			finally
 			{
@@ -1025,6 +1067,11 @@ internal static class PlacementEnhancementService
 					LogService.LogException("Automatic candidate search failed for layer '" + ((layer != null) ? ((MapMember)layer).Name : null) + "'.", exception2);
 					continue;
 				}
+				if (val2 == null)
+				{
+					LogService.Write("Automatic candidate search returned no cursor for layer '" + ((MapMember)layer).Name + "'.");
+					continue;
+				}
 				string name = ((MapMember)layer).Name;
 				string owningGroupName = item.OwningGroupName;
 				RowCursor val3 = val2;
@@ -1055,6 +1102,10 @@ internal static class PlacementEnhancementService
 							((IDisposable)val4)?.Dispose();
 						}
 					}
+				}
+				catch (Exception exception)
+				{
+					LogService.LogException("Automatic candidate results could not be read for layer '" + name + "'.", exception);
 				}
 				finally
 				{

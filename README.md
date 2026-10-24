@@ -1,4 +1,4 @@
-# Template Editor 2.0.5
+# Template Editor 2.0.6
 
 Template Editor is an ArcGIS Pro 3.3 add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
 
@@ -39,7 +39,7 @@ Build a versioned package from the repository root:
 dotnet build TemplateEditor.csproj -c Release
 ```
 
-Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.0.5, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.0.5.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
+Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.0.6, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.0.6.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
 
 Use an explicit MSBuild target when needed:
 
