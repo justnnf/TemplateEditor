@@ -1,4 +1,4 @@
-# Template Editor 2.1.1
+# Template Editor 2.1.2
 
 Template Editor is an ArcGIS Pro 3.3 add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
 
@@ -41,7 +41,7 @@ Build a versioned package from the repository root:
 dotnet build TemplateEditor.csproj -c Release
 ```
 
-Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.1.1, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.1.1.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
+Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.1.2, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.1.2.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
 
 Use an explicit MSBuild target when needed:
 
@@ -51,14 +51,16 @@ Use an explicit MSBuild target when needed:
 User preferences are stored outside the add-in package at:
 
 ```text
-%LOCALAPPDATA%\TemplateEditor\user-settings.json
+%APPDATA%\TemplateEditor\user-settings.json
 ```
 
-Logs and generated support files use the same neutral app-data folder:
+Generated rule and favourite files use the same roaming app-data folder. Existing files in `%LOCALAPPDATA%\TemplateEditor` are copied there on first use. Logs remain local at:
 
 ```text
-%LOCALAPPDATA%\TemplateEditor
+%LOCALAPPDATA%\TemplateEditor\template-editor.log
 ```
+
+If the roaming profile is late, the add-in retries missing settings when **Open** or **Settings** is clicked. An unreadable settings file is retained for diagnosis and is not silently overwritten. The log records the resolved settings directory and ribbon search creation errors. The add-in package itself must still be available to ArcGIS Pro through its configured add-in location.
 
 ## Configuration Files
 
@@ -75,7 +77,7 @@ Association rules are optional. When present, they help the add-in decide which 
 The default rule path is:
 
 ```text
-%LOCALAPPDATA%\TemplateEditor\AllowedAssociationRules.json
+%APPDATA%\TemplateEditor\AllowedAssociationRules.json
 ```
 
 Users can also choose another rule JSON path in `Settings > Associations > Rule Catalog`.
@@ -209,7 +211,7 @@ Template Editor supports two override scopes:
 Override definitions and session selections are saved in `user-settings.json`. Favorites for one-time overrides are saved in:
 
 ```text
-%LOCALAPPDATA%\TemplateEditor\placement-override-favourites.json
+%APPDATA%\TemplateEditor\placement-override-favourites.json
 ```
 
 ## Settings Tabs

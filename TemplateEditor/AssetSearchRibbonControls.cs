@@ -12,7 +12,18 @@ namespace TemplateEditor;
 
 internal sealed class AssetSearchInputControl : CustomControl
 {
-	protected override FrameworkElement OnCreateContent() => new AssetSearchInputView();
+	protected override FrameworkElement OnCreateContent()
+	{
+		try
+		{
+			return new AssetSearchInputView();
+		}
+		catch (Exception exception)
+		{
+			LogService.LogException("Could not create the ribbon search input.", exception);
+			return new TextBlock { Text = "Search unavailable; see Template Editor log.", TextWrapping = TextWrapping.Wrap, Width = 230 };
+		}
+	}
 }
 
 internal sealed class AssetSearchInputView : UserControl

@@ -10,6 +10,7 @@ internal class TemplateSettingsButton : Button
 		try
 		{
 			LogService.Write("Template settings button clicked.");
+			AddinConfiguration.ReloadUserSettingsIfMissing();
 			AddinConfiguration.ShowSettingsWindow();
 			LogService.Write("Template settings window request completed.");
 		}

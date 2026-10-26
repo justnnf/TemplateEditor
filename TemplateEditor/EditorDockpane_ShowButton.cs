@@ -16,6 +16,7 @@ internal class EditorDockpane_ShowButton : Button
 		try
 		{
 			LogService.Write("Template editor button clicked.");
+			AddinConfiguration.ReloadUserSettingsIfMissing();
 			if (!EnsureTemplateConfigPath())
 			{
 				LogService.Write("Template editor open canceled because no config path was selected.");

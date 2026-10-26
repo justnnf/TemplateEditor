@@ -22,8 +22,11 @@ internal static class AddinConfiguration
 	{
 		WriteIndented = true
 	};
+	private static bool _userSettingsLoaded;
 
-	internal static string UserDataDirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TemplateEditor");
+	internal static string UserDataDirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TemplateEditor");
+
+	internal static string LocalUserDataDirectoryPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TemplateEditor");
 
 	private static string UserSettingsFilePath => Path.Combine(UserDataDirectoryPath, "user-settings.json");
 
@@ -81,7 +84,9 @@ internal static class AddinConfiguration
 	public static void Initialize()
 	{
 		LoadBuiltInDefaults();
-		LoadUserSettings();
+		_userSettingsLoaded = false;
+		MigrateLocalUserData();
+		_userSettingsLoaded = LoadUserSettings();
 		if (GroupFeatureLayerNames == null)
 		{
 			GroupFeatureLayerNames = new List<string>();
@@ -92,6 +97,22 @@ internal static class AddinConfiguration
 		}
 		Settings.Normalize();
 		PlacementAttributeOverrideService.Initialize();
+	}
+
+	public static void ReloadUserSettingsIfMissing()
+	{
+		if (_userSettingsLoaded)
+		{
+			return;
+		}
+		MigrateLocalUserData();
+		_userSettingsLoaded = LoadUserSettings();
+		if (_userSettingsLoaded)
+		{
+			PlacementAttributeOverrideService.Initialize();
+			AssociationRuleCatalog.Reload();
+			SettingsChanged?.Invoke();
+		}
 	}
 
 	public static bool HasValidTemplateConfigPath()
@@ -211,50 +232,80 @@ internal static class AddinConfiguration
 		Settings.Normalize();
 	}
 
-	private static void LoadUserSettings()
+	private static void MigrateLocalUserData()
 	{
-		// User settings overlay the built-in defaults. If the saved JSON is corrupt,
-		// it is moved aside so a bad preference file cannot prevent the add-in from loading.
-		string text = UserSettingsFilePath;
-		if (File.Exists(text))
+		foreach (string fileName in new[] { "user-settings.json", "AllowedAssociationRules.json", "placement-override-favourites.json" })
 		{
-			UserSettingsEnvelope userSettingsEnvelope;
+			string source = Path.Combine(LocalUserDataDirectoryPath, fileName);
+			string destination = Path.Combine(UserDataDirectoryPath, fileName);
 			try
 			{
-				userSettingsEnvelope = JsonSerializer.Deserialize<UserSettingsEnvelope>(File.ReadAllText(text));
+				if (CopyMissingFile(source, destination))
+				{
+					LogService.Write("Copied existing user data to roaming profile: " + fileName);
+				}
 			}
 			catch (Exception exception)
 			{
-				LogService.LogException("User settings could not be loaded from '" + text + "'. Falling back to packaged/default settings.", exception);
-				TryMoveCorruptSettingsFile(text);
-				return;
+				LogService.LogException("Could not copy existing user data to roaming profile: " + fileName, exception);
 			}
-			if (userSettingsEnvelope?.Settings != null)
-			{
-				Settings = userSettingsEnvelope.Settings;
-			}
-			if (Settings == null)
-			{
-				Settings = new TemplateEditorSettings();
-			}
-			if (!string.IsNullOrWhiteSpace(userSettingsEnvelope?.TemplateConfigFilePath))
-			{
-				Settings.TemplateConfigFilePath = userSettingsEnvelope.TemplateConfigFilePath;
-			}
-			Settings.Normalize();
 		}
 	}
 
-	private static void TryMoveCorruptSettingsFile(string settingsPath)
+	internal static bool CopyMissingFile(string source, string destination)
 	{
+		if (!File.Exists(source) || File.Exists(destination))
+		{
+			return false;
+		}
+		string directory = Path.GetDirectoryName(destination);
+		Directory.CreateDirectory(directory);
+		string temporaryFile = Path.Combine(directory, Path.GetRandomFileName());
 		try
 		{
-			string destFileName = settingsPath + ".corrupt-" + DateTime.Now.ToString("yyyyMMddHHmmss");
-			File.Move(settingsPath, destFileName);
+			File.Copy(source, temporaryFile);
+			File.Move(temporaryFile, destination);
+			return true;
+		}
+		finally
+		{
+			if (File.Exists(temporaryFile))
+			{
+				File.Delete(temporaryFile);
+			}
+		}
+	}
+
+	private static bool LoadUserSettings()
+	{
+		// Leave unreadable files in place. A Citrix profile may still be loading,
+		// and a later user action can retry without discarding preferences.
+		string text = UserSettingsFilePath;
+		try
+		{
+			if (!File.Exists(text))
+			{
+				LogService.Write("User settings not yet available at '" + text + "'. Using defaults until the next retry.");
+				return false;
+			}
+			UserSettingsEnvelope userSettingsEnvelope = JsonSerializer.Deserialize<UserSettingsEnvelope>(File.ReadAllText(text));
+			if (userSettingsEnvelope == null)
+			{
+				throw new InvalidDataException("The settings file did not contain a settings object.");
+			}
+			TemplateEditorSettings loadedSettings = userSettingsEnvelope.Settings ?? new TemplateEditorSettings();
+			if (!string.IsNullOrWhiteSpace(userSettingsEnvelope?.TemplateConfigFilePath))
+			{
+				loadedSettings.TemplateConfigFilePath = userSettingsEnvelope.TemplateConfigFilePath;
+			}
+			loadedSettings.Normalize();
+			Settings = loadedSettings;
+			return true;
 		}
 		catch (Exception exception)
 		{
-			LogService.LogException("Could not move corrupt settings file '" + settingsPath + "' to a backup path.", exception);
+			LogService.LogException("User settings could not be loaded from '" + text + "'. Retaining the file for a later retry.", exception);
+			return false;
 		}
 	}
 
@@ -264,6 +315,11 @@ internal static class AddinConfiguration
 		// cannot leave a half-written JSON file behind.
 		try
 		{
+			if (!_userSettingsLoaded && File.Exists(UserSettingsFilePath))
+			{
+				LogService.Write("User settings were not saved because the existing file could not be loaded. The file was left intact: " + UserSettingsFilePath);
+				return;
+			}
 			Directory.CreateDirectory(UserDataDirectoryPath);
 			UserSettingsEnvelope value = new UserSettingsEnvelope
 			{
@@ -271,6 +327,7 @@ internal static class AddinConfiguration
 				Settings = Settings
 			};
 			AtomicFileService.WriteAllText(UserSettingsFilePath, JsonSerializer.Serialize(value, _settingsJsonOptions));
+			_userSettingsLoaded = true;
 		}
 		catch (Exception exception)
 		{
