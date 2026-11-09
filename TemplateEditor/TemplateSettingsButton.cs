@@ -11,7 +11,12 @@ internal class TemplateSettingsButton : Button
 		{
 			LogService.Write("Template settings button clicked.");
 			AddinConfiguration.ReloadUserSettingsIfMissing();
-			AddinConfiguration.ShowSettingsWindow();
+			bool wasReady = AddinConfiguration.IsSetupComplete();
+			if (AddinConfiguration.ShowSettingsWindow() && !wasReady && AddinConfiguration.IsSetupComplete())
+			{
+				EditorDockpaneViewModel.ReloadConfig();
+				EditorDockpaneViewModel.SetPlacementStatus(EditorDockpaneViewModel.ReadyPlacementStatus);
+			}
 			LogService.Write("Template settings window request completed.");
 		}
 		catch (Exception ex)

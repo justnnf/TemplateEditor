@@ -7,7 +7,7 @@ namespace TemplateEditor.Tests;
 public sealed class TemplateValidationTests
 {
     [Fact]
-    public void ValidateTemplateStructure_RejectsCaseInsensitiveDuplicateSimpleNames()
+    public void ValidateTemplateStructure_AllowsRepeatedPartNames()
     {
         var errors = new List<string>();
 
@@ -20,7 +20,64 @@ public sealed class TemplateValidationTests
             new List<GroupTemplate>(),
             errors);
 
-        Assert.Contains(errors, error => error.Contains("duplicate simple template name 'Transformer'", StringComparison.OrdinalIgnoreCase));
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void RepeatedPartNamesResolveToTheirOwnDefinitions()
+    {
+        var first = new SimpleTemplate { Name = "Switch", DefaultFieldValues = new() { ["ITEM_NUMBER"] = "A" } };
+        var second = new SimpleTemplate { Name = "switch", DefaultFieldValues = new() { ["ITEM_NUMBER"] = "B" } };
+        var firstPart = new SimpleTemplateReference { Name = "Switch", FeatureId = 1 };
+        var secondPart = new SimpleTemplateReference { Name = "switch", FeatureId = 2 };
+
+        TemplateCache.Initialize(new TemplateConfig
+        {
+            SimpleTemplates = new() { first, second },
+            GroupTemplates = new() { new GroupTemplate { Name = "Group", SimpleTemplates = new() { firstPart, secondPart } } }
+        });
+
+        Assert.Same(first, TemplateCache.GetSimpleTemplate(firstPart));
+        Assert.Same(second, TemplateCache.GetSimpleTemplate(secondPart));
+    }
+
+    [Fact]
+    public void OneDefinitionCanBeReusedByMultipleParts()
+    {
+        var definition = new SimpleTemplate { Name = "Connector" };
+        var firstPart = new SimpleTemplateReference { Name = "Connector", FeatureId = 1 };
+        var secondPart = new SimpleTemplateReference { Name = "Connector", FeatureId = 2 };
+
+        TemplateCache.Initialize(new TemplateConfig
+        {
+            SimpleTemplates = new() { definition },
+            GroupTemplates = new() { new GroupTemplate { Name = "Group", SimpleTemplates = new() { firstPart, secondPart } } }
+        });
+
+        Assert.Same(definition, TemplateCache.GetSimpleTemplate(firstPart));
+        Assert.Same(definition, TemplateCache.GetSimpleTemplate(secondPart));
+    }
+
+    [Fact]
+    public void RepeatedNamesAcrossGroupsResolveToEachGroupsDefinition()
+    {
+        var first = new SimpleTemplate { Name = "Switch", DefaultFieldValues = new() { ["ITEM_NUMBER"] = "A" } };
+        var second = new SimpleTemplate { Name = "Switch", DefaultFieldValues = new() { ["ITEM_NUMBER"] = "B" } };
+        var firstGroupPart = new SimpleTemplateReference { Name = "Switch", FeatureId = 1 };
+        var secondGroupPart = new SimpleTemplateReference { Name = "Switch", FeatureId = 1 };
+
+        TemplateCache.Initialize(new TemplateConfig
+        {
+            SimpleTemplates = new() { first, second },
+            GroupTemplates = new()
+            {
+                new GroupTemplate { Name = "First", SimpleTemplates = new() { firstGroupPart } },
+                new GroupTemplate { Name = "Second", SimpleTemplates = new() { secondGroupPart } }
+            }
+        });
+
+        Assert.Same(first, TemplateCache.GetSimpleTemplate(firstGroupPart));
+        Assert.Same(second, TemplateCache.GetSimpleTemplate(secondGroupPart));
     }
 
     [Fact]

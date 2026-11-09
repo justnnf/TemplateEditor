@@ -462,7 +462,7 @@ internal static class PlacementAttributeOverrideService
 	{
 		if (displayTemplate?.IsGroupChild ?? false)
 		{
-			SimpleTemplate childTemplate = TemplateCache.GetSimpleTemplate((TemplateCache.GetGroupTemplate(displayTemplate.ParentTemplateName)?.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference reference) => reference.FeatureId == displayTemplate.FeatureId && string.Equals(reference.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase)))?.Name);
+			SimpleTemplate childTemplate = TemplateCache.GetSimpleTemplate(TemplateCache.GetGroupTemplate(displayTemplate.ParentTemplateName)?.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference reference) => reference.FeatureId == displayTemplate.FeatureId && string.Equals(reference.Name, displayTemplate.Name, StringComparison.OrdinalIgnoreCase)));
 			if (childTemplate != null)
 			{
 				yield return childTemplate;
@@ -478,7 +478,7 @@ internal static class PlacementAttributeOverrideService
 		IEnumerable<SimpleTemplateReference> enumerable = TemplateCache.GetGroupTemplate(displayTemplate?.Name)?.SimpleTemplates;
 		foreach (SimpleTemplateReference templateReference in enumerable ?? Enumerable.Empty<SimpleTemplateReference>())
 		{
-			SimpleTemplate targetTemplate = TemplateCache.GetSimpleTemplate(templateReference.Name);
+			SimpleTemplate targetTemplate = TemplateCache.GetSimpleTemplate(templateReference);
 			if (targetTemplate != null)
 			{
 				yield return targetTemplate;

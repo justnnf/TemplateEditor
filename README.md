@@ -25,13 +25,12 @@ The ribbon has a separate **Find Asset** group to the right of Templates. Choose
 
 ## First-Time Setup
 
-1. Build or install the add-in.
-2. Open ArcGIS Pro and the map where templates should be placed.
-3. Open the `Templates` tab.
-4. Click `Settings`.
-5. On the `General` tab, select your template configuration JSON file.
-6. Click `OK`.
-7. Click `Open Editor`.
+1. Build or install the add-in, then open an ArcGIS Pro project.
+2. Follow the Template Editor setup prompt to select your template configuration JSON.
+3. Open a map containing the utility network if one is not active yet. The setup prompt will continue when a map becomes active.
+4. Generate the association rules JSON from that map. Template Editor then reloads the configuration and opens the editor with `Config and rules ready` shown in its status.
+
+You can choose **Later** and complete either step through `Settings`. The setup prompt returns on the next project startup while either file is missing.
 
 ## Building, Packaging, and Deployment
 
@@ -70,9 +69,11 @@ The template config JSON is the primary input. It defines the simple templates, 
 
 The add-in stores only the selected file path in user settings. The template JSON itself is not embedded in the add-in.
 
+Group parts may share a simple-template name. When several definitions have that name, each group reference uses the next matching definition in JSON order. A single definition can be reused by multiple references.
+
 ### Association Rules JSON
 
-Association rules are optional. When present, they help the add-in decide which Utility Network associations are valid for automatic prompts and configured association creation.
+Association rules help the add-in decide which Utility Network associations are valid for automatic prompts and configured association creation. The setup guide generates them to reach the `Config and rules ready` state; placement can still proceed without a rule catalog.
 
 The default rule path is:
 

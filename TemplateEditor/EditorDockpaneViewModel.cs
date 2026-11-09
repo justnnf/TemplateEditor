@@ -391,7 +391,12 @@ internal class EditorDockpaneViewModel : DockPane
 		}
 		if (GeometryTypeHelper.IsPolygon(templateGeometryType))
 		{
-			return ((AddinConfiguration.Templates?.SimpleTemplates?.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, AddinConfiguration.SelectedTemplate?.Name, StringComparison.OrdinalIgnoreCase)))?.Geometry == null) ? "TemplateEditor_SketchPolygonTool" : "TemplateEditor_SketchPointTool";
+			DisplayTemplate selected = AddinConfiguration.SelectedTemplate;
+			SimpleTemplateReference reference = selected?.IsGroupChild == true
+				? TemplateCache.GetGroupTemplate(selected.ParentTemplateName)?.SimpleTemplates?.FirstOrDefault(part => part.FeatureId == selected.FeatureId)
+				: null;
+			SimpleTemplate definition = selected?.IsGroupChild == true ? TemplateCache.GetSimpleTemplate(reference) : TemplateCache.GetSimpleTemplate(selected?.Name);
+			return definition?.Geometry == null ? "TemplateEditor_SketchPolygonTool" : "TemplateEditor_SketchPointTool";
 		}
 		return "esri_mapping_exploreTool";
 	}
@@ -609,7 +614,7 @@ internal class EditorDockpaneViewModel : DockPane
 			else
 			{
 				AddinConfiguration.ReloadTemplates();
-				DialogService.Show("Template configuration reloaded.", "Template Editor");
+				Show();
 			}
 		}
 		catch (Exception ex)
@@ -634,7 +639,6 @@ internal class EditorDockpaneViewModel : DockPane
 		{
 			List<GroupTemplate> list3 = (templateConfig2.GroupTemplates = new List<GroupTemplate>());
 		}
-		Dictionary<string, SimpleTemplate> simpleTemplatesByName = templateConfig.SimpleTemplates.GroupBy<SimpleTemplate, string>((SimpleTemplate template) => template.Name, StringComparer.OrdinalIgnoreCase).ToDictionary<IGrouping<string, SimpleTemplate>, string, SimpleTemplate>((IGrouping<string, SimpleTemplate> group) => group.Key, (IGrouping<string, SimpleTemplate> group) => group.First(), StringComparer.OrdinalIgnoreCase);
 		_simpleTemplates = new List<DisplayTemplate>();
 		foreach (SimpleTemplate simpleTemplate in templateConfig.SimpleTemplates)
 		{
@@ -648,7 +652,7 @@ internal class EditorDockpaneViewModel : DockPane
 			}
 		}
 		_groupTemplates = (from n in templateConfig.GroupTemplates
-						   select CreateDisplayTemplate(n, simpleTemplatesByName) into n
+						   select CreateDisplayTemplate(n) into n
 						   orderby n.Name
 						   select n).ToList();
 		// "All" intentionally includes group templates plus only standalone simple
@@ -694,22 +698,22 @@ internal class EditorDockpaneViewModel : DockPane
 		};
 	}
 
-	private static DisplayTemplate CreateDisplayTemplate(GroupTemplate groupTemplate, IReadOnlyDictionary<string, SimpleTemplate> simpleTemplatesByName)
+	private static DisplayTemplate CreateDisplayTemplate(GroupTemplate groupTemplate)
 	{
 		return new DisplayTemplate
 		{
 			Name = groupTemplate.Name,
 			TemplateType = groupTemplate.TemplateType,
 			Description = groupTemplate.Description,
-			ChildTemplates = CreateChildTemplates(groupTemplate, simpleTemplatesByName)
+			ChildTemplates = CreateChildTemplates(groupTemplate)
 		};
 	}
 
-	private static List<DisplayTemplateChild> CreateChildTemplates(GroupTemplate groupTemplate, IReadOnlyDictionary<string, SimpleTemplate> simpleTemplatesByName)
+	private static List<DisplayTemplateChild> CreateChildTemplates(GroupTemplate groupTemplate)
 	{
 		return (from template in (groupTemplate.SimpleTemplates ?? new List<SimpleTemplateReference>()).Select(delegate (SimpleTemplateReference templateReference)
 			{
-				simpleTemplatesByName.TryGetValue(templateReference.Name ?? string.Empty, out var value);
+				SimpleTemplate value = TemplateCache.GetSimpleTemplate(templateReference);
 				return new DisplayTemplateChild
 				{
 					Name = templateReference.Name,

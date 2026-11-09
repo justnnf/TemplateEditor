@@ -120,6 +120,26 @@ internal static class AddinConfiguration
 		return !string.IsNullOrWhiteSpace(TemplateConfigFilePath) && File.Exists(TemplateConfigFilePath);
 	}
 
+	public static bool IsSetupComplete()
+	{
+		if (!HasValidTemplateConfigPath()
+			|| !File.Exists(AssociationRuleCatalog.RuleFilePath)
+			|| !AssociationRuleCatalog.Current.IsAvailable
+			|| !AssociationRuleCatalog.Current.HasRules)
+		{
+			return false;
+		}
+		try
+		{
+			LoadTemplateConfig();
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
+	}
+
 	public static TemplateConfig LoadTemplateConfig()
 	{
 		return LoadTemplateConfig(TemplateConfigFilePath);

@@ -148,7 +148,7 @@ internal static class CommonFunctions
 		if (template?.IsGroupChild ?? false)
 		{
 			SimpleTemplateReference childTemplateRef = GetGroupChildReference(template);
-			SimpleTemplate childTemplate = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, childTemplateRef?.Name, StringComparison.OrdinalIgnoreCase));
+			SimpleTemplate childTemplate = TemplateCache.GetSimpleTemplate(childTemplateRef);
 			if (childTemplateRef == null || childTemplate == null)
 			{
 				throw new InvalidOperationException("Template part '" + templateName + "' was not found.");
@@ -184,7 +184,7 @@ internal static class CommonFunctions
 		{
 			return (GeometryType)513;
 		}
-		SimpleTemplate referencedTemplate = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, simpleTemplateRef.Name, StringComparison.OrdinalIgnoreCase));
+		SimpleTemplate referencedTemplate = TemplateCache.GetSimpleTemplate(simpleTemplateRef);
 		return (referencedTemplate != null) ? (await GetSimpleTemplateGeometryTypeAsync(referencedTemplate)) : configuredSketchType;
 	}
 
@@ -380,7 +380,7 @@ internal static class CommonFunctions
 	{
 		if (selectedTemplate?.IsGroupChild ?? false)
 		{
-			SimpleTemplate childTemplate = TemplateCache.GetSimpleTemplate(GetGroupChildReference(selectedTemplate)?.Name);
+			SimpleTemplate childTemplate = TemplateCache.GetSimpleTemplate(GetGroupChildReference(selectedTemplate));
 			if (childTemplate != null)
 			{
 				yield return childTemplate;
@@ -396,7 +396,7 @@ internal static class CommonFunctions
 		IEnumerable<SimpleTemplateReference> enumerable = TemplateCache.GetGroupTemplate(selectedTemplate?.Name)?.SimpleTemplates;
 		foreach (SimpleTemplateReference templateRef in enumerable ?? Enumerable.Empty<SimpleTemplateReference>())
 		{
-			SimpleTemplate template = TemplateCache.GetSimpleTemplate(templateRef.Name);
+			SimpleTemplate template = TemplateCache.GetSimpleTemplate(templateRef);
 			if (template != null)
 			{
 				yield return template;
@@ -523,7 +523,7 @@ internal static class CommonFunctions
 	{
 		GetLoadedTemplateConfigOrThrow();
 		SimpleTemplateReference childTemplateRef = GetGroupChildReference(childTemplate);
-		SimpleTemplate template = TemplateCache.GetSimpleTemplate(childTemplateRef?.Name);
+		SimpleTemplate template = TemplateCache.GetSimpleTemplate(childTemplateRef);
 		if (childTemplateRef == null || template == null)
 		{
 			throw new InvalidOperationException("Template part '" + childTemplate?.DisplayName + "' was not found.");
@@ -701,7 +701,7 @@ internal static class CommonFunctions
 		{
 			// FeatureId is the bridge between each generated row/feature and the
 			// association definitions in the group template JSON.
-			SimpleTemplate template = AddinConfiguration.Templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, simpleTemplateRef.Name, StringComparison.OrdinalIgnoreCase));
+			SimpleTemplate template = TemplateCache.GetSimpleTemplate(simpleTemplateRef);
 			if (template == null)
 			{
 				throw new InvalidOperationException($"Group template '{groupTemplate.Name}' references missing simple template '{simpleTemplateRef.Name}'.");
@@ -1150,7 +1150,7 @@ internal static class CommonFunctions
 		IEnumerable<GroupTemplate> groupTemplates = AddinConfiguration.Templates.GroupTemplates;
 		foreach (GroupTemplate item in groupTemplates ?? Enumerable.Empty<GroupTemplate>())
 		{
-			SimpleTemplateReference simpleTemplateReference = item.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference r) => string.Equals(r.Name, tableTemplate.Name, StringComparison.OrdinalIgnoreCase));
+			SimpleTemplateReference simpleTemplateReference = item.SimpleTemplates?.FirstOrDefault((SimpleTemplateReference r) => ReferenceEquals(TemplateCache.GetSimpleTemplate(r), tableTemplate));
 			if (simpleTemplateReference == null)
 			{
 				continue;
@@ -1179,7 +1179,7 @@ internal static class CommonFunctions
 				{
 					continue;
 				}
-				SimpleTemplate simpleTemplate = AddinConfiguration.Templates.SimpleTemplates?.FirstOrDefault((SimpleTemplate t) => string.Equals(t.Name, spatialRef.Name, StringComparison.OrdinalIgnoreCase));
+				SimpleTemplate simpleTemplate = TemplateCache.GetSimpleTemplate(spatialRef);
 				if (simpleTemplate == null || !IsFeatureLayerTemplate(simpleTemplate))
 				{
 					continue;
@@ -1444,7 +1444,7 @@ internal static class CommonFunctions
 		if (selectedTemplate.IsGroupChild)
 		{
 			SimpleTemplateReference groupChildReference = GetGroupChildReference(selectedTemplate);
-			SimpleTemplate simpleTemplate = TemplateCache.GetSimpleTemplate(groupChildReference?.Name);
+			SimpleTemplate simpleTemplate = TemplateCache.GetSimpleTemplate(groupChildReference);
 			if (groupChildReference == null || simpleTemplate == null || !IsFeatureLayerTemplate(simpleTemplate))
 			{
 				return list;
@@ -1489,7 +1489,7 @@ internal static class CommonFunctions
 		}
 		foreach (SimpleTemplateReference item in enumerable)
 		{
-			SimpleTemplate simpleTemplate3 = TemplateCache.GetSimpleTemplate(item.Name);
+			SimpleTemplate simpleTemplate3 = TemplateCache.GetSimpleTemplate(item);
 			if (IsFeatureLayerTemplate(simpleTemplate3))
 			{
 				AddPreviewGraphicForTemplateReference(list, item, simpleTemplate3, anchorPoint, rotationDegrees, _cachedPreviewPointSymbol, _cachedPreviewLineSymbol, _cachedPreviewPolygonSymbol, useAllConfiguredGeometry: true);
@@ -2123,13 +2123,11 @@ internal static class CommonFunctions
 		}
 		if (errors.Count == 0)
 		{
-			HashSet<string> simpleTemplateNames = new HashSet<string>(templates.SimpleTemplates.Select((SimpleTemplate n) => n.Name), StringComparer.OrdinalIgnoreCase);
 			foreach (GroupTemplate groupTemplate in templates.GroupTemplates)
 			{
-				List<string> invalidTemplateNames = (from n in groupTemplate.SimpleTemplates
-													 select n.Name into n
-													 where !simpleTemplateNames.Contains(n)
-													 select n).ToList();
+				List<string> invalidTemplateNames = groupTemplate.SimpleTemplates
+					.Where(reference => TemplateCache.GetSimpleTemplate(reference) == null)
+					.Select(reference => reference.Name).ToList();
 				if (invalidTemplateNames.Count > 0)
 				{
 					string error4 = $"Group template {groupTemplate.Name} contains references to invalid simple template(s): {string.Join(", ", invalidTemplateNames)}.";
@@ -2166,7 +2164,7 @@ internal static class CommonFunctions
 			{
 				foreach (SimpleTemplateReference templateRef in groupTemplate4.SimpleTemplates)
 				{
-					SimpleTemplate template4 = templates.SimpleTemplates.FirstOrDefault((SimpleTemplate n) => string.Equals(n.Name, templateRef.Name, StringComparison.OrdinalIgnoreCase));
+					SimpleTemplate template4 = TemplateCache.GetSimpleTemplate(templateRef);
 					string error6 = await ValidateGeometry(groupTemplate4, templateRef, template4);
 					if (error6 != null)
 					{
@@ -2209,10 +2207,6 @@ internal static class CommonFunctions
 			{
 				errors.Add("Template configuration contains a simple template without a Name.");
 			}
-		}
-		foreach (IGrouping<string, SimpleTemplate> duplicate in simpleTemplates.Where((SimpleTemplate template) => !string.IsNullOrWhiteSpace(template?.Name)).GroupBy((SimpleTemplate template) => template.Name, StringComparer.OrdinalIgnoreCase).Where((IGrouping<string, SimpleTemplate> group) => group.Count() > 1))
-		{
-			errors.Add("Template configuration contains duplicate simple template name '" + duplicate.Key + "'.");
 		}
 		foreach (GroupTemplate groupTemplate in groupTemplates)
 		{
