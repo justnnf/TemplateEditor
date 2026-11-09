@@ -1,6 +1,6 @@
-# Template Editor 2.1.2
+# Template Editor 3.0.0
 
-Template Editor is an ArcGIS Pro 3.3 add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
+Template Editor is an ArcGIS Pro 3.5.9 add-in for placing configured utility templates from a JSON configuration file. It supports simple feature templates, grouped template layouts, non-spatial table records, placement previews, line splitting, parallel copy workflows, and Utility Network association prompts.
 
 Version 2 opens in a narrow left sidebar tabbed with ArcGIS Pro's Contents pane by default. It also adds line-end terminal choices during sketching and reduces work during post-placement split and association checks.
 
@@ -8,7 +8,7 @@ The add-in does not ship with a customer-specific template configuration. Each u
 
 ## Requirements
 
-- ArcGIS Pro 3.3.x
+- ArcGIS Pro 3.5.9 or later
 - .NET 8 SDK for building from source
 - A template configuration JSON file for the templates you want to place
 - Optional: an ArcGIS Utility Network map if you use automatic associations, containment, structural attachment, or rule generation
@@ -41,7 +41,7 @@ Build a versioned package from the repository root:
 dotnet build TemplateEditor.csproj -c Release
 ```
 
-Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 2.1.2, the file is `Release/TemplateEditor.ArcPro.3.3.v.2.1.2.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
+Every normal build also copies the package to `Release` with the version from `TemplateEditor.csproj`. For version 3.0.0, the file is `Release/TemplateEditor.ArcPro.3.5.v.3.0.0.esriAddinX`. A Debug build also installs the add-in locally by default; pass `-p:AutoDeployArcGISAddIn=false` to build Debug without installing it.
 
 Use an explicit MSBuild target when needed:
 
@@ -294,7 +294,7 @@ Read the popup details, adjust the template/config/map selection, and try again.
 
 ## Developer notes
 
-Build the ArcGIS Pro 3.3 add-in from the repository root:
+Build the ArcGIS Pro 3.5.9 add-in from the repository root:
 
 ```powershell
 dotnet build TemplateEditor.csproj --no-restore
@@ -310,4 +310,4 @@ A successful build verifies compilation and packaging, but not DAML registration
 or interactive behavior. Before release, exercise point, line, polygon, and table
 placement; terminal choices at both line ends; preview rotation; offset/parallel
 copy; line splitting; Utility Network associations; settings persistence; and
-light/dark UI resources in ArcGIS Pro 3.3.
+light/dark UI resources in ArcGIS Pro 3.5.9.

@@ -18,7 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\TemplateEditor.csproj" />
     <Reference Include="ArcGIS.Core">
-      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Core.dll</HintPath>
+      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.5.0.57366\ref\net8.0-windows7.0\ArcGIS.Core.dll</HintPath>
     </Reference>
   </ItemGroup>
 </Project>

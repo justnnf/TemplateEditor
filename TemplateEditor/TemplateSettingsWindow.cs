@@ -1032,6 +1032,7 @@ internal sealed class TemplateSettingsWindow : Window
 		grid.Children.Add(button);
 		StackPanel stackPanel = new StackPanel();
 		stackPanel.Children.Add(grid);
+		_validateConfigCheckBox.Margin = new Thickness(0.0, 8.0, 0.0, 8.0);
 		stackPanel.Children.Add(_validateConfigCheckBox);
 		return stackPanel;
 	}

@@ -20,13 +20,13 @@
     <AddInName>TemplateEditor</AddInName>
     <AddInDescription>Template editor tools</AddInDescription>
     <AddInImage>Images\AddInDesktopMap.png</AddInImage>
-    <AddInImageSource>Images\TemplatesVectorIcon.xaml</AddInImageSource>
+    <AddInImageSource>DarkImages\TemplatesVectorIcon.xaml</AddInImageSource>
     <AddInImageWidth>128</AddInImageWidth>
     <AddInImageHeight>128</AddInImageHeight>
     <AddInAuthor>J. Foltinek</AddInAuthor>
     <AddInCompany>FortisAlberta</AddInCompany>
-    <AddInVersion>2.1.2</AddInVersion>
-    <ArcGISProReleaseVersion>3.3</ArcGISProReleaseVersion>
+    <AddInVersion>3.0.0</AddInVersion>
+    <ArcGISProReleaseVersion>3.5</ArcGISProReleaseVersion>
     <ReleaseDirectory>$(MSBuildProjectDirectory)\Release\</ReleaseDirectory>
   </PropertyGroup>
 
@@ -67,36 +67,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="ArcGIS.Desktop.Framework">
-      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Desktop.Framework.dll</HintPath>
-      <CopyLocal>False</CopyLocal>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="ArcGIS.Core">
-      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Core.dll</HintPath>
-      <CopyLocal>False</CopyLocal>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="ArcGIS.Desktop.Core">
-      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Desktop.Core.dll</HintPath>
-      <CopyLocal>False</CopyLocal>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="ArcGIS.Desktop.Extensions">
-      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Desktop.Extensions.dll</HintPath>
-      <CopyLocal>False</CopyLocal>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="ArcGIS.Desktop.Editing">
-      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Desktop.Editing.dll</HintPath>
-      <CopyLocal>False</CopyLocal>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="ArcGIS.Desktop.Mapping">
-      <HintPath>$(UserProfile)\.nuget\packages\esri.arcgispro.extensions30\3.3.0.52636\ref\net8.0-windows7.0\ArcGIS.Desktop.Mapping.dll</HintPath>
-      <CopyLocal>False</CopyLocal>
-      <Private>False</Private>
-    </Reference>
+    <PackageReference Include="Esri.ArcGISPro.Extensions30" Version="3.5.0.57366" ExcludeAssets="build" />
   </ItemGroup>
 
   <Import Project="Esri.ArcGISPro.Extensions.targets" Condition="Exists('Esri.ArcGISPro.Extensions.targets')" />
