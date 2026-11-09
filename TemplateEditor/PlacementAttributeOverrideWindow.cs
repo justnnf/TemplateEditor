@@ -529,8 +529,6 @@ internal sealed class PlacementAttributeOverrideWindow : Window
 			Width = 122.0,
 			IsDefault = true,
 			Height = 28.0,
-			Background = AccentBrush,
-			Foreground = Brushes.White,
 			Style = CreatePrimaryButtonStyle()
 		};
 		button4.Click += SaveButton_Click;
@@ -857,12 +855,14 @@ internal sealed class PlacementAttributeOverrideWindow : Window
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, PanelBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
+		DialogAppearance.ApplySquareButtonTemplate(style);
 		Trigger trigger = new Trigger
 		{
 			Property = UIElement.IsMouseOverProperty,
 			Value = true
 		};
 		trigger.Setters.Add(new Setter(Control.BackgroundProperty, HoverBrush));
+		trigger.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
 		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBrush));
 		style.Triggers.Add(trigger);
 		return style;
@@ -887,6 +887,7 @@ internal sealed class PlacementAttributeOverrideWindow : Window
 			Value = true
 		};
 		trigger.Setters.Add(new Setter(Control.BackgroundProperty, DialogAppearance.AccentHover));
+		trigger.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
 		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, DialogAppearance.AccentHover));
 		style.Triggers.Add(trigger);
 		return style;
