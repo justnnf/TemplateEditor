@@ -104,6 +104,7 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 	private readonly TextBox _maxSplitCandidatesToReviewTextBox;
 
 	private readonly ComboBox _splitPromptModeComboBox;
+	private readonly ComboBox _placementPromptPositionComboBox;
 
 	private readonly TextBox _splitSearchDistanceTextBox;
 
@@ -267,6 +268,10 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 		_suppressDuplicateSplitPromptsCheckBox = CreateCheckBox("Suppress duplicate split prompts at the same point", Settings.SuppressDuplicateSplitPrompts);
 		_splitOnlyInteriorCandidatesCheckBox = CreateCheckBox("Split only when the candidate point is inside the underlying line", Settings.SplitOnlyInteriorCandidates);
 		_maxSplitCandidatesToReviewTextBox = CreateTextBox(Settings.MaxSplitCandidatesToReview.ToString());
+		_placementPromptPositionComboBox = CreateComboBox(Settings.PlacementPromptPosition,
+			("Top left", "TopLeft"), ("Top centre", "TopCenter"), ("Top right", "TopRight"),
+			("Bottom left", "BottomLeft"), ("Bottom centre", "BottomCenter"), ("Bottom right", "BottomRight"),
+			("Separate window", "Window"));
 		_splitPromptModeComboBox = CreateComboBox(Settings.SplitPromptMode, ("Always ask", "AlwaysAsk"), ("Auto split when one candidate", "AutoWhenOne"), ("Never split", "Never"));
 		_splitSearchDistanceTextBox = CreateTextBox(Settings.SplitSearchDistance.ToString("0.###"));
 		_splitPointPlacementGroupsTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.SplitPointPlacementGroups));
@@ -489,7 +494,7 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 	{
 		StackPanel stackPanel = CreateTabPanel();
 		stackPanel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableLineSplitPromptsCheckBox, _enablePointPlacementSplitPromptCheckBox, _enableLineEndpointSplitPromptCheckBox, _enableSplitAtLineStartPointCheckBox, _enableSplitAtLineEndPointCheckBox, _enableConfiguredLinePartSplitsCheckBox, _suppressDuplicateSplitPromptsCheckBox, _splitOnlyInteriorCandidatesCheckBox)));
-		stackPanel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("Split prompt mode", _splitPromptModeComboBox), ("Maximum split candidates to review", _maxSplitCandidatesToReviewTextBox))));
+		stackPanel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("In-map confirmation position", _placementPromptPositionComboBox), ("Split prompt mode", _splitPromptModeComboBox), ("Maximum split candidates to review", _maxSplitCandidatesToReviewTextBox))));
 		stackPanel.Children.Add(CreateGroupBox("Eligible Groups", CreateFormGrid(("Split search distance (map units)", _splitSearchDistanceTextBox), ("Eligible point placement groups", _splitPointPlacementGroupsTextBox), ("Eligible line placement groups", _splitLinePlacementGroupsTextBox), ("Underlying target line groups", _splitTargetLineGroupsTextBox), ("Underlying target subtype/layer names", _splitTargetLayerNamesTextBox), ("Included target asset groups", _splitIncludedAssetGroupsTextBox))));
 		return WrapTab(stackPanel);
 	}
@@ -1215,6 +1220,7 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			Settings.SuppressDuplicateSplitPrompts = _suppressDuplicateSplitPromptsCheckBox.IsChecked == true;
 			Settings.SplitOnlyInteriorCandidates = _splitOnlyInteriorCandidatesCheckBox.IsChecked == true;
 			Settings.MaxSplitCandidatesToReview = ParsePositiveInteger(_maxSplitCandidatesToReviewTextBox.Text, "maximum split candidates to review");
+			Settings.PlacementPromptPosition = GetSelectedComboValue(_placementPromptPositionComboBox);
 			Settings.SplitPromptMode = GetSelectedComboValue(_splitPromptModeComboBox);
 			Settings.SplitSearchDistance = ParseDistance(_splitSearchDistanceTextBox.Text, "split search distance");
 			Settings.SplitPointPlacementGroups = TemplateEditorSettings.ParseGroupNames(_splitPointPlacementGroupsTextBox.Text);

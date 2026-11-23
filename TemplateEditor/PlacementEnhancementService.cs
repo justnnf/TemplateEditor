@@ -1576,6 +1576,11 @@ internal static class PlacementEnhancementService
 
 	private static async Task<bool> ShowConfirmationAsync(string message, string title, string confirmLabel = "Yes", string cancelLabel = "No")
 	{
+		if (AddinConfiguration.Settings?.PlacementPromptPosition != "Window" && MapView.Active is MapView map)
+		{
+			return await PlacementMapPrompt.ConfirmAsync(map, title, message, confirmLabel, cancelLabel);
+		}
+
 		EnhancementConfirmationDialog dialog = await ShowDialogAsync(() => new EnhancementConfirmationDialog(title, message, confirmLabel, cancelLabel));
 		return dialog.Accepted;
 	}

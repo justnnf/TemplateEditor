@@ -11,6 +11,8 @@ internal sealed class TemplateEditorSettings
 
 	public bool ValidateConfig { get; set; }
 
+	public string PlacementPromptPosition { get; set; } = "BottomCenter";
+
 	public bool PreventDefaultVersionPlacement { get; set; }
 
 	public List<string> IgnoredLineTerminalNames { get; set; } = new List<string> { "Single Terminal" };
@@ -190,6 +192,8 @@ internal sealed class TemplateEditorSettings
 		DefaultParallelCopyOffsetDistance = Math.Max(0.001, DefaultParallelCopyOffsetDistance);
 		MaxSplitCandidatesToReview = Math.Max(1, MaxSplitCandidatesToReview);
 		AssociationRulesJsonPath = (string.IsNullOrWhiteSpace(AssociationRulesJsonPath) ? null : AssociationRulesJsonPath.Trim());
+		PlacementPromptPosition = NormalizeChoice(PlacementPromptPosition, "BottomCenter",
+			"TopLeft", "TopCenter", "TopRight", "BottomLeft", "BottomCenter", "BottomRight", "Window");
 		SplitPromptMode = NormalizeChoice(SplitPromptMode, "AlwaysAsk", "AutoWhenOne", "Never");
 		AssociationPromptMode = NormalizeChoice(AssociationPromptMode, "AlwaysAsk", "AutoWhenOne", "ReviewMultipleOnly", "Never");
 		ConfiguredAssociationPlacementMode = NormalizeChoice(ConfiguredAssociationPlacementMode, "Fast", "Fast", "Debug");

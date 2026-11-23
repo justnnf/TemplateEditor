@@ -328,7 +328,7 @@ internal static class CommonFunctions
 			Exception ex3 = ex2;
 			EditorDockpaneViewModel.SetPlacementStatus("Placement failed. See message for details.");
 			LogService.LogException("CreateFeatures failed.", ex3);
-			DialogService.Show("Template placement failed.\n\n" + ex3.Message + "\n\nDetails were written to the Template Editor log.", "Template Editor");
+			DialogService.ShowError("Template placement failed.\n\n" + ex3.Message + "\n\nDetails were written to the Template Editor log.", "Template Editor");
 			return false;
 		}
 		finally
@@ -554,7 +554,7 @@ internal static class CommonFunctions
 		if (errorMessage != null)
 		{
 			EditorDockpaneViewModel.SetPlacementStatus("Template part placement failed. See message for details.");
-			DialogService.Show("Template part placement failed.\n\n" + CleanErrorMessage(errorMessage), "Template Editor");
+			DialogService.ShowError("Template part placement failed.\n\n" + CleanErrorMessage(errorMessage), "Template Editor");
 			return false;
 		}
 		EditorDockpaneViewModel.SetPlacementStatus("Finishing " + childTemplate.DisplayName + ": checking split and containment options...");
@@ -596,7 +596,7 @@ internal static class CommonFunctions
 			originalErrorMessage = minimalError;
 		}
 		EditorDockpaneViewModel.SetPlacementStatus("Placement failed. See message for details.");
-		DialogService.Show("Template placement failed.\n\n" + CleanErrorMessage(originalErrorMessage), "Template Editor");
+		DialogService.ShowError("Template placement failed.\n\n" + CleanErrorMessage(originalErrorMessage), "Template Editor");
 		return false;
 	}
 
