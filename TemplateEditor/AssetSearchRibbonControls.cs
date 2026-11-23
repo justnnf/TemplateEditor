@@ -32,7 +32,6 @@ internal sealed class AssetSearchInputView : UserControl
 	private readonly System.Windows.Controls.ComboBox _field;
 	private readonly TextBox _value;
 	private bool _searching;
-	private bool _hasSearch;
 	private int _searchVersion;
 	private string _lastSearchKey;
 	private DateTime _lastSearchStarted;
@@ -55,12 +54,10 @@ internal sealed class AssetSearchInputView : UserControl
 		_field.SelectedIndex = 0;
 		layout.Children.Add(_field);
 
-		Grid searchBar = new Grid { Height = 29 };
-		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+		var searchBar = new Grid { Height = 29 };
 		_value = new TextBox
 		{
+			Padding = new Thickness(4, 0, 30, 0),
 			VerticalContentAlignment = VerticalAlignment.Center,
 			ToolTip = "Enter an ID and press Enter. Switch Number also finds prefixes and suffixes."
 		};
@@ -72,41 +69,69 @@ internal sealed class AssetSearchInputView : UserControl
 				e.Handled = true;
 				StartSearch();
 			}
+			else if (e.Key == Key.Escape)
+			{
+				e.Handled = true;
+				ClearSearch();
+			}
 		};
 		searchBar.Children.Add(_value);
-		var find = new System.Windows.Controls.Button { Content = "Find", Margin = new Thickness(4, 0, 0, 0) };
-		find.SetResourceReference(StyleProperty, "Esri_Button");
-		find.Click += (_, _) => StartSearch();
-		Grid.SetColumn(find, 1);
-		searchBar.Children.Add(find);
 
-		var clear = new System.Windows.Controls.Button
+		var magnifier = Geometry.Parse("M 10,6 A 4,4 0 1 0 2,6 A 4,4 0 1 0 10,6 M 9,9 L 14,14");
+		var cross = Geometry.Parse("M 3,3 L 13,13 M 13,3 L 3,13");
+		var icon = new System.Windows.Shapes.Path
 		{
-			Content = "Clear",
-			Margin = new Thickness(4, 0, 0, 0),
-			Visibility = Visibility.Collapsed,
-			ToolTip = "Clear search and results"
+			Width = 13,
+			Height = 13,
+			Stretch = Stretch.Uniform,
+			StrokeThickness = 1.4
 		};
-		clear.SetResourceReference(StyleProperty, "Esri_Button");
-		AutomationProperties.SetName(clear, "Clear search and results");
-		clear.Click += (_, _) =>
+		icon.SetResourceReference(System.Windows.Shapes.Shape.StrokeProperty, "Esri_TextControlBrush");
+		var action = new System.Windows.Controls.Button
 		{
-			_searchVersion++;
-			_searching = false;
-			_hasSearch = false;
-			_lastSearchKey = null;
-			_lastSearchStarted = default;
-			_value.Clear();
-			AssetSearchResultsControl.Clear();
-			clear.Visibility = Visibility.Collapsed;
+			Content = icon,
+			Width = 26,
+			Height = 25,
+			MinWidth = 0,
+			MinHeight = 0,
+			Padding = new Thickness(0),
+			Margin = new Thickness(0, 0, 2, 0),
+			HorizontalAlignment = HorizontalAlignment.Right,
+			VerticalAlignment = VerticalAlignment.Center
+		};
+		action.SetResourceReference(StyleProperty, "Esri_ButtonBorderless");
+		action.Click += (_, _) =>
+		{
+			if (_value.Text.Length > 0)
+			{
+				ClearSearch();
+			}
 			_value.Focus();
 		};
-		_value.TextChanged += (_, _) =>
-			clear.Visibility = _value.Text.Length > 0 || _hasSearch ? Visibility.Visible : Visibility.Collapsed;
-		Grid.SetColumn(clear, 2);
-		searchBar.Children.Add(clear);
+		_value.TextChanged += (_, _) => UpdateSearchIcon();
+		UpdateSearchIcon();
+		searchBar.Children.Add(action);
 		layout.Children.Add(searchBar);
 		Content = layout;
+
+		void UpdateSearchIcon()
+		{
+			bool hasText = _value.Text.Length > 0;
+			string label = hasText ? "Clear search and results" : "Enter an asset ID to search";
+			icon.Data = hasText ? cross : magnifier;
+			action.ToolTip = label;
+			AutomationProperties.SetName(action, label);
+		}
+	}
+
+	private void ClearSearch()
+	{
+		_searchVersion++;
+		_searching = false;
+		_lastSearchKey = null;
+		_lastSearchStarted = default;
+		_value.Clear();
+		AssetSearchResultsControl.Clear();
 	}
 
 	private void AddField(string label, string name) => _field.Items.Add(new System.Windows.Controls.ComboBoxItem
@@ -132,7 +157,6 @@ internal sealed class AssetSearchInputView : UserControl
 		}
 
 		_searching = true;
-		_hasSearch = true;
 		int searchVersion = ++_searchVersion;
 		_lastSearchKey = searchKey;
 		_lastSearchStarted = DateTime.UtcNow;
