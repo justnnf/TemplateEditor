@@ -6,7 +6,7 @@ using System.Windows.Media;
 
 namespace TemplateEditor;
 
-internal sealed class CandidateChoiceDialog : Window
+internal sealed class CandidateChoiceDialog : ArcGIS.Desktop.Framework.Controls.ProWindow
 {
 	private static Brush WindowBackgroundBrush => DialogAppearance.Background;
 
@@ -36,7 +36,7 @@ internal sealed class CandidateChoiceDialog : Window
 		base.Foreground = PrimaryTextBrush;
 		base.FontFamily = new FontFamily("Segoe UI");
 		base.FontSize = 12.0;
-		base.Content = DialogAppearance.WithChrome(this, title, BuildContent(prompt, candidateLabels, selectionChanged));
+		base.Content = BuildContent(prompt, candidateLabels, selectionChanged);
 		base.Loaded += delegate
 		{
 			WindowPlacementHelper.PositionAwayFromMapCenter(this);

@@ -12,7 +12,7 @@ using ArcGIS.Desktop.Framework;
 
 namespace TemplateEditor;
 
-internal sealed class PlacementAttributeOverrideWindow : Window
+internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framework.Controls.ProWindow
 {
 	private static readonly bool IsDarkTheme;
 
@@ -76,7 +76,7 @@ internal sealed class PlacementAttributeOverrideWindow : Window
 		};
 		_partListBox = BuildPartListBox();
 		_favouriteComboBox = BuildFavouriteComboBox();
-		base.Content = DialogAppearance.WithChrome(this, "Placement Attribute Overrides", BuildContent());
+		base.Content = BuildContent();
 		SelectInitialPart();
 		RefreshFavouriteChoices();
 	}

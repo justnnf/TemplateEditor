@@ -2074,7 +2074,12 @@ internal static class CommonFunctions
 		{
 			return null;
 		}
-		return (domain is CodedValueDomain) ? ((CodedValueDomain)domain).GetCodedValue(configFieldValue.ToString()) : configFieldValue;
+		if (domain is not CodedValueDomain codedDomain)
+		{
+			return configFieldValue;
+		}
+		string description = configFieldValue.ToString();
+		return ResolveCodedDomainDescription(codedDomain, description) ?? codedDomain.GetCodedValue(description);
 	}
 
 	public static async Task<string> ValidateConfiguration()
@@ -2454,20 +2459,60 @@ internal static class CommonFunctions
 		return error;
 	}
 
+	private static object ResolveCodedDomainDescription(CodedValueDomain domain, string description)
+	{
+		if (string.IsNullOrWhiteSpace(description))
+		{
+			return null;
+		}
+
+		var pairs = domain.GetCodedValuePairs();
+		foreach (var pair in pairs)
+		{
+			if (string.Equals(pair.Value, description, StringComparison.Ordinal))
+			{
+				return pair.Key;
+			}
+		}
+
+		string trimmed = description.Trim();
+		bool isVoltage = TryParseKilovolts(trimmed, out decimal voltage);
+		object matchingCode = null;
+		foreach (var pair in pairs)
+		{
+			string candidate = pair.Value?.Trim();
+			if (!string.Equals(candidate, trimmed, StringComparison.OrdinalIgnoreCase) &&
+				!(isVoltage && TryParseKilovolts(candidate, out decimal candidateVoltage) && candidateVoltage == voltage))
+			{
+				continue;
+			}
+
+			if (matchingCode != null)
+			{
+				return null;
+			}
+			matchingCode = pair.Key;
+		}
+		return matchingCode;
+	}
+
+	private static bool TryParseKilovolts(string description, out decimal value)
+	{
+		value = 0;
+		return description != null && description.EndsWith("kV", StringComparison.OrdinalIgnoreCase) &&
+			decimal.TryParse(description.AsSpan(0, description.Length - 2).Trim(),
+				NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out value);
+	}
+
 	private static async Task CheckValueAgainstDomain(Domain domain, SimpleTemplate template, string fieldName, List<string> fieldErrors)
 	{
-		if (domain is CodedValueDomain)
+		if (domain is CodedValueDomain codedDomain)
 		{
-			CodedValueDomain codedDomain = (CodedValueDomain)domain;
-			List<string> domainDescs = null;
-			await QueuedTask.Run((Action)delegate
+			string fieldValue = GetObjectValue(template.DefaultFieldValues[fieldName])?.ToString();
+			bool valid = await QueuedTask.Run(() => ResolveCodedDomainDescription(codedDomain, fieldValue) != null);
+			if (!valid)
 			{
-				domainDescs = codedDomain.GetCodedValuePairs().Values.Select((string n) => n.ToString()).ToList();
-			}, TaskCreationOptions.None);
-			string fieldValue = GetObjectValue(template.DefaultFieldValues[fieldName]).ToString();
-			if (!domainDescs.Contains(fieldValue))
-			{
-				fieldErrors.Add(fieldName.ToUpper() + ": " + fieldValue);
+				fieldErrors.Add(fieldName.ToUpper() + ": " + (fieldValue ?? "(null)"));
 			}
 			return;
 		}

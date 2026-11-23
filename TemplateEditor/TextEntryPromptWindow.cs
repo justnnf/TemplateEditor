@@ -4,7 +4,7 @@ using System.Windows.Media;
 
 namespace TemplateEditor;
 
-internal sealed class TextEntryPromptWindow : Window
+internal sealed class TextEntryPromptWindow : ArcGIS.Desktop.Framework.Controls.ProWindow
 {
 	private static readonly Brush WindowBackgroundBrush;
 
@@ -79,7 +79,7 @@ internal sealed class TextEntryPromptWindow : Window
 		};
 		stackPanel2.Children.Add(_textBox);
 		dockPanel.Children.Add(stackPanel2);
-		base.Content = DialogAppearance.WithChrome(this, title, dockPanel);
+		base.Content = dockPanel;
 		base.Loaded += delegate
 		{
 			if (openAwayFromMapCenter)

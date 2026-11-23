@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Automation;
 using System.Windows.Input;
 using System.Windows.Media;
 using ArcGIS.Desktop.Framework.Contracts;
@@ -42,21 +43,11 @@ internal sealed class AssetSearchInputView : UserControl
 		StackPanel layout = new StackPanel { Width = width, Height = 66, Margin = new Thickness(0, 0, 6, 0) };
 		_field = new System.Windows.Controls.ComboBox
 		{
-			Width = width,
 			Height = 28,
-			FontSize = 13,
-			BorderThickness = new Thickness(1),
-			Padding = new Thickness(11, 0, 8, 0),
-			HorizontalContentAlignment = HorizontalAlignment.Left,
-			VerticalContentAlignment = VerticalAlignment.Center,
 			Margin = new Thickness(0, 2, 0, 5),
 			ToolTip = "Search by field"
 		};
-		_field.SetResourceReference(Control.BackgroundProperty, "Esri_ControlBackgroundBrush");
-		_field.SetResourceReference(Control.ForegroundProperty, "Esri_TextControlBrush");
-		_field.SetResourceReference(Control.BorderBrushProperty, "Esri_BorderBrush");
-		_field.Loaded += (_, _) => FlattenCorners(_field);
-		_field.DropDownOpened += (_, _) => FlattenCorners(_field);
+		AutomationProperties.SetName(_field, "Asset ID field");
 		AddField("Facility ID", "facilityid");
 		AddField("Switch Number", "assetid");
 		AddField("Site ID", "SITE_ID");
@@ -64,29 +55,16 @@ internal sealed class AssetSearchInputView : UserControl
 		_field.SelectedIndex = 0;
 		layout.Children.Add(_field);
 
-		Grid searchBar = new Grid { Width = width, Height = 29 };
-		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+		Grid searchBar = new Grid { Height = 29 };
 		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-		Border searchBorder = new Border
-		{
-			BorderThickness = new Thickness(1),
-			CornerRadius = new CornerRadius(0),
-			Child = searchBar
-		};
-		searchBorder.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
-		searchBorder.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
+		searchBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 		_value = new TextBox
 		{
-			Background = Brushes.Transparent,
-			FontSize = 13,
-			BorderThickness = new Thickness(0),
-			Padding = new Thickness(8, 0, 2, 0),
-			HorizontalContentAlignment = HorizontalAlignment.Left,
 			VerticalContentAlignment = VerticalAlignment.Center,
 			ToolTip = "Enter an ID and press Enter. Switch Number also finds prefixes and suffixes."
 		};
-		_value.SetResourceReference(Control.ForegroundProperty, "Esri_TextControlBrush");
+		AutomationProperties.SetName(_value, "Asset ID to find");
 		_value.KeyDown += (_, e) =>
 		{
 			if (e.Key == Key.Return)
@@ -95,32 +73,22 @@ internal sealed class AssetSearchInputView : UserControl
 				StartSearch();
 			}
 		};
-		Grid.SetColumn(_value, 1);
 		searchBar.Children.Add(_value);
-		TextBlock searchIndicator = new TextBlock
+		var find = new System.Windows.Controls.Button { Content = "Find", Margin = new Thickness(4, 0, 0, 0) };
+		find.SetResourceReference(StyleProperty, "Esri_Button");
+		find.Click += (_, _) => StartSearch();
+		Grid.SetColumn(find, 1);
+		searchBar.Children.Add(find);
+
+		var clear = new System.Windows.Controls.Button
 		{
-			Text = "⌕",
-			FontSize = 18,
-			VerticalAlignment = VerticalAlignment.Center,
-			HorizontalAlignment = HorizontalAlignment.Center,
-			IsHitTestVisible = false
-		};
-		searchIndicator.SetResourceReference(TextBlock.ForegroundProperty, "Esri_TextStyleSubduedBrush");
-		searchBar.Children.Add(searchIndicator);
-		System.Windows.Controls.Button clear = new System.Windows.Controls.Button
-		{
-			Content = "×",
-			Width = 20,
-			Height = 27,
-			FontSize = 17,
-			FontWeight = FontWeights.Bold,
+			Content = "Clear",
+			Margin = new Thickness(4, 0, 0, 0),
 			Visibility = Visibility.Collapsed,
-			ToolTip = "Clear search and results",
-			Cursor = Cursors.Hand,
-			Focusable = false
+			ToolTip = "Clear search and results"
 		};
-		clear.SetResourceReference(Control.ForegroundProperty, "Esri_TextStyleSubduedBrush");
-		clear.Template = IconButtonTemplate();
+		clear.SetResourceReference(StyleProperty, "Esri_Button");
+		AutomationProperties.SetName(clear, "Clear search and results");
 		clear.Click += (_, _) =>
 		{
 			_searchVersion++;
@@ -137,7 +105,7 @@ internal sealed class AssetSearchInputView : UserControl
 			clear.Visibility = _value.Text.Length > 0 || _hasSearch ? Visibility.Visible : Visibility.Collapsed;
 		Grid.SetColumn(clear, 2);
 		searchBar.Children.Add(clear);
-		layout.Children.Add(searchBorder);
+		layout.Children.Add(searchBar);
 		Content = layout;
 	}
 
@@ -148,29 +116,6 @@ internal sealed class AssetSearchInputView : UserControl
 		HorizontalContentAlignment = HorizontalAlignment.Left,
 		VerticalContentAlignment = VerticalAlignment.Center
 	});
-
-	private static ControlTemplate IconButtonTemplate()
-	{
-		ControlTemplate template = new ControlTemplate(typeof(System.Windows.Controls.Button));
-		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
-		content.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-		content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		template.VisualTree = content;
-		return template;
-	}
-
-	private static void FlattenCorners(DependencyObject parent)
-	{
-		for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
-		{
-			DependencyObject child = VisualTreeHelper.GetChild(parent, i);
-			if (child is Border border)
-			{
-				border.CornerRadius = new CornerRadius(0);
-			}
-			FlattenCorners(child);
-		}
-	}
 
 	private void StartSearch() => TaskObservationService.Forget(SearchAsync(), "Asset search failed.");
 
@@ -368,12 +313,8 @@ internal sealed class AssetSearchResultsView : UserControl
 			ToolTip = tooltip,
 			Cursor = Cursors.Hand
 		};
-		ControlTemplate template = new ControlTemplate(typeof(System.Windows.Controls.Button));
-		FrameworkElementFactory content = new FrameworkElementFactory(typeof(ContentPresenter));
-		content.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-		content.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		template.VisualTree = content;
-		button.Template = template;
+		button.SetResourceReference(StyleProperty, "Esri_ButtonBorderless");
+		AutomationProperties.SetName(button, $"{tooltip} {card.Title}");
 		button.Click += (_, e) =>
 		{
 			e.Handled = true;

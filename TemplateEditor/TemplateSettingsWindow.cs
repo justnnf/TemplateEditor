@@ -13,7 +13,7 @@ using Microsoft.Win32;
 
 namespace TemplateEditor;
 
-internal sealed class TemplateSettingsWindow : Window
+internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls.ProWindow
 {
 	private sealed class PlacementOverrideEditorRow
 	{
@@ -253,7 +253,7 @@ internal sealed class TemplateSettingsWindow : Window
 		base.Resources[SystemColors.ControlLightBrushKey] = SurfaceBackgroundBrush;
 		base.Resources[SystemColors.ControlDarkBrushKey] = SectionBorderBrush;
 		_templateConfigPathTextBox = CreateTextBox(Settings.TemplateConfigFilePath ?? string.Empty);
-		_validateConfigCheckBox = CreateCheckBox("Validate template configuration before opening the editor", Settings.ValidateConfig);
+		_validateConfigCheckBox = CreateCheckBox("Validate template configuration when the editor opens", Settings.ValidateConfig);
 		_preventDefaultVersionPlacementCheckBox = CreateCheckBox("Prevent template placement into DEFAULT versions", Settings.PreventDefaultVersionPlacement);
 		_ignoredLineTerminalNamesTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.IgnoredLineTerminalNames));
 		_allowedLineTerminalNamesTextBox = CreateTextBox(TemplateEditorSettings.FormatGroupNames(Settings.AllowedLineTerminalNames));
@@ -330,7 +330,7 @@ internal sealed class TemplateSettingsWindow : Window
 		};
 		_regenerateAssociationRulesButton.Click += RegenerateAssociationRulesButton_Click;
 		ApplyControlToolTips();
-		base.Content = DialogAppearance.WithChrome(this, "Template Settings", BuildContent());
+		base.Content = BuildContent();
 	}
 
 	private UIElement BuildContent()

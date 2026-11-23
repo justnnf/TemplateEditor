@@ -9,7 +9,7 @@ using System.Windows.Media;
 
 namespace TemplateEditor;
 
-internal sealed class ParallelCopyPromptDialog : Window
+internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Controls.ProWindow
 {
 	private readonly TextBox _offsetTextBox;
 
@@ -179,7 +179,7 @@ internal sealed class ParallelCopyPromptDialog : Window
 		stackPanel2.Children.Add(button2);
 		Grid.SetRow(stackPanel2, 3);
 		grid.Children.Add(stackPanel2);
-		base.Content = DialogAppearance.WithChrome(this, "Create Parallel Copy", grid);
+		base.Content = grid;
 		base.Loaded += delegate
 		{
 			WindowPlacementHelper.PositionAwayFromMapCenter(this);

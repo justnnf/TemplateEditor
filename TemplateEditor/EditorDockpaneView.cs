@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using AutomationProperties = System.Windows.Automation.AutomationProperties;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
@@ -187,11 +188,13 @@ public class EditorDockpaneView : UserControl
 		}
 	}
 
+	private const double SidebarFilterGap = 4;
+
 	private UIElement CreateFilterPanel(bool compact, bool sidebar)
 	{
 		Grid grid = new Grid
 		{
-			Margin = (compact ? new Thickness(0.0, 0.0, 0.0, 4.0) : new Thickness(0.0, 0.0, 0.0, 8.0))
+			Margin = new Thickness(0, 0, 0, sidebar ? SidebarFilterGap : compact ? 4 : 8)
 		};
 		grid.ColumnDefinitions.Add(new ColumnDefinition
 		{
@@ -203,7 +206,7 @@ public class EditorDockpaneView : UserControl
 		});
 		Grid grid2 = new Grid
 		{
-			Margin = sidebar ? new Thickness(0, 0, 0, compact ? 4 : 8) : new Thickness(compact ? 8.0 : 12.0, 0.0, 0.0, 0.0),
+			Margin = sidebar ? new Thickness(0, 0, 0, SidebarFilterGap) : new Thickness(compact ? 8.0 : 12.0, 0.0, 0.0, 0.0),
 			MinWidth = (compact ? 200.0 : 240.0)
 		};
 		TextBox searchBox = new TextBox
@@ -290,15 +293,15 @@ public class EditorDockpaneView : UserControl
 		{
 			StackPanel panel = new StackPanel();
 			panel.Children.Add(grid2);
-			UniformGrid primaryFilters = new UniformGrid { Columns = 3, Margin = new Thickness(0, 0, 0, compact ? 3 : 5) };
-			primaryFilters.Children.Add(CreateRadioButton("All", "ShowAllTemplates", compact, sidebar: true));
-			primaryFilters.Children.Add(CreateRadioButton("Groups", "ShowGroupTemplates", compact, sidebar: true));
-			primaryFilters.Children.Add(CreateRadioButton("Simple", "ShowSimpleTemplates", compact, sidebar: true));
-			UniformGrid savedFilters = new UniformGrid { Columns = 2 };
-			savedFilters.Children.Add(CreateRadioButton("★ Favourites", "ShowFavouriteTemplates", compact, "Favourites", sidebar: true));
-			savedFilters.Children.Add(CreateRadioButton("◷ Recent", "ShowRecentTemplates", compact, "Recent", sidebar: true));
+			var primaryFilters = CreateSidebarFilterRow(
+				CreateRadioButton("All", "ShowAllTemplates", compact),
+				CreateRadioButton("Groups", "ShowGroupTemplates", compact),
+				CreateRadioButton("Simple", "ShowSimpleTemplates", compact));
+			primaryFilters.Margin = new Thickness(0, 0, 0, SidebarFilterGap);
 			panel.Children.Add(primaryFilters);
-			panel.Children.Add(savedFilters);
+			panel.Children.Add(CreateSidebarFilterRow(
+				CreateRadioButton("★ Favourites", "ShowFavouriteTemplates", compact, "Favourites"),
+				CreateRadioButton("◷ Recent", "ShowRecentTemplates", compact, "Recent")));
 			grid.Children.Add(panel);
 		}
 		else
@@ -826,27 +829,14 @@ public class EditorDockpaneView : UserControl
 		frameworkElementFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
 		frameworkElementFactory.SetValue(DockPanel.LastChildFillProperty, true);
 		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(Button));
-		frameworkElementFactory2.SetValue(FrameworkElement.WidthProperty, 22.0);
+		frameworkElementFactory2.SetValue(FrameworkElement.MinWidthProperty, 0.0);
+		frameworkElementFactory2.SetValue(FrameworkElement.WidthProperty, 16.0);
 		frameworkElementFactory2.SetValue(FrameworkElement.HeightProperty, 22.0);
 		frameworkElementFactory2.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory2.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 4.0, 0.0));
+		frameworkElementFactory2.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 2, 0));
 		frameworkElementFactory2.SetValue(Control.PaddingProperty, new Thickness(0.0));
-		frameworkElementFactory2.SetValue(Control.BackgroundProperty, Brushes.Transparent);
-		frameworkElementFactory2.SetValue(Control.BorderBrushProperty, Brushes.Transparent);
-		frameworkElementFactory2.SetValue(Control.BorderThicknessProperty, new Thickness(0.0));
 		frameworkElementFactory2.SetValue(FrameworkElement.StyleProperty, CreateGroupToggleButtonStyle());
-		frameworkElementFactory2.SetBinding(Control.ForegroundProperty, new Binding("Foreground")
-		{
-			RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(ListViewItem), 1),
-			FallbackValue = SystemColors.ControlTextBrush
-		});
-		frameworkElementFactory2.SetValue(FrameworkElement.FocusVisualStyleProperty, null);
 		frameworkElementFactory2.SetValue(FrameworkElement.TagProperty, "GroupToggle");
-		frameworkElementFactory2.SetValue(FrameworkElement.ToolTipProperty, "Expand group");
-		frameworkElementFactory2.SetBinding(ContentControl.ContentProperty, new Binding("IsExpanded")
-		{
-			Converter = new GroupExpansionGlyphConverter()
-		});
 		frameworkElementFactory2.AddHandler(ButtonBase.ClickEvent, new RoutedEventHandler(OnGroupToggleButtonClick));
 		frameworkElementFactory2.SetBinding(UIElement.VisibilityProperty, new Binding("HasChildTemplates")
 		{
@@ -936,36 +926,17 @@ public class EditorDockpaneView : UserControl
 
 	private static Style CreateGroupToggleButtonStyle()
 	{
-		Style style = new Style(typeof(Button));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, Brushes.Transparent));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0.0)));
-		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		ControlTemplate controlTemplate = new ControlTemplate(typeof(Button));
-		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(System.Windows.Shapes.Path));
-		frameworkElementFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-		frameworkElementFactory.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory.SetValue(FrameworkElement.WidthProperty, 8.0);
-		frameworkElementFactory.SetValue(FrameworkElement.HeightProperty, 8.0);
-		frameworkElementFactory.SetValue(System.Windows.Shapes.Shape.StretchProperty, Stretch.Uniform);
-		frameworkElementFactory.SetBinding(System.Windows.Shapes.Path.DataProperty, new Binding("Content")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory.SetBinding(System.Windows.Shapes.Shape.FillProperty, new Binding("Foreground")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		controlTemplate.VisualTree = frameworkElementFactory;
-		style.Setters.Add(new Setter(Control.TemplateProperty, controlTemplate));
-		Trigger trigger = new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, new SolidColorBrush(Color.FromRgb(byte.MaxValue, 232, 232))));
-		style.Triggers.Add(trigger);
+		var nativeStyle = Application.Current?.TryFindResource("Esri_ButtonBorderless") as Style;
+		var style = new Style(typeof(Button), nativeStyle);
+		style.Setters.Add(new Setter(ContentControl.ContentProperty, "▸"));
+		style.Setters.Add(new Setter(AutomationProperties.NameProperty, "Expand group"));
+		style.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, "Expand group"));
+
+		var expanded = new DataTrigger { Binding = new Binding("IsExpanded"), Value = true };
+		expanded.Setters.Add(new Setter(ContentControl.ContentProperty, "▾"));
+		expanded.Setters.Add(new Setter(AutomationProperties.NameProperty, "Collapse group"));
+		expanded.Setters.Add(new Setter(FrameworkElement.ToolTipProperty, "Collapse group"));
+		style.Triggers.Add(expanded);
 		return style;
 	}
 
@@ -994,7 +965,7 @@ public class EditorDockpaneView : UserControl
 		if (listViewUnits?.Items != null && _nameColumn != null && _typeColumn != null && _descriptionColumn != null)
 		{
 			List<DisplayTemplate> visibleTemplates = GetTemplatesInViewport();
-			double availableWidth = Math.Max(IsSidebarLayout ? 200 : 360, listViewUnits.ActualWidth - 24);
+			double availableWidth = Math.Max(IsSidebarLayout ? 0 : 360, listViewUnits.ActualWidth - 24);
 			if (IsSidebarLayout)
 			{
 				_nameColumn.Width = availableWidth;
@@ -1243,14 +1214,32 @@ public class EditorDockpaneView : UserControl
 		return style;
 	}
 
-	private RadioButton CreateRadioButton(string text, string bindingPath, bool compact, string viewKey = null, bool sidebar = false)
+	private static Grid CreateSidebarFilterRow(params RadioButton[] buttons)
+	{
+		var row = new Grid();
+		foreach (RadioButton button in buttons)
+		{
+			if (row.ColumnDefinitions.Count > 0)
+			{
+				row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(SidebarFilterGap) });
+			}
+
+			Grid.SetColumn(button, row.ColumnDefinitions.Count);
+			row.ColumnDefinitions.Add(new ColumnDefinition());
+			button.Margin = new Thickness(0);
+			row.Children.Add(button);
+		}
+		return row;
+	}
+
+	private RadioButton CreateRadioButton(string text, string bindingPath, bool compact, string viewKey = null)
 	{
 		RadioButton radioButton = new RadioButton
 		{
 			Content = text,
 			Tag = viewKey ?? text,
 			GroupName = "TemplateView",
-			Margin = sidebar ? new Thickness(0, 0, 4, 0) : new Thickness(0.0, 0.0, compact ? 4.0 : 6.0, 0.0),
+			Margin = new Thickness(0, 0, compact ? 4 : 6, 0),
 			Padding = (compact ? new Thickness(8.0, 3.0, 8.0, 3.0) : new Thickness(10.0, 4.0, 10.0, 4.0)),
 			Foreground = GetPrimaryForegroundBrush(),
 			Style = CreateSegmentedRadioButtonStyle()

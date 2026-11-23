@@ -2,14 +2,12 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
-using System.Windows.Shell;
 using ArcGIS.Desktop.Framework;
 
 namespace TemplateEditor;
 
 internal static class DialogAppearance
 {
-	private const double ChromeCaptionHeight = 44;
 
 	private static bool IsDark => FrameworkApplication.ApplicationTheme is ApplicationTheme.Dark or ApplicationTheme.HighContrast;
 
@@ -24,66 +22,6 @@ internal static class DialogAppearance
 	internal static Brush SecondaryForeground => Brush("#CDCDCD", "#606060");
 	internal static Brush Accent => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#007AC2"));
 	internal static Brush AccentHover => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2080E0"));
-
-	internal static UIElement WithChrome(Window window, string title, UIElement content)
-	{
-		// ArcGIS Pro hosts add-ins in its own WPF shell, so each custom dialog owns
-		// its title bar and rounded border instead of relying on OS window chrome.
-		window.WindowStyle = WindowStyle.None;
-		window.Background = Accent;
-		window.Foreground = Foreground;
-		window.UseLayoutRounding = true;
-		window.SnapsToDevicePixels = true;
-		WindowChrome.SetWindowChrome(window, new WindowChrome
-		{
-			CaptionHeight = ChromeCaptionHeight,
-			ResizeBorderThickness = new Thickness(6),
-			CornerRadius = new CornerRadius(0),
-			GlassFrameThickness = new Thickness(0),
-			UseAeroCaptionButtons = false
-		});
-
-		var root = new Grid { SnapsToDevicePixels = true };
-		root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-		root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-		var header = new Border { Background = Accent };
-		var headerGrid = new Grid();
-		headerGrid.ColumnDefinitions.Add(new ColumnDefinition());
-		headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-		headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-		headerGrid.Children.Add(new TextBlock { Text = title, Foreground = Brushes.White, FontSize = 16, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(16, 0, 0, 0) });
-		var minimize = ChromeButton("−", "Minimize");
-		minimize.Click += (_, _) => window.WindowState = WindowState.Minimized;
-		Grid.SetColumn(minimize, 1);
-		headerGrid.Children.Add(minimize);
-		var close = ChromeButton("×", "Close");
-		close.FontSize = 18;
-		close.Click += (_, _) => window.Close();
-		Grid.SetColumn(close, 2);
-		headerGrid.Children.Add(close);
-		header.Child = headerGrid;
-		root.Children.Add(header);
-		var body = new Border { Background = Background, Child = content };
-		Grid.SetRow(body, 1);
-		root.Children.Add(body);
-		// The outer border owns the accent outline for every custom add-in dialog.
-		// Squared chrome avoids the mixed inner/outer corner radii that WPF can clip.
-		return new Border { Background = Accent, BorderBrush = Accent, BorderThickness = new Thickness(1), Child = root, SnapsToDevicePixels = true };
-	}
-
-	private static Button ChromeButton(string content, string toolTip)
-	{
-		var style = new Style(typeof(Button));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, Brushes.Transparent));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		ApplySquareButtonTemplate(style);
-		var button = new Button { Content = content, ToolTip = toolTip, Width = 40, Height = 44, Padding = new Thickness(0), FontSize = 15, Style = style };
-		WindowChrome.SetIsHitTestVisibleInChrome(button, true);
-		return button;
-	}
 
 	internal static void ApplySquareButtonTemplate(Style style)
 	{

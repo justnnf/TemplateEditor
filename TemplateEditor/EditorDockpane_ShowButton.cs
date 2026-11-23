@@ -22,28 +22,21 @@ internal class EditorDockpane_ShowButton : Button
 				LogService.Write("Template editor open canceled because no config path was selected.");
 				return;
 			}
-			bool isConfigValid = false;
 			AddinConfiguration.ReloadTemplates();
 			LogService.Write("Template config loaded for editor launch.");
-			string message = null;
+			EditorDockpaneViewModel.Show();
+
 			if (AddinConfiguration.ValidateConfig)
 			{
-				LogService.Write("Validating template config before editor launch.");
-				message = await CommonFunctions.ValidateConfiguration();
-			}
-			if (message != null)
-			{
-				LogService.Write("Template config validation failed before editor launch.");
-				DialogService.Show("Error(s) in the template configuration:\n\n" + message, "Template Editor");
-			}
-			else
-			{
-				isConfigValid = true;
-			}
-			if (isConfigValid)
-			{
-				LogService.Write("Showing template editor dockpane.");
-				EditorDockpaneViewModel.Show();
+				LogService.Write("Validating template config.");
+				string message = await CommonFunctions.ValidateConfiguration();
+				if (!string.IsNullOrWhiteSpace(message))
+				{
+					LogService.Write("Template config validation reported issues.");
+					DialogService.Show(
+						"The editor is open. Review these configuration issues before using the affected templates.\n\n" + message,
+						"Template Configuration Validation");
+				}
 			}
 		}
 		catch (Exception ex)

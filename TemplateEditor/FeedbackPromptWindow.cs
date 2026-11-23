@@ -7,7 +7,7 @@ using System.Windows.Media;
 
 namespace TemplateEditor;
 
-internal sealed class FeedbackPromptWindow : Window
+internal sealed class FeedbackPromptWindow : ArcGIS.Desktop.Framework.Controls.ProWindow
 {
 	private MessageBoxResult _result = MessageBoxResult.None;
 
@@ -50,7 +50,7 @@ internal sealed class FeedbackPromptWindow : Window
 		base.Background = WindowBackgroundBrush;
 		base.Foreground = PrimaryTextBrush;
 		base.Topmost = true;
-		base.Content = DialogAppearance.WithChrome(this, title, BuildContent(message, choices));
+		base.Content = BuildContent(message, choices);
 		base.Loaded += delegate
 		{
 			WindowPlacementHelper.PositionNearOwnerBottomRight(this);

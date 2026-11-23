@@ -4,7 +4,7 @@ using System.Windows.Media;
 
 namespace TemplateEditor;
 
-internal sealed class EnhancementConfirmationDialog : Window
+internal sealed class EnhancementConfirmationDialog : ArcGIS.Desktop.Framework.Controls.ProWindow
 {
 	public bool Accepted { get; private set; }
 	private readonly string _message;
@@ -43,7 +43,7 @@ internal sealed class EnhancementConfirmationDialog : Window
 		base.Foreground = PrimaryTextBrush;
 		base.FontFamily = new FontFamily("Segoe UI");
 		base.FontSize = 12.0;
-		base.Content = DialogAppearance.WithChrome(this, title, BuildContent());
+		base.Content = BuildContent();
 		base.Loaded += delegate
 		{
 			WindowPlacementHelper.PositionAwayFromMapCenter(this);

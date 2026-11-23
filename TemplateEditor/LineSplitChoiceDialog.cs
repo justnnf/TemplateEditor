@@ -6,7 +6,7 @@ using System.Windows.Media;
 
 namespace TemplateEditor;
 
-internal sealed class LineSplitChoiceDialog : Window
+internal sealed class LineSplitChoiceDialog : ArcGIS.Desktop.Framework.Controls.ProWindow
 {
 	public bool Accepted { get; private set; }
 	private readonly CheckBox _startCheckBox;
@@ -56,7 +56,7 @@ internal sealed class LineSplitChoiceDialog : Window
 			Margin = new Thickness(0.0, 8.0, 0.0, 0.0),
 			Foreground = PrimaryTextBrush
 		} : null);
-		base.Content = DialogAppearance.WithChrome(this, "Split Underlying Line", BuildContent());
+		base.Content = BuildContent();
 		base.Loaded += delegate
 		{
 			WindowPlacementHelper.PositionAwayFromMapCenter(this);
