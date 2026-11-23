@@ -9,6 +9,7 @@ using ArcGIS.Core.Data;
 using ArcGIS.Core.Data.UtilityNetwork;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Mapping;
 
 namespace TemplateEditor;
@@ -28,6 +29,8 @@ internal static class LineTerminalPromptService
 
 	public static async Task<int?> ChooseTerminalAsync(FeatureLayer snappedLayer, long snappedObjectId, string endName)
 	{
+		MapView map = MapView.Active;
+		string tool = FrameworkApplication.CurrentTool;
 		SimpleTemplate template = GetLineTemplate();
 		if (template == null || snappedLayer == null || snappedObjectId <= 0)
 		{
@@ -44,7 +47,7 @@ internal static class LineTerminalPromptService
 			DialogService.ShowToast("Terminal choices could not be loaded. The line can still be placed without an endpoint terminal.", "Template Editor", FeedbackSeverity.Warning);
 			return null;
 		}
-		if (device == null)
+		if (device == null || !ReferenceEquals(MapView.Active, map) || FrameworkApplication.CurrentTool != tool)
 		{
 			return null;
 		}
@@ -55,7 +58,11 @@ internal static class LineTerminalPromptService
 		}
 		List<string> labels = terminals.Select(t => t.Name).ToList();
 		labels.Add("None (no terminal)");
-		int? terminalIndex = Choose($"{endName} terminal", $"Choose the terminal on {device.Label} for the {endName.ToLowerInvariant()} end.", labels);
+		string title = $"{endName} terminal";
+		string prompt = $"Choose the terminal on {device.Label} for the {endName.ToLowerInvariant()} end.";
+		int? terminalIndex = PlacementMapPrompt.UseMap && map != null
+			? await PlacementMapPrompt.ChooseAsync(map, title, prompt, labels)
+			: Choose(title, prompt, labels);
 		return terminalIndex.HasValue ? (terminalIndex.Value == terminals.Count ? 0 : terminals[terminalIndex.Value].Id) : null;
 	}
 

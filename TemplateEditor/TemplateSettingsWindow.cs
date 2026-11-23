@@ -494,7 +494,7 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 	{
 		StackPanel stackPanel = CreateTabPanel();
 		stackPanel.Children.Add(CreateGroupBox("Behavior", CreateCheckBoxPanel(_enableLineSplitPromptsCheckBox, _enablePointPlacementSplitPromptCheckBox, _enableLineEndpointSplitPromptCheckBox, _enableSplitAtLineStartPointCheckBox, _enableSplitAtLineEndPointCheckBox, _enableConfiguredLinePartSplitsCheckBox, _suppressDuplicateSplitPromptsCheckBox, _splitOnlyInteriorCandidatesCheckBox)));
-		stackPanel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("In-map confirmation position", _placementPromptPositionComboBox), ("Split prompt mode", _splitPromptModeComboBox), ("Maximum split candidates to review", _maxSplitCandidatesToReviewTextBox))));
+		stackPanel.Children.Add(CreateGroupBox("Prompting", CreateFormGrid(("Placement prompt position", _placementPromptPositionComboBox), ("Split prompt mode", _splitPromptModeComboBox), ("Maximum split candidates to review", _maxSplitCandidatesToReviewTextBox))));
 		stackPanel.Children.Add(CreateGroupBox("Eligible Groups", CreateFormGrid(("Split search distance (map units)", _splitSearchDistanceTextBox), ("Eligible point placement groups", _splitPointPlacementGroupsTextBox), ("Eligible line placement groups", _splitLinePlacementGroupsTextBox), ("Underlying target line groups", _splitTargetLineGroupsTextBox), ("Underlying target subtype/layer names", _splitTargetLayerNamesTextBox), ("Included target asset groups", _splitIncludedAssetGroupsTextBox))));
 		return WrapTab(stackPanel);
 	}

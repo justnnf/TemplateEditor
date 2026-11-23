@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Media;
+using ArcGIS.Desktop.Mapping;
 
 namespace TemplateEditor;
 
@@ -20,6 +21,8 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 	private IDisposable _previewOverlay;
 
 	private int _previewVersion;
+
+	private Action<bool> _completeInMap;
 
 	private static Brush WindowBackgroundBrush => DialogAppearance.Background;
 
@@ -174,7 +177,7 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 		};
 		button2.Click += delegate
 		{
-			base.DialogResult = false;
+			Complete(false);
 		};
 		stackPanel2.Children.Add(button2);
 		Grid.SetRow(stackPanel2, 3);
@@ -187,7 +190,7 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 		};
 		base.Closed += delegate
 		{
-			ClearPreviewOverlay();
+			StopPreview();
 		};
 	}
 
@@ -200,6 +203,47 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 			parallelCopyPromptDialog.Owner = window;
 		}
 		return (parallelCopyPromptDialog.ShowDialog() == true) ? parallelCopyPromptDialog : null;
+	}
+
+	public static async Task<ParallelCopyPromptDialog> ShowInMapAsync(MapView map, double distance, bool leftSide)
+	{
+		ParallelCopyPromptDialog dialog = null;
+		try
+		{
+			bool accepted = await PlacementMapPrompt.ShowAsync(map, "Create Parallel Copy", finish =>
+			{
+				dialog = new ParallelCopyPromptDialog(distance, leftSide) { _completeInMap = finish };
+				var content = (FrameworkElement)dialog.Content;
+				dialog.Content = null;
+				content.Margin = new Thickness(0, 8, 0, 0);
+				content.Loaded += (_, _) => dialog.QueuePreviewRefresh();
+				return content;
+			});
+			return accepted ? dialog : null;
+		}
+		finally
+		{
+			if (dialog != null)
+			{
+				dialog.StopPreview();
+				dialog._completeInMap = null;
+				dialog.Close();
+			}
+		}
+	}
+
+	private void Complete(bool accepted)
+	{
+		if (_completeInMap != null)
+			_completeInMap(accepted);
+		else
+			DialogResult = accepted;
+	}
+
+	private void StopPreview()
+	{
+		_previewVersion++;
+		ClearPreviewOverlay();
 	}
 
 	private static Style CreateTextBoxStyle()
@@ -294,7 +338,7 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 		}
 		OffsetDistance = distance;
 		ClearPreviewOverlay();
-		base.DialogResult = true;
+		Complete(true);
 	}
 
 	private void QueuePreviewRefresh()

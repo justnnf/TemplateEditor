@@ -12,6 +12,7 @@ using ArcGIS.Core.Data.UtilityNetwork;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Editing;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Mapping;
 
 namespace TemplateEditor;
@@ -126,6 +127,8 @@ internal static class PlacementEnhancementService
 		{
 			return;
 		}
+		MapView map = MapView.Active;
+		string tool = FrameworkApplication.CurrentTool;
 		if (await EnhancementPromptGate.WaitAsync(TimeSpan.FromSeconds(30.0)))
 		{
 			try
@@ -133,10 +136,18 @@ internal static class PlacementEnhancementService
 				HashSet<string> processedSplitPointKeys = new HashSet<string>(StringComparer.Ordinal);
 				foreach (PlacedFeatureContext createdFeature in createdFeatures)
 				{
+					if (!ReferenceEquals(MapView.Active, map) || FrameworkApplication.CurrentTool != tool)
+					{
+						return;
+					}
 					if (createdFeature?.Layer != null && createdFeature.Geometry != null && createdFeature.ObjectID > 0 && createdFeature.AllowPlacementEnhancements)
 					{
 						await RunEnhancementStepAsync("line split", () => TryPromptForLineSplitAsync(createdFeature, createdFeatures, processedSplitPointKeys));
 						await WaitForEnhancementSettleAsync();
+						if (!ReferenceEquals(MapView.Active, map) || FrameworkApplication.CurrentTool != tool)
+						{
+							return;
+						}
 						await RunEnhancementStepAsync("association", () => TryPromptForAssociationsAsync(createdFeature, createdFeatures, existingAssociations));
 						await WaitForEnhancementSettleAsync();
 					}
@@ -248,14 +259,25 @@ internal static class PlacementEnhancementService
 				}
 				return;
 			}
-			LineSplitChoiceDialog choiceDialog = await ShowDialogAsync(() => new LineSplitChoiceDialog(availableOptions));
-			if (choiceDialog.Accepted)
+			bool splitAtStart;
+			bool splitAtEnd;
+			if (PlacementMapPrompt.UseMap && MapView.Active is MapView map)
 			{
-				if (choiceDialog.SplitAtStart)
+				(splitAtStart, splitAtEnd) = await PlacementMapPrompt.ChooseSplitAsync(map, hasStartCandidate, hasEndCandidate);
+			}
+			else
+			{
+				var dialog = await ShowDialogAsync(() => new LineSplitChoiceDialog(availableOptions));
+				splitAtStart = dialog.Accepted && dialog.SplitAtStart;
+				splitAtEnd = dialog.Accepted && dialog.SplitAtEnd;
+			}
+			if (splitAtStart || splitAtEnd)
+			{
+				if (splitAtStart)
 				{
 					await TryPromptForSingleSplitPointAsync(createdFeature, featuresCreatedByOperation, processedSplitPointKeys, startPoint, "Split underlying line at the insert/start point?", startCandidates);
 				}
-				if (choiceDialog.SplitAtEnd)
+				if (splitAtEnd)
 				{
 					await TryPromptForSingleSplitPointAsync(createdFeature, featuresCreatedByOperation, processedSplitPointKeys, endPoint, "Split underlying line at this line endpoint?", endCandidates);
 				}
@@ -1322,11 +1344,18 @@ internal static class PlacementEnhancementService
 			{
 				List<string> labels = candidates.Select((FeatureCandidate candidate, int index) => $"{index + 1}. {candidate.Label}").ToList();
 				await selectedOverlay.UpdateAsync(candidates[0]);
-				CandidateChoiceDialog dialog = await ShowDialogAsync(() => new CandidateChoiceDialog(title, prompt + "\n\nCandidates are ordered by proximity. The selected candidate is highlighted in yellow on the map.", labels, delegate (int selectedIndex)
+				string message = prompt + "\n\nCandidates are ordered by proximity. The selected candidate is highlighted in yellow on the map.";
+				void Highlight(int index) => TaskObservationService.Forget(
+					selectedOverlay.UpdateAsync(candidates[index]), "Candidate selection highlight update failed.");
+
+				if (PlacementMapPrompt.UseMap && MapView.Active is MapView map)
 				{
-					TaskObservationService.Forget(selectedOverlay.UpdateAsync(candidates[selectedIndex]), "Candidate selection highlight update failed.");
-				}));
-				return (dialog != null && dialog.Result == CandidateChoiceResult.UseCandidate && dialog.SelectedIndex >= 0 && dialog.SelectedIndex < candidates.Count) ? candidates[dialog.SelectedIndex] : null;
+					int? index = await PlacementMapPrompt.ChooseAsync(map, title, message, labels, Highlight);
+					return index.HasValue ? candidates[index.Value] : null;
+				}
+
+				var dialog = await ShowDialogAsync(() => new CandidateChoiceDialog(title, message, labels, Highlight));
+				return dialog.Result == CandidateChoiceResult.UseCandidate ? candidates[dialog.SelectedIndex] : null;
 			}
 			finally
 			{
@@ -1576,7 +1605,7 @@ internal static class PlacementEnhancementService
 
 	private static async Task<bool> ShowConfirmationAsync(string message, string title, string confirmLabel = "Yes", string cancelLabel = "No")
 	{
-		if (AddinConfiguration.Settings?.PlacementPromptPosition != "Window" && MapView.Active is MapView map)
+		if (PlacementMapPrompt.UseMap && MapView.Active is MapView map)
 		{
 			return await PlacementMapPrompt.ConfirmAsync(map, title, message, confirmLabel, cancelLabel);
 		}

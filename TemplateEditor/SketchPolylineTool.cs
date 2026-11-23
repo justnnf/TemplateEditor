@@ -1,3 +1,4 @@
+using ArcGIS.Desktop.Framework;
 using System.Threading.Tasks;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Framework.Contracts;
@@ -84,6 +85,8 @@ internal class SketchPolylineTool : PreviewSketchTool
 		LineTerminalSelection terminals = null;
 		if (geometry is Polyline line && line.PointCount > 1 && LineTerminalPromptService.HasEligibleTemplate())
 		{
+			MapView map = MapView.Active;
+			string tool = FrameworkApplication.CurrentTool;
 			MapPoint first = line.Points[0];
 			var snapResults = SnappingResults;
 			SnapResult firstSnap = snapResults?.Count > 0 ? snapResults[0] : null;
@@ -95,11 +98,17 @@ internal class SketchPolylineTool : PreviewSketchTool
 			int? from = _fromPoint != null && GeometryEngine.Instance.Equals(_fromPoint, first) && _fromSnapLayer == firstLayer && _fromSnapObjectId == firstObjectId
 				? _fromTerminalId
 				: await LineTerminalPromptService.ChooseTerminalAsync(firstLayer, firstObjectId, "From");
-			terminals = new LineTerminalSelection
+			if (!ReferenceEquals(MapView.Active, map) || FrameworkApplication.CurrentTool != tool)
 			{
-				FromTerminalId = from,
-				ToTerminalId = await LineTerminalPromptService.ChooseTerminalAsync(lastLayer, lastObjectId, "To")
-			};
+				return false;
+			}
+
+			int? to = await LineTerminalPromptService.ChooseTerminalAsync(lastLayer, lastObjectId, "To");
+			if (!ReferenceEquals(MapView.Active, map) || FrameworkApplication.CurrentTool != tool)
+			{
+				return false;
+			}
+			terminals = new LineTerminalSelection { FromTerminalId = from, ToTerminalId = to };
 		}
 		// Preview rotation may have supplied an anchor different from the final
 		// sketch geometry; use it when present so preview and placement agree.

@@ -6,6 +6,7 @@ using ArcGIS.Core.CIM;
 using ArcGIS.Core.Data;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Mapping;
 
 namespace TemplateEditor;
@@ -14,6 +15,8 @@ internal static class ParallelCopyService
 {
 	public static async Task<bool> PromptAndCreateIfRequestedAsync()
 	{
+		MapView map = MapView.Active;
+		string tool = FrameworkApplication.CurrentTool;
 		TemplateEditorSettings settings = AddinConfiguration.Settings;
 		if (settings == null || !settings.EnableParallelCopyPrompt)
 		{
@@ -28,7 +31,13 @@ internal static class ParallelCopyService
 		bool leftSide = settings2.DefaultParallelCopyLeftSide;
 		if (!settings2.AutoCreateParallelCopyWhenSelectedLineExists)
 		{
-			ParallelCopyPromptDialog dialog = ParallelCopyPromptDialog.ShowPrompt(offsetDistance, leftSide);
+			ParallelCopyPromptDialog dialog = PlacementMapPrompt.UseMap && map != null
+				? await ParallelCopyPromptDialog.ShowInMapAsync(map, offsetDistance, leftSide)
+				: ParallelCopyPromptDialog.ShowPrompt(offsetDistance, leftSide);
+			if (!ReferenceEquals(MapView.Active, map) || FrameworkApplication.CurrentTool != tool)
+			{
+				return true; // A context change also prevents the caller from starting a new sketch.
+			}
 			if (dialog == null)
 			{
 				return false;
@@ -86,11 +95,12 @@ internal static class ParallelCopyService
 
 	public static async Task<IDisposable> CreatePreviewOverlayAsync(double offsetDistance, bool leftSide)
 	{
+		MapView map = MapView.Active;
 		Geometry previewGeometry = await CreateFromSelectedLineAsync(offsetDistance, leftSide);
 		return await QueuedTask.Run<IDisposable>((Func<IDisposable>)delegate
 		{
-			MapView active = MapView.Active;
-			return (active != null) ? MappingExtensions.AddOverlay(active, previewGeometry, CreatePreviewSymbol(), -1.0) : null;
+			return map != null && ReferenceEquals(MapView.Active, map)
+				? MappingExtensions.AddOverlay(map, previewGeometry, CreatePreviewSymbol(), -1.0) : null;
 		}, TaskCreationOptions.None);
 	}
 
