@@ -5,11 +5,27 @@ using System.Text.Json;
 
 namespace TemplateEditor;
 
+internal sealed record AssetSearchField(string Label, string FieldName, bool Contains);
+
 internal sealed class TemplateEditorSettings
 {
 	public string TemplateConfigFilePath { get; set; }
 
 	public bool ValidateConfig { get; set; }
+
+	public bool FloatFindAssetInMap { get; set; }
+
+	public List<AssetSearchField> FindAssetFields { get; set; } = DefaultFindAssetFields();
+
+	internal static List<AssetSearchField> DefaultFindAssetFields() => new()
+	{
+		new("Facility ID", "facilityid", false),
+		new("Switch Number", "assetid", true),
+		new("Site ID", "SITE_ID", false),
+		new("Global ID", "GLOBALID", false)
+	};
+
+	public string FindAssetMapPosition { get; set; } = "TopRight";
 
 	public string PlacementPromptPosition { get; set; } = "BottomCenter";
 
@@ -192,6 +208,16 @@ internal sealed class TemplateEditorSettings
 		DefaultParallelCopyOffsetDistance = Math.Max(0.001, DefaultParallelCopyOffsetDistance);
 		MaxSplitCandidatesToReview = Math.Max(1, MaxSplitCandidatesToReview);
 		AssociationRulesJsonPath = (string.IsNullOrWhiteSpace(AssociationRulesJsonPath) ? null : AssociationRulesJsonPath.Trim());
+		FindAssetFields = (FindAssetFields ?? DefaultFindAssetFields())
+			.Where(field => !string.IsNullOrWhiteSpace(field?.FieldName) && !string.IsNullOrWhiteSpace(field.Label))
+			.Select(field => field with { Label = field.Label.Trim(), FieldName = field.FieldName.Trim() })
+			.DistinctBy(field => field.FieldName, StringComparer.OrdinalIgnoreCase)
+			.ToList();
+		if (FindAssetFields.Count == 0)
+			FindAssetFields = DefaultFindAssetFields();
+
+		FindAssetMapPosition = NormalizeChoice(FindAssetMapPosition, "TopRight",
+			"TopLeft", "TopCenter", "TopRight", "BottomLeft", "BottomCenter", "BottomRight");
 		PlacementPromptPosition = NormalizeChoice(PlacementPromptPosition, "BottomCenter",
 			"TopLeft", "TopCenter", "TopRight", "BottomLeft", "BottomCenter", "BottomRight", "Window");
 		SplitPromptMode = NormalizeChoice(SplitPromptMode, "AlwaysAsk", "AutoWhenOne", "Never");

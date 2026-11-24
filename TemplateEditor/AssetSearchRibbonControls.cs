@@ -19,7 +19,16 @@ internal sealed class AssetSearchInputControl : CustomControl
 	{
 		try
 		{
-			return new AssetSearchInputView();
+			var search = new AssetSearchInputView();
+			AssetSearchMapPanel.TrackLocation(search, floating =>
+			{
+				search.Visibility = floating ? Visibility.Collapsed : Visibility.Visible;
+				if (floating)
+					search.ResetSearch();
+				else
+					search.RefreshFields();
+			});
+			return search;
 		}
 		catch (Exception exception)
 		{
@@ -33,13 +42,15 @@ internal sealed class AssetSearchInputView : UserControl
 {
 	private readonly System.Windows.Controls.ComboBox _field;
 	private readonly TextBox _value;
+	private readonly Action<IReadOnlyList<AssetSearchResultCard>> _showResults;
 	private bool _searching;
 	private int _searchVersion;
 	private string _lastSearchKey;
 	private DateTime _lastSearchStarted;
 
-	public AssetSearchInputView()
+	public AssetSearchInputView(Action<IReadOnlyList<AssetSearchResultCard>> showResults = null)
 	{
+		_showResults = showResults ?? AssetSearchResultsControl.SetCards;
 		const double width = 230;
 		StackPanel layout = new StackPanel { Width = width, Height = 66, Margin = new Thickness(0, 0, 6, 0) };
 		_field = new System.Windows.Controls.ComboBox
@@ -49,11 +60,8 @@ internal sealed class AssetSearchInputView : UserControl
 			ToolTip = "Search by field"
 		};
 		AutomationProperties.SetName(_field, "Asset ID field");
-		AddField("Facility ID", "facilityid");
-		AddField("Switch Number", "assetid");
-		AddField("Site ID", "SITE_ID");
-		AddField("Global ID", "GLOBALID");
-		_field.SelectedIndex = 0;
+		_field.DisplayMemberPath = nameof(AssetSearchField.Label);
+		TextSearch.SetTextPath(_field, nameof(AssetSearchField.Label));
 		layout.Children.Add(_field);
 
 		var searchBar = new Grid { Height = 29 };
@@ -61,7 +69,7 @@ internal sealed class AssetSearchInputView : UserControl
 		{
 			Padding = new Thickness(4, 0, 30, 0),
 			VerticalContentAlignment = VerticalAlignment.Center,
-			ToolTip = "Enter an ID and press Enter. Switch Number also finds prefixes and suffixes."
+			ToolTip = "Enter a value and press Enter to search."
 		};
 		AutomationProperties.SetName(_value, "Asset ID to find");
 		_value.KeyDown += (_, e) =>
@@ -74,7 +82,7 @@ internal sealed class AssetSearchInputView : UserControl
 			else if (e.Key == Key.Escape)
 			{
 				e.Handled = true;
-				ClearSearch();
+				ResetSearch();
 			}
 		};
 		searchBar.Children.Add(_value);
@@ -106,7 +114,7 @@ internal sealed class AssetSearchInputView : UserControl
 		{
 			if (_value.Text.Length > 0)
 			{
-				ClearSearch();
+				ResetSearch();
 			}
 			_value.Focus();
 		};
@@ -115,6 +123,7 @@ internal sealed class AssetSearchInputView : UserControl
 		searchBar.Children.Add(action);
 		layout.Children.Add(searchBar);
 		Content = layout;
+		RefreshFields();
 
 		void UpdateSearchIcon()
 		{
@@ -126,32 +135,43 @@ internal sealed class AssetSearchInputView : UserControl
 		}
 	}
 
-	private void ClearSearch()
+	internal void ResetSearch()
 	{
 		_searchVersion++;
 		_searching = false;
 		_lastSearchKey = null;
 		_lastSearchStarted = default;
 		_value.Clear();
-		AssetSearchResultsControl.Clear();
+		_showResults(Array.Empty<AssetSearchResultCard>());
 	}
 
-	private void AddField(string label, string name) => _field.Items.Add(new System.Windows.Controls.ComboBoxItem
+	internal void RefreshFields()
 	{
-		Content = label,
-		Tag = name,
-		HorizontalContentAlignment = HorizontalAlignment.Left,
-		VerticalContentAlignment = VerticalAlignment.Center
-	});
+		var fields = AddinConfiguration.Settings?.FindAssetFields ?? TemplateEditorSettings.DefaultFindAssetFields();
+		if (_field.ItemsSource is IEnumerable<AssetSearchField> current && current.SequenceEqual(fields))
+			return;
+
+		string previous = (_field.SelectedItem as AssetSearchField)?.FieldName;
+		ResetSearch();
+		_field.ItemsSource = fields;
+		_field.SelectedItem = fields.FirstOrDefault(field => string.Equals(field.FieldName, previous, StringComparison.OrdinalIgnoreCase))
+			?? fields.FirstOrDefault();
+	}
+
+
+	internal void FocusSearch() => _value.Focus();
+
+	private void ShowStatus(string title, string detail)
+		=> _showResults(new[] { new AssetSearchResultCard(title, detail) });
 
 	private void StartSearch() => TaskObservationService.Forget(SearchAsync(), "Asset search failed.");
 
 	private async Task SearchAsync()
 	{
 		string value = _value.Text.Trim();
-		System.Windows.Controls.ComboBoxItem selectedField = _field.SelectedItem as System.Windows.Controls.ComboBoxItem;
-		string fieldName = selectedField?.Tag as string ?? "facilityid";
-		string searchKey = fieldName + "\n" + value;
+		if (_field.SelectedItem is not AssetSearchField field)
+			return;
+		string searchKey = field.FieldName + "\n" + value;
 		if (_searching || string.IsNullOrEmpty(value) ||
 			(searchKey == _lastSearchKey && DateTime.UtcNow - _lastSearchStarted < TimeSpan.FromMilliseconds(500)))
 		{
@@ -162,18 +182,20 @@ internal sealed class AssetSearchInputView : UserControl
 		int searchVersion = ++_searchVersion;
 		_lastSearchKey = searchKey;
 		_lastSearchStarted = DateTime.UtcNow;
-		AssetSearchResultsControl.ShowSearching();
+		ShowStatus("Searching", "Checking live layers and tables...");
 		try
 		{
-			AssetSearchResult result = await AssetSearchService.SearchAsync(fieldName, value);
+			AssetSearchResult result = await AssetSearchService.SearchAsync(field.FieldName, value, field.Contains);
 			if (searchVersion != _searchVersion)
 			{
 				return;
 			}
-			AssetSearchResultsControl.ShowResults(result);
+			_showResults(result.MatchCount == 0
+				? new[] { new AssetSearchResultCard("No matches", "Try another ID or field.") }
+				: result.Matches.Select(match => new AssetSearchResultCard(match)).ToArray());
 			string message = result.MatchCount == 0
 				? "No matches found in the current map."
-				: $"Found {result.MatchCount} match(es) in the ribbon.";
+				: $"Found {result.MatchCount} match(es).";
 			if (result.LimitReached)
 			{
 				message += " Limited to 100 matches; use a more specific value.";
@@ -192,7 +214,7 @@ internal sealed class AssetSearchInputView : UserControl
 				return;
 			}
 			LogService.LogException("Asset search failed.", ex);
-			AssetSearchResultsControl.ShowMessage("Search failed", "See the Template Editor log.");
+			ShowStatus("Search failed", "See the Template Editor log.");
 			DialogService.ShowToast("Search failed; see the Template Editor log.", "Find Asset", FeedbackSeverity.Error);
 		}
 		finally
@@ -219,29 +241,15 @@ internal sealed class AssetSearchResultsControl : CustomControl
 	protected override FrameworkElement OnCreateContent()
 	{
 		_view = new AssetSearchResultsView();
+		AssetSearchMapPanel.TrackLocation(_view, floating =>
+			_view.Visibility = floating ? Visibility.Collapsed : Visibility.Visible);
 		Refresh();
 		return _view;
 	}
 
-	internal static void ShowSearching() => ShowMessage("Searching", "Checking live layers and tables...");
-
-	internal static void Clear()
+	internal static void SetCards(IReadOnlyList<AssetSearchResultCard> cards)
 	{
-		_cards = Array.Empty<AssetSearchResultCard>();
-		_current?.Refresh();
-	}
-
-	internal static void ShowMessage(string title, string detail)
-	{
-		_cards = new[] { new AssetSearchResultCard(title, detail) };
-		_current?.Refresh();
-	}
-
-	internal static void ShowResults(AssetSearchResult result)
-	{
-		_cards = result.MatchCount == 0
-			? new[] { new AssetSearchResultCard("No matches", "Try another ID or field.") }
-			: result.Matches.Select(match => new AssetSearchResultCard(match)).ToArray();
+		_cards = cards;
 		_current?.Refresh();
 	}
 
@@ -256,7 +264,7 @@ internal sealed class AssetSearchResultsView : UserControl
 {
 	private readonly StackPanel _cards = new StackPanel();
 
-	public AssetSearchResultsView()
+	public AssetSearchResultsView(bool floating = false)
 	{
 		ScrollViewer scroll = new ScrollViewer
 		{
@@ -273,7 +281,8 @@ internal sealed class AssetSearchResultsView : UserControl
 			CornerRadius = new CornerRadius(0),
 			Child = scroll
 		};
-		frame.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
+		if (!floating)
+			frame.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
 		frame.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
 		Content = frame;
 	}

@@ -55,7 +55,7 @@ internal static class AssetSearchService
 		}
 	}
 
-	internal static Task<AssetSearchResult> SearchAsync(string fieldName, string value)
+	internal static Task<AssetSearchResult> SearchAsync(string fieldName, string value, bool contains)
 	{
 		return QueuedTask.Run(() =>
 		{
@@ -94,7 +94,7 @@ internal static class AssetSearchService
 					{
 						continue;
 					}
-					string whereClause = BuildWhereClause(field.Name, field.FieldType, value);
+					string whereClause = BuildWhereClause(field.Name, field.FieldType, value, contains);
 					if (whereClause == null)
 					{
 						continue;
@@ -132,7 +132,7 @@ internal static class AssetSearchService
 		});
 	}
 
-	internal static string BuildWhereClause(string fieldName, FieldType fieldType, string value)
+	internal static string BuildWhereClause(string fieldName, FieldType fieldType, string value, bool contains = false)
 	{
 		if (string.IsNullOrWhiteSpace(fieldName) || string.IsNullOrWhiteSpace(value))
 		{
@@ -151,14 +151,15 @@ internal static class AssetSearchService
 		{
 			return null;
 		}
-		string text = value.Trim().Replace("'", "''");
-		if (string.Equals(fieldName, "assetid", StringComparison.OrdinalIgnoreCase))
+		string textField = $"UPPER({fieldName})";
+		string text = value.Trim().ToUpperInvariant().Replace("'", "''");
+		if (contains)
 		{
-			// Escape LIKE wildcards so a typed switch number is treated as literal text.
+			// Escape LIKE wildcards so a typed value is treated as literal text.
 			bool needsEscape = text.IndexOfAny(new[] { '$', '%', '_' }) >= 0;
 			string pattern = needsEscape ? text.Replace("$", "$$").Replace("%", "$%").Replace("_", "$_") : text;
-			return fieldName + " LIKE '%" + pattern + "%'" + (needsEscape ? " ESCAPE '$'" : string.Empty);
+			return textField + " LIKE '%" + pattern + "%'" + (needsEscape ? " ESCAPE '$'" : string.Empty);
 		}
-		return fieldName + " = '" + text + "'";
+		return textField + " = '" + text + "'";
 	}
 }

@@ -27,6 +27,8 @@ internal class AddinModule : Module
 			LogService.Write("AddinModule " + typeof(AddinModule).Assembly.GetName().Version + " constructor starting.");
 			LogService.Write("User settings directory: " + AddinConfiguration.UserDataDirectoryPath);
 			AddinConfiguration.Initialize();
+			AssetSearchMapPanel.UpdateLocation();
+			AddinConfiguration.SettingsChanged += AssetSearchMapPanel.UpdateLocation;
 			LogService.Write("AddinConfiguration initialized successfully.");
 			ProjectOpenedEvent.Subscribe((Action<ProjectEventArgs>)OnProjectOpened, false);
 			ActiveMapViewChangedEvent.Subscribe((Action<ActiveMapViewChangedEventArgs>)OnActiveMapViewChanged, false);
@@ -54,6 +56,7 @@ internal class AddinModule : Module
 
 	private void OnActiveMapViewChanged(ActiveMapViewChangedEventArgs args)
 	{
+		AssetSearchMapPanel.OnMapChanged(args.IncomingView);
 		if (args.IncomingView != null)
 		{
 			ScheduleInitialSetup();
@@ -163,6 +166,8 @@ internal class AddinModule : Module
 
 	protected override bool CanUnload()
 	{
+		AddinConfiguration.SettingsChanged -= AssetSearchMapPanel.UpdateLocation;
+		AssetSearchMapPanel.Close();
 		ProjectOpenedEvent.Unsubscribe((Action<ProjectEventArgs>)OnProjectOpened);
 		ActiveMapViewChangedEvent.Unsubscribe((Action<ActiveMapViewChangedEventArgs>)OnActiveMapViewChanged);
 		TaskObservationService.Forget(PlacementEnhancementService.ClearMetadataCacheAsync(), "Could not clear cached map metadata while unloading the add-in.");

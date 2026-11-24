@@ -93,6 +93,10 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 
 	private readonly ComboBox _splitPromptModeComboBox;
 	private readonly ComboBox _placementPromptPositionComboBox;
+	private readonly ComboBox _findAssetLocationComboBox;
+	private readonly ComboBox _findAssetMapPositionComboBox;
+	private readonly List<(TextBox Label, TextBox Field, CheckBox Contains)> _findAssetFieldRows = new();
+	private readonly StackPanel _findAssetFieldPanel = new();
 
 	private readonly TextBox _splitSearchDistanceTextBox;
 
@@ -249,6 +253,11 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 		_suppressDuplicateSplitPromptsCheckBox = CreateCheckBox("Suppress duplicate split prompts at the same point", Settings.SuppressDuplicateSplitPrompts);
 		_splitOnlyInteriorCandidatesCheckBox = CreateCheckBox("Split only when the candidate point is inside the underlying line", Settings.SplitOnlyInteriorCandidates);
 		_maxSplitCandidatesToReviewTextBox = CreateTextBox(Settings.MaxSplitCandidatesToReview.ToString());
+		_findAssetLocationComboBox = CreateComboBox(Settings.FloatFindAssetInMap ? "Map" : "Ribbon",
+			("Ribbon", "Ribbon"), ("Floating in map", "Map"));
+		_findAssetMapPositionComboBox = CreateComboBox(Settings.FindAssetMapPosition,
+			("Top left", "TopLeft"), ("Top centre", "TopCenter"), ("Top right", "TopRight"),
+			("Bottom left", "BottomLeft"), ("Bottom centre", "BottomCenter"), ("Bottom right", "BottomRight"));
 		_placementPromptPositionComboBox = CreateComboBox(Settings.PlacementPromptPosition,
 			("Top left", "TopLeft"), ("Top centre", "TopCenter"), ("Top right", "TopRight"),
 			("Bottom left", "BottomLeft"), ("Bottom centre", "BottomCenter"), ("Bottom right", "BottomRight"),
@@ -361,6 +370,7 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 		tabs.Items.Add(new TabItem { Header = "Associations", Content = BuildAssociationTab() });
 		tabs.Items.Add(new TabItem { Header = "Attribute Overrides", Content = BuildAttributeOverridesTab() });
 		tabs.Items.Add(new TabItem { Header = "Interface", Content = BuildInterfaceTab() });
+		tabs.Items.Add(new TabItem { Header = "Find Asset", Content = BuildFindAssetTab() });
 		tabs.SelectedIndex = 0;
 		return tabs;
 	}
@@ -444,6 +454,89 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 		stackPanel.Children.Add(grid);
 		stackPanel.Children.Add(_regenerateAssociationRulesButton);
 		return stackPanel;
+	}
+
+	private UIElement BuildFindAssetTab()
+	{
+		var panel = CreateTabPanel();
+		panel.Children.Add(CreateGroupBox("Search Location", CreateFormGrid(
+			("Find Asset location", _findAssetLocationComboBox), ("Floating panel position", _findAssetMapPositionComboBox))));
+
+		var fields = new StackPanel();
+		fields.Children.Add(new TextBlock
+		{
+			Text = "Enter the field name from the layer or table and a label for the search dropdown. Text matching ignores case. Contains finds literal text anywhere in the field. Numeric IDs and GUIDs use exact matching.",
+			TextWrapping = TextWrapping.Wrap,
+			Margin = new Thickness(0, 0, 0, 8)
+		});
+		foreach (AssetSearchField field in Settings.FindAssetFields)
+			AddFindAssetFieldRow(field);
+		fields.Children.Add(_findAssetFieldPanel);
+		var add = new Button
+		{
+			Content = "Add search field",
+			HorizontalAlignment = HorizontalAlignment.Left,
+			Margin = new Thickness(0, 4, 0, 0)
+		};
+		add.Click += (_, _) => AddFindAssetFieldRow(new AssetSearchField("", "", false)).Focus();
+		fields.Children.Add(add);
+		panel.Children.Add(CreateGroupBox("Search Fields", fields));
+		return WrapTab(panel);
+	}
+
+	private TextBox AddFindAssetFieldRow(AssetSearchField field)
+	{
+		var label = CreateTextBox(field.Label);
+		var name = CreateTextBox(field.FieldName);
+		label.MinWidth = name.MinWidth = 0;
+		var contains = new CheckBox { Content = "Contains", IsChecked = field.Contains, VerticalAlignment = VerticalAlignment.Center };
+		var remove = new Button { Content = "Remove", MinWidth = 64 };
+		var row = new Grid { Margin = new Thickness(0, 0, 0, 6) };
+		row.ColumnDefinitions.Add(new ColumnDefinition());
+		row.ColumnDefinitions.Add(new ColumnDefinition());
+		row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+		row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+		var labelEditor = AddLabeledEditor("Display label", label);
+		var nameEditor = AddLabeledEditor("Field name", name);
+		Grid.SetColumn(nameEditor, 1);
+		Grid.SetColumn(contains, 2);
+		Grid.SetColumn(remove, 3);
+		contains.Margin = new Thickness(0, 0, 8, 0);
+		remove.VerticalAlignment = VerticalAlignment.Center;
+		row.Children.Add(labelEditor);
+		row.Children.Add(nameEditor);
+		row.Children.Add(contains);
+		row.Children.Add(remove);
+
+		var entry = (label, name, contains);
+		_findAssetFieldRows.Add(entry);
+		_findAssetFieldPanel.Children.Add(row);
+		remove.Click += (_, _) =>
+		{
+			_findAssetFieldRows.Remove(entry);
+			_findAssetFieldPanel.Children.Remove(row);
+		};
+		return label;
+
+		static StackPanel AddLabeledEditor(string heading, TextBox box)
+		{
+			var caption = CreateLabel(heading);
+			System.Windows.Automation.AutomationProperties.SetLabeledBy(box, caption);
+			return new StackPanel { Margin = new Thickness(0, 0, 8, 0), Children = { caption, box } };
+		}
+	}
+
+	private List<AssetSearchField> ReadFindAssetFields()
+	{
+		var fields = _findAssetFieldRows.Select(row =>
+			new AssetSearchField(row.Label.Text.Trim(), row.Field.Text.Trim(), row.Contains.IsChecked == true)).ToList();
+		if (fields.Count == 0)
+			throw new InvalidOperationException("Add at least one Find Asset search field.");
+		if (fields.Any(field => field.Label.Length == 0 || field.FieldName.Length == 0))
+			throw new InvalidOperationException("Each Find Asset search field needs a display label and a field name.");
+		if (fields.GroupBy(field => field.FieldName, StringComparer.OrdinalIgnoreCase).Any(group => group.Count() > 1))
+			throw new InvalidOperationException("Each Find Asset field name can only be listed once.");
+		return fields;
 	}
 
 	private UIElement BuildInterfaceTab()
@@ -1103,6 +1196,9 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			Settings.SuppressDuplicateSplitPrompts = _suppressDuplicateSplitPromptsCheckBox.IsChecked == true;
 			Settings.SplitOnlyInteriorCandidates = _splitOnlyInteriorCandidatesCheckBox.IsChecked == true;
 			Settings.MaxSplitCandidatesToReview = ParsePositiveInteger(_maxSplitCandidatesToReviewTextBox.Text, "maximum split candidates to review");
+			Settings.FindAssetFields = ReadFindAssetFields();
+			Settings.FloatFindAssetInMap = GetSelectedComboValue(_findAssetLocationComboBox) == "Map";
+			Settings.FindAssetMapPosition = GetSelectedComboValue(_findAssetMapPositionComboBox);
 			Settings.PlacementPromptPosition = GetSelectedComboValue(_placementPromptPositionComboBox);
 			Settings.SplitPromptMode = GetSelectedComboValue(_splitPromptModeComboBox);
 			Settings.SplitSearchDistance = ParseDistance(_splitSearchDistanceTextBox.Text, "split search distance");

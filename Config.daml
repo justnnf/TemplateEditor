@@ -9,12 +9,21 @@
     <Date>11/09/2026</Date>
     <Subject>Framework</Subject>
   </AddInInfo>
+  <conditions>
+    <insertCondition id="TemplateEditor_FindAssetFloatingCondition">
+      <state id="TemplateEditor_FindAssetFloatingState" />
+    </insertCondition>
+    <insertCondition id="TemplateEditor_FindAssetRibbonCondition">
+      <not><state id="TemplateEditor_FindAssetFloatingState" /></not>
+    </insertCondition>
+  </conditions>
   <modules>
     <insertModule id="TemplateEditor_Module" className="TemplateEditor.AddinModule" autoLoad="true" caption="AddinModule">
       <tabs>
         <tab id="TemplateEditor_EditorTab" caption="Templates" keytip="TP">
           <group refID="TemplateEditor_EditorGroup" />
           <group refID="TemplateEditor_AssetSearchGroup" />
+          <group refID="TemplateEditor_AssetSearchFloatingGroup" />
         </tab>
       </tabs>
       <groups>
@@ -23,9 +32,12 @@
           <subgroup refID="TemplateEditor_ReloadSubgroup" />
           <subgroup refID="TemplateEditor_SettingsSubgroup" />
         </group>
-        <group id="TemplateEditor_AssetSearchGroup" caption="Find Asset" appearsOnAddInTab="false" keytip="FA">
+        <group id="TemplateEditor_AssetSearchGroup" condition="TemplateEditor_FindAssetRibbonCondition" caption="Find Asset" appearsOnAddInTab="false" keytip="FA">
           <subgroup refID="TemplateEditor_SearchInputSubgroup" />
           <subgroup refID="TemplateEditor_SearchResultsSubgroup" />
+        </group>
+        <group id="TemplateEditor_AssetSearchFloatingGroup" caption="Find Asset" condition="TemplateEditor_FindAssetFloatingCondition" appearsOnAddInTab="false" keytip="FA">
+          <button refID="TemplateEditor_OpenFloatingFindAsset" size="large" />
         </group>
       </groups>
       <subgroups>
@@ -46,6 +58,9 @@
         </subgroup>
       </subgroups>
       <controls>
+        <button id="TemplateEditor_OpenFloatingFindAsset" caption="Search" className="TemplateEditor.OpenFloatingFindAssetButton" loadOnClick="true" smallImage="Find16" largeImage="Find32" keytip="F" condition="esri_mapping_mapPane">
+          <tooltip heading="Find Asset">Open or close the floating asset search panel.<disabledText /></tooltip>
+        </button>
         <customControl id="TemplateEditor_SearchInput" caption="Search" className="TemplateEditor.AssetSearchInputControl" isDropDown="false" loadOnClick="false" keytip="FI" condition="esri_mapping_mapPane">
           <tooltip heading="Find asset">Choose an ID field, enter a value, and press Enter to search. Switch Number finds partial matches. Use × to clear the search and results.<disabledText /></tooltip>
         </customControl>

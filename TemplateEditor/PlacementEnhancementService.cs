@@ -1552,7 +1552,7 @@ internal static class PlacementEnhancementService
 		{
 			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 3.0, SimpleLineStyle.Dot)));
 		}
-		return CreatePointHintSymbol(val, val2, 19.0, 2.25, SimpleMarkerStyle.Diamond);
+		return CreatePointHintSymbol(val, val2, 19.0, 2.25);
 	}
 
 	private static CIMSymbolReference CreatePointHintSymbol(CIMColor fillColor, CIMColor outlineColor, double size, double outlineWidth, SimpleMarkerStyle markerStyle = SimpleMarkerStyle.Circle)

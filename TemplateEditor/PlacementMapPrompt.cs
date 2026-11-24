@@ -107,18 +107,8 @@ internal static class PlacementMapPrompt
             panel.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold });
             panel.Children.Add(buildContent(result => answer.TrySetResult(result)));
 
-            var surface = new Border
-            {
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
-                Opacity = SystemParameters.HighContrast ? 1 : 0.76,
-                IsHitTestVisible = false
-            };
-            surface.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
-            surface.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
-
             var border = new Grid { Focusable = true };
-            border.Children.Add(surface);
+            border.Children.Add(CreateTranslucentSurface());
             border.Children.Add(panel);
             border.SetResourceReference(TextBlock.ForegroundProperty, "Esri_TextControlBrush");
             border.PreviewKeyDown += (_, args) =>
@@ -176,6 +166,20 @@ internal static class PlacementMapPrompt
                 _isOpen = false;
             }
         }
+    }
+
+    internal static Border CreateTranslucentSurface()
+    {
+        var surface = new Border
+        {
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Opacity = SystemParameters.HighContrast ? 1 : 0.76,
+            IsHitTestVisible = false
+        };
+        surface.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
+        surface.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
+        return surface;
     }
 
     private static FrameworkElement Form(string message, FrameworkElement input, string confirmLabel, string cancelLabel,
