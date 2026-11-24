@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
 namespace TemplateEditor;
@@ -64,17 +65,17 @@ internal sealed class EnhancementConfirmationDialog : ArcGIS.Desktop.Framework.C
 			Foreground = PrimaryTextBrush,
 			MaxWidth = 320.0
 		});
-		StackPanel stackPanel2 = new StackPanel
+		UniformGrid stackPanel2 = new UniformGrid
 		{
-			Orientation = Orientation.Horizontal,
-			HorizontalAlignment = HorizontalAlignment.Right,
+			Columns = 2,
+			HorizontalAlignment = HorizontalAlignment.Stretch,
 			Margin = new Thickness(0.0, 12.0, 0.0, 0.0)
 		};
 		Button button = new Button
 		{
 			Content = _cancelLabel,
 			MinWidth = 72.0,
-			Margin = new Thickness(0.0, 0.0, 8.0, 0.0),
+			Margin = new Thickness(0, 0, 4, 0),
 			Padding = new Thickness(10.0, 3.0, 10.0, 3.0),
 			IsCancel = true,
 			Style = CreateButtonStyle()
@@ -86,6 +87,7 @@ internal sealed class EnhancementConfirmationDialog : ArcGIS.Desktop.Framework.C
 		};
 		Button button2 = new Button
 		{
+			Margin = new Thickness(4, 0, 0, 0),
 			Content = _confirmLabel,
 			MinWidth = 72.0,
 			Padding = new Thickness(10.0, 3.0, 10.0, 3.0),

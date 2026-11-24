@@ -40,55 +40,25 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 
 	public bool LeftSide => _leftRadioButton.IsChecked == true;
 
-	private ParallelCopyPromptDialog(double defaultOffsetDistance, bool defaultLeftSide)
+	private ParallelCopyPromptDialog(double defaultOffsetDistance, bool defaultLeftSide, Action<bool> completeInMap = null)
 	{
+		_completeInMap = completeInMap;
 		base.Title = "Create Parallel Copy";
-		base.Width = 360.0;
+		base.Width = 304;
 		base.SizeToContent = SizeToContent.Height;
 		base.ResizeMode = ResizeMode.NoResize;
 		base.WindowStartupLocation = WindowStartupLocation.Manual;
 		base.Background = WindowBackgroundBrush;
 		base.Foreground = PrimaryTextBrush;
-		Grid grid = new Grid
+		var grid = new StackPanel
 		{
-			Margin = new Thickness(16.0),
-			Background = WindowBackgroundBrush
+			Margin = new Thickness(12),
+			Background = completeInMap == null ? WindowBackgroundBrush : null
 		};
-		grid.RowDefinitions.Add(new RowDefinition
-		{
-			Height = GridLength.Auto
-		});
-		grid.RowDefinitions.Add(new RowDefinition
-		{
-			Height = GridLength.Auto
-		});
-		grid.RowDefinitions.Add(new RowDefinition
-		{
-			Height = GridLength.Auto
-		});
-		grid.RowDefinitions.Add(new RowDefinition
-		{
-			Height = GridLength.Auto
-		});
-		grid.Children.Add(new TextBlock
-		{
-			Text = "Create parallel copy from selected line?",
-			FontWeight = FontWeights.SemiBold,
-			Foreground = PrimaryTextBrush,
-			Margin = new Thickness(0.0, 0.0, 0.0, 8.0)
-		});
-		Grid grid2 = new Grid
-		{
-			Margin = new Thickness(0.0, 0.0, 0.0, 8.0)
-		};
-		grid2.ColumnDefinitions.Add(new ColumnDefinition
-		{
-			Width = GridLength.Auto
-		});
-		grid2.ColumnDefinitions.Add(new ColumnDefinition
-		{
-			Width = new GridLength(1.0, GridUnitType.Star)
-		});
+		var grid2 = new Grid();
+		grid2.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+		grid2.ColumnDefinitions.Add(new ColumnDefinition());
+		grid2.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 		TextBlock element = new TextBlock
 		{
 			Text = "Offset (m)",
@@ -100,7 +70,9 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 		_offsetTextBox = new TextBox
 		{
 			Text = defaultOffsetDistance.ToString("0.###", CultureInfo.CurrentCulture),
-			MinWidth = 90.0,
+			MinWidth = 48,
+			Height = 28,
+			VerticalContentAlignment = VerticalAlignment.Center,
 			Background = SurfaceBrush,
 			Foreground = PrimaryTextBrush,
 			CaretBrush = PrimaryTextBrush,
@@ -110,18 +82,18 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 			Padding = new Thickness(6.0, 3.0, 6.0, 3.0),
 			Style = CreateTextBoxStyle()
 		};
+		System.Windows.Automation.AutomationProperties.SetLabeledBy(_offsetTextBox, element);
 		Grid.SetColumn(_offsetTextBox, 1);
 		grid2.Children.Add(_offsetTextBox);
 		_offsetTextBox.TextChanged += delegate
 		{
 			QueuePreviewRefresh();
 		};
-		Grid.SetRow(grid2, 1);
 		grid.Children.Add(grid2);
 		StackPanel stackPanel = new StackPanel
 		{
 			Orientation = Orientation.Horizontal,
-			Margin = new Thickness(0.0, 0.0, 0.0, 12.0)
+			Margin = new Thickness(8, 0, 0, 0)
 		};
 		_leftRadioButton = new RadioButton
 		{
@@ -129,7 +101,9 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 			IsChecked = defaultLeftSide,
 			Foreground = PrimaryTextBrush,
 			Margin = new Thickness(0.0, 0.0, 6.0, 0.0),
-			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
+			Width = 52,
+			Height = 28,
+			Padding = new Thickness(4, 0, 4, 0),
 			Style = CreateSegmentedRadioButtonStyle()
 		};
 		_leftRadioButton.Checked += delegate
@@ -142,7 +116,9 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 			Content = "Right",
 			IsChecked = !defaultLeftSide,
 			Foreground = PrimaryTextBrush,
-			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
+			Width = 52,
+			Height = 28,
+			Padding = new Thickness(4, 0, 4, 0),
 			Style = CreateSegmentedRadioButtonStyle()
 		};
 		_rightRadioButton.Checked += delegate
@@ -150,38 +126,10 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 			QueuePreviewRefresh();
 		};
 		stackPanel.Children.Add(_rightRadioButton);
-		Grid.SetRow(stackPanel, 2);
-		grid.Children.Add(stackPanel);
-		StackPanel stackPanel2 = new StackPanel
-		{
-			Orientation = Orientation.Horizontal,
-			HorizontalAlignment = HorizontalAlignment.Right,
-			Margin = new Thickness(0.0, 4.0, 0.0, 0.0)
-		};
-		Button button = new Button
-		{
-			Content = "Create",
-			MinWidth = 72.0,
-			Margin = new Thickness(0.0, 0.0, 8.0, 0.0),
-			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
-			Style = CreateButtonStyle()
-		};
-		button.Click += OnCreateClicked;
-		stackPanel2.Children.Add(button);
-		Button button2 = new Button
-		{
-			Content = "Draw instead",
-			MinWidth = 96.0,
-			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
-			Style = CreateButtonStyle()
-		};
-		button2.Click += delegate
-		{
-			Complete(false);
-		};
-		stackPanel2.Children.Add(button2);
-		Grid.SetRow(stackPanel2, 3);
-		grid.Children.Add(stackPanel2);
+		Grid.SetColumn(stackPanel, 2);
+		grid2.Children.Add(stackPanel);
+		var actions = PlacementMapPrompt.CreateActions("Draw instead", (_, _) => Complete(false), "Create", OnCreateClicked);
+		grid.Children.Add(actions);
 		base.Content = grid;
 		base.Loaded += delegate
 		{
@@ -212,10 +160,10 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 		{
 			bool accepted = await PlacementMapPrompt.ShowAsync(map, "Create Parallel Copy", finish =>
 			{
-				dialog = new ParallelCopyPromptDialog(distance, leftSide) { _completeInMap = finish };
+				dialog = new ParallelCopyPromptDialog(distance, leftSide, finish);
 				var content = (FrameworkElement)dialog.Content;
 				dialog.Content = null;
-				content.Margin = new Thickness(0, 8, 0, 0);
+				content.Margin = new Thickness(0, 4, 0, 0);
 				content.Loaded += (_, _) => dialog.QueuePreviewRefresh();
 				return content;
 			});
@@ -255,26 +203,6 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6.0, 3.0, 6.0, 3.0)));
 		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		return style;
-	}
-
-	private static Style CreateButtonStyle()
-	{
-		Style style = new Style(typeof(Button));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, ButtonBackgroundBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		DialogAppearance.ApplySquareButtonTemplate(style);
-		Trigger trigger = new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, ButtonHoverBrush));
-		trigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Triggers.Add(trigger);
 		return style;
 	}
 

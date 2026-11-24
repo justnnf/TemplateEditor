@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using ArcGIS.Desktop.Framework.Events;
 using ArcGIS.Desktop.Mapping;
@@ -24,7 +25,7 @@ internal static class PlacementMapPrompt
         ListBox choices = null;
         bool accepted = await ShowAsync(map, title, finish =>
         {
-            choices = new ListBox { ItemsSource = labels, SelectedIndex = 0, MaxHeight = 170 };
+            choices = new ListBox { ItemsSource = labels, SelectedIndex = 0, MaxHeight = 150 };
             choices.SetResourceReference(FrameworkElement.StyleProperty, "Esri_ListBox");
             System.Windows.Automation.AutomationProperties.SetName(choices, title);
             choices.SelectionChanged += (_, _) =>
@@ -83,13 +84,23 @@ internal static class PlacementMapPrompt
                 or OverlayControlRelativePosition.TopRight ? 0 : 1;
 
             var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var panel = new StackPanel { Width = 340, Margin = new Thickness(12) };
+            var panel = new StackPanel { Width = 280, Margin = new Thickness(8) };
             panel.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold });
             panel.Children.Add(buildContent(result => answer.TrySetResult(result)));
 
-            var border = new Border { BorderThickness = new Thickness(1), Child = panel, Focusable = true };
-            border.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
-            border.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
+            var surface = new Border
+            {
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Opacity = SystemParameters.HighContrast ? 1 : 0.76,
+                IsHitTestVisible = false
+            };
+            surface.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
+            surface.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
+
+            var border = new Grid { Focusable = true };
+            border.Children.Add(surface);
+            border.Children.Add(panel);
             border.SetResourceReference(TextBlock.ForegroundProperty, "Esri_TextControlBrush");
             border.PreviewKeyDown += (_, args) =>
             {
@@ -101,7 +112,7 @@ internal static class PlacementMapPrompt
             };
             border.Loaded += (_, _) => border.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
 
-            var overlay = new MapViewOverlayControl(border, false, false, false, anchor, x, y)
+            var overlay = new MapViewOverlayControl(border, true, false, false, anchor, x, y)
             {
                 Margin = new Thickness(12)
             };
@@ -152,7 +163,7 @@ internal static class PlacementMapPrompt
         panel.Children.Add(new ScrollViewer
         {
             MaxHeight = 104,
-            Margin = new Thickness(0, 6, 0, 8),
+            Margin = new Thickness(0, 4, 0, 2),
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Focusable = false,
@@ -161,31 +172,41 @@ internal static class PlacementMapPrompt
         if (input != null)
             panel.Children.Add(input);
 
-        var actions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 6, 0, 0)
-        };
-        var cancel = MakeButton(cancelLabel);
-        cancel.Click += (_, _) => finish(false);
-        actions.Children.Add(cancel);
-        var confirm = MakeButton(confirmLabel);
-        confirm.Margin = new Thickness(6, 0, 0, 0);
-        confirm.Click += (_, _) =>
+        panel.Children.Add(CreateActions(cancelLabel, (_, _) => finish(false), confirmLabel, (_, _) =>
         {
             if (canConfirm?.Invoke() != false)
                 finish(true);
-        };
-        actions.Children.Add(confirm);
-        panel.Children.Add(actions);
+        }));
         return panel;
     }
 
-    private static Button MakeButton(string label)
+    internal static UniformGrid CreateActions(string cancelLabel, RoutedEventHandler cancelClick,
+        string confirmLabel, RoutedEventHandler confirmClick)
     {
-        var button = new Button { Content = label, Padding = new Thickness(10, 4, 10, 4) };
+        var row = new UniformGrid
+        {
+            Columns = 2,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 6, 0, 0)
+        };
+        row.Children.Add(MakeButton(cancelLabel, cancelClick, new Thickness(0, 0, 4, 0)));
+        row.Children.Add(MakeButton(confirmLabel, confirmClick, new Thickness(4, 0, 0, 0)));
+        return row;
+    }
+
+    private static Button MakeButton(string label, RoutedEventHandler click, Thickness margin)
+    {
+        var button = new Button
+        {
+            Content = label,
+            MinHeight = 28,
+            Margin = margin,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            Padding = new Thickness(4, 0, 4, 0)
+        };
         button.SetResourceReference(FrameworkElement.StyleProperty, "Esri_Button");
+        button.Click += click;
         return button;
     }
 }

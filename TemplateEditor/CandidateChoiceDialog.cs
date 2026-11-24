@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 
 namespace TemplateEditor;
@@ -82,17 +83,17 @@ internal sealed class CandidateChoiceDialog : ArcGIS.Desktop.Framework.Controls.
 			}
 		};
 		stackPanel.Children.Add(candidates);
-		StackPanel stackPanel2 = new StackPanel
+		UniformGrid stackPanel2 = new UniformGrid
 		{
-			Orientation = Orientation.Horizontal,
-			HorizontalAlignment = HorizontalAlignment.Right,
+			Columns = 2,
+			HorizontalAlignment = HorizontalAlignment.Stretch,
 			Margin = new Thickness(0.0, 16.0, 0.0, 0.0)
 		};
 		Button button = new Button
 		{
 			Content = "Cancel",
 			MinWidth = 88.0,
-			Margin = new Thickness(0.0, 0.0, 8.0, 0.0),
+			Margin = new Thickness(0, 0, 4, 0),
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
 			Style = CreateButtonStyle()
 		};
@@ -103,6 +104,7 @@ internal sealed class CandidateChoiceDialog : ArcGIS.Desktop.Framework.Controls.
 		};
 		Button button2 = new Button
 		{
+			Margin = new Thickness(4, 0, 0, 0),
 			Content = "Use Selected",
 			MinWidth = 88.0,
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),

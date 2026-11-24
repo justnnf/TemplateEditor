@@ -594,7 +594,7 @@ internal static class PlacementEnhancementService
 		{
 			using (await ShowCandidateContextAsync(createdFeature, chosenCandidate, isSplitCandidate: false))
 			{
-				if (!(await ShowConfirmationAsync(singlePrompt + "\n\n" + chosenCandidate.Label, "Template Editor", "Create Association", "Skip")))
+				if (!(await ShowConfirmationAsync(singlePrompt + "\n" + chosenCandidate.Label, "Template Editor", "Create Association", "Skip")))
 				{
 					return AssociationPromptResult.NotAttempted;
 				}
