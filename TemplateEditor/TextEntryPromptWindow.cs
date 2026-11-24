@@ -118,7 +118,6 @@ internal sealed class TextEntryPromptWindow : ArcGIS.Desktop.Framework.Controls.
 		style.Setters.Add(new Setter(Control.ForegroundProperty, primary ? Brushes.White : TextBrush));
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, primary ? AccentBrush : BorderBrushColor));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		DialogAppearance.ApplySquareButtonTemplate(style);
 		return new Button
 		{

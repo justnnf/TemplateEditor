@@ -284,8 +284,9 @@ public class EditorDockpaneView : UserControl
 			BorderThickness = new Thickness(0.0),
 			FontWeight = FontWeights.Bold,
 			ToolTip = "Clear search",
-			Focusable = false
 		};
+		AutomationProperties.SetName(button, "Clear template search");
+		button.Click += (_, _) => searchBox.Focus();
 		button.SetBinding(ButtonBase.CommandProperty, new Binding("ClearSearchCommand"));
 		button.Style = CreateClearSearchButtonStyle();
 		grid2.Children.Add(button);
@@ -790,18 +791,21 @@ public class EditorDockpaneView : UserControl
 	{
 		if (base.DataContext is EditorDockpaneViewModel editorDockpaneViewModel)
 		{
-			if ((int)e.Key == 6 && editorDockpaneViewModel.ActivateSelectedTemplateCommand.CanExecute(null))
+			if (e.Key == Key.Enter && !IsKeyboardFocusOnAction() && editorDockpaneViewModel.ActivateSelectedTemplateCommand.CanExecute(null))
 			{
 				editorDockpaneViewModel.ActivateSelectedTemplateCommand.Execute(null);
 				e.Handled = true;
 			}
-			else if ((int)e.Key == 13 && editorDockpaneViewModel.DeactivateTemplateCommand.CanExecute(null))
+			else if (e.Key == Key.Escape && editorDockpaneViewModel.DeactivateTemplateCommand.CanExecute(null))
 			{
 				editorDockpaneViewModel.DeactivateTemplateCommand.Execute(null);
 				e.Handled = true;
 			}
 		}
 	}
+
+	private static bool IsKeyboardFocusOnAction()
+		=> Keyboard.FocusedElement is ButtonBase or MenuItem or ComboBox;
 
 	private static DataTemplate CreateTextCellTemplate(string bindingPath, bool trimOverflow = false)
 	{
@@ -1050,9 +1054,9 @@ public class EditorDockpaneView : UserControl
 			BorderBrush = Brushes.Transparent,
 			BorderThickness = new Thickness(0.0),
 			Foreground = GetTableHeaderForeground(),
-			Focusable = false,
 			Style = CreateHeaderButtonStyle()
 		};
+		AutomationProperties.SetName(button, "Sort by " + text);
 		button.SetBinding(ButtonBase.CommandProperty, new Binding("SortCommand"));
 		return button;
 	}
@@ -1095,7 +1099,6 @@ public class EditorDockpaneView : UserControl
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, Brushes.Transparent));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0.0)));
 		style.Setters.Add(new Setter(Control.PaddingProperty, compact ? new Thickness(3.0, 0.0, 3.0, 0.0) : new Thickness(4.0, 2.0, 4.0, 2.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		style.Setters.Add(new Setter(FrameworkElement.MinHeightProperty, compact ? 24.0 : 30.0));
 		ControlTemplate controlTemplate = new ControlTemplate(typeof(ListViewItem));
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Border));
@@ -1172,7 +1175,6 @@ public class EditorDockpaneView : UserControl
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, Brushes.Transparent));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0.0)));
 		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		ControlTemplate controlTemplate = new ControlTemplate(typeof(Button));
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(ContentPresenter));
 		frameworkElementFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
@@ -1191,7 +1193,6 @@ public class EditorDockpaneView : UserControl
 		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0.0)));
 		style.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.Red));
 		style.Setters.Add(new Setter(Control.FontWeightProperty, FontWeights.Bold));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		ControlTemplate controlTemplate = new ControlTemplate(typeof(Button));
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(ContentPresenter));
 		frameworkElementFactory.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
@@ -1258,7 +1259,6 @@ public class EditorDockpaneView : UserControl
 		style.Setters.Add(new Setter(Control.BackgroundProperty, GetPanelBackgroundBrush()));
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, GetSubtleBorderBrush()));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		ControlTemplate controlTemplate = new ControlTemplate(typeof(RadioButton));
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Border));
 		frameworkElementFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(0.0));

@@ -65,6 +65,7 @@ internal sealed class CandidateChoiceDialog : ArcGIS.Desktop.Framework.Controls.
 			MaxHeight = 260.0,
 			Foreground = PrimaryTextBrush
 		};
+		PlacementMapPrompt.ConfigureChoiceList(candidates);
 		foreach (string item in candidateLabels ?? Array.Empty<string>())
 		{
 			candidates.Items.Add(item);
@@ -131,7 +132,6 @@ internal sealed class CandidateChoiceDialog : ArcGIS.Desktop.Framework.Controls.
 		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		DialogAppearance.ApplySquareButtonTemplate(style);
 		Trigger trigger = new Trigger
 		{

@@ -6,8 +6,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Data;
 using System.Windows.Media;
 using Microsoft.Win32;
 
@@ -51,27 +49,17 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 
 	}
 
-	private static readonly Brush WindowBackgroundBrush;
+	private static Brush WindowBackgroundBrush => Application.Current?.TryFindResource("Esri_ControlBackgroundBrush") as Brush ?? DialogAppearance.Background;
 
-	private static readonly Brush SurfaceBackgroundBrush;
+	private static Brush SurfaceBackgroundBrush => Application.Current?.TryFindResource("Esri_ControlBackgroundBrush") as Brush ?? DialogAppearance.InputBackground;
 
-	private static readonly Brush SectionBorderBrush;
+	private static Brush SectionBorderBrush => Application.Current?.TryFindResource("Esri_BorderBrush") as Brush ?? DialogAppearance.SectionBorder;
 
-	private static readonly Brush ControlBorderBrush;
+	private static Brush ControlBorderBrush => Application.Current?.TryFindResource("Esri_BorderBrush") as Brush ?? DialogAppearance.ControlBorder;
 
-	private static readonly Brush TabBackgroundBrush;
+	private static Brush PrimaryTextBrush => Application.Current?.TryFindResource("Esri_TextControlBrush") as Brush ?? DialogAppearance.Foreground;
 
-	private static readonly Brush TabHoverBackgroundBrush;
-
-	private static readonly Brush TabSelectedBackgroundBrush;
-
-	private static readonly Brush PrimaryTextBrush;
-
-	private static readonly Brush SecondaryTextBrush;
-
-	private static readonly Brush AccentBorderBrush;
-
-	private static readonly Brush AccentButtonHoverBrush;
+	private static Brush SecondaryTextBrush => Application.Current?.TryFindResource("Esri_TextStyleSubduedBrush") as Brush ?? DialogAppearance.SecondaryForeground;
 
 	private readonly TextBox _templateConfigPathTextBox;
 
@@ -233,6 +221,10 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 	public TemplateSettingsWindow(TemplateEditorSettings settings)
 	{
 		Settings = settings.Clone();
+		if (TryFindResource("Esri_Button") is Style buttonStyle)
+		{
+			Resources[typeof(Button)] = new Style(typeof(Button), buttonStyle);
+		}
 		base.Title = "Template Settings";
 		base.Width = 900.0;
 		base.Height = 680.0;
@@ -240,19 +232,8 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 		base.MinHeight = 560.0;
 		base.WindowStartupLocation = WindowStartupLocation.CenterOwner;
 		base.ResizeMode = ResizeMode.CanResize;
-		base.Background = WindowBackgroundBrush;
-		base.Foreground = PrimaryTextBrush;
 		base.FontFamily = new FontFamily("Segoe UI");
 		base.FontSize = 12.0;
-		base.Resources[SystemColors.ControlTextBrushKey] = PrimaryTextBrush;
-		base.Resources[SystemColors.WindowTextBrushKey] = PrimaryTextBrush;
-		base.Resources[SystemColors.GrayTextBrushKey] = SecondaryTextBrush;
-		base.Resources[SystemColors.ControlBrushKey] = WindowBackgroundBrush;
-		base.Resources[SystemColors.WindowBrushKey] = SurfaceBackgroundBrush;
-		base.Resources[SystemColors.HighlightBrushKey] = TabHoverBackgroundBrush;
-		base.Resources[SystemColors.HighlightTextBrushKey] = PrimaryTextBrush;
-		base.Resources[SystemColors.ControlLightBrushKey] = SurfaceBackgroundBrush;
-		base.Resources[SystemColors.ControlDarkBrushKey] = SectionBorderBrush;
 		_templateConfigPathTextBox = CreateTextBox(Settings.TemplateConfigFilePath ?? string.Empty);
 		_validateConfigCheckBox = CreateCheckBox("Validate template configuration when the editor opens", Settings.ValidateConfig);
 		_preventDefaultVersionPlacementCheckBox = CreateCheckBox("Prevent template placement into DEFAULT versions", Settings.PreventDefaultVersionPlacement);
@@ -331,7 +312,6 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			MinWidth = 220.0,
 			Margin = new Thickness(0.0, 4.0, 0.0, 0.0),
 			Padding = new Thickness(12.0, 5.0, 12.0, 5.0),
-			Style = CreateButtonStyle()
 		};
 		_regenerateAssociationRulesButton.Click += RegenerateAssociationRulesButton_Click;
 		ApplyControlToolTips();
@@ -374,111 +354,15 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 
 	private UIElement BuildSettingsTabs()
 	{
-		DockPanel dockPanel = new DockPanel
-		{
-			LastChildFill = true,
-			Margin = new Thickness(12.0)
-		};
-		Border contentFrame = new Border
-		{
-			Background = SurfaceBackgroundBrush,
-			BorderBrush = SectionBorderBrush,
-			BorderThickness = new Thickness(1.0),
-			CornerRadius = new CornerRadius(0.0),
-			MinHeight = 360.0
-		};
-		StackPanel stackPanel = new StackPanel
-		{
-			Orientation = Orientation.Horizontal,
-			Margin = new Thickness(0.0, 0.0, 0.0, -1.0)
-		};
-		DockPanel.SetDock(stackPanel, Dock.Top);
-		dockPanel.Children.Add(stackPanel);
-		dockPanel.Children.Add(contentFrame);
-		List<Button> buttons = new List<Button>();
-		Button selectedTabButton = null;
-		UIElement generalContent = BuildGeneralTab();
-		UIElement lineSplitContent = BuildLineSplitTab();
-		UIElement parallelCopyContent = BuildParallelCopyTab();
-		UIElement associationsContent = BuildAssociationTab();
-		UIElement attributeOverridesContent = BuildAttributeOverridesTab();
-		UIElement interfaceContent = BuildInterfaceTab();
-		Button generalButton = CreateSettingsTabButton("General");
-		Button lineSplitButton = CreateSettingsTabButton("Line Split");
-		Button parallelCopyButton = CreateSettingsTabButton("Parallel Copy");
-		Button associationsButton = CreateSettingsTabButton("Associations");
-		Button attributeOverridesButton = CreateSettingsTabButton("Attribute Overrides");
-		Button interfaceButton = CreateSettingsTabButton("Interface");
-		buttons.Add(generalButton);
-		buttons.Add(lineSplitButton);
-		buttons.Add(parallelCopyButton);
-		buttons.Add(associationsButton);
-		buttons.Add(attributeOverridesButton);
-		buttons.Add(interfaceButton);
-		generalButton.Click += delegate
-		{
-			SelectTab(generalButton, generalContent);
-		};
-		lineSplitButton.Click += delegate
-		{
-			SelectTab(lineSplitButton, lineSplitContent);
-		};
-		parallelCopyButton.Click += delegate
-		{
-			SelectTab(parallelCopyButton, parallelCopyContent);
-		};
-		associationsButton.Click += delegate
-		{
-			SelectTab(associationsButton, associationsContent);
-		};
-		attributeOverridesButton.Click += delegate
-		{
-			SelectTab(attributeOverridesButton, attributeOverridesContent);
-		};
-		interfaceButton.Click += delegate
-		{
-			SelectTab(interfaceButton, interfaceContent);
-		};
-		foreach (Button item in buttons)
-		{
-			stackPanel.Children.Add(item);
-		}
-		SelectTab(generalButton, generalContent);
-		return dockPanel;
-		void SelectTab(Button selectedButton, UIElement content)
-		{
-			if (selectedTabButton != selectedButton)
-			{
-				contentFrame.Child = null;
-				foreach (Button item2 in buttons)
-				{
-					item2.Background = TabBackgroundBrush;
-					item2.BorderBrush = SectionBorderBrush;
-					item2.FontWeight = FontWeights.Normal;
-				}
-				selectedButton.Background = SurfaceBackgroundBrush;
-				selectedButton.BorderBrush = SectionBorderBrush;
-				selectedButton.FontWeight = FontWeights.SemiBold;
-				selectedTabButton = selectedButton;
-				contentFrame.Child = content;
-			}
-		}
-	}
-
-	private static Button CreateSettingsTabButton(string text)
-	{
-		return new Button
-		{
-			Content = text,
-			MinWidth = 124.0,
-			Padding = new Thickness(22.0, 10.0, 22.0, 10.0),
-			Margin = new Thickness(0.0, 0.0, -1.0, 0.0),
-			Background = TabBackgroundBrush,
-			Foreground = PrimaryTextBrush,
-			BorderBrush = SectionBorderBrush,
-			BorderThickness = new Thickness(1.0),
-			Style = CreateSettingsTabButtonStyle()
-		};
+		var tabs = new TabControl { Margin = new Thickness(12) };
+		tabs.Items.Add(new TabItem { Header = "General", Content = BuildGeneralTab() });
+		tabs.Items.Add(new TabItem { Header = "Line Split", Content = BuildLineSplitTab() });
+		tabs.Items.Add(new TabItem { Header = "Parallel Copy", Content = BuildParallelCopyTab() });
+		tabs.Items.Add(new TabItem { Header = "Associations", Content = BuildAssociationTab() });
+		tabs.Items.Add(new TabItem { Header = "Attribute Overrides", Content = BuildAttributeOverridesTab() });
+		tabs.Items.Add(new TabItem { Header = "Interface", Content = BuildInterfaceTab() });
+		tabs.SelectedIndex = 0;
+		return tabs;
 	}
 
 	private UIElement BuildGeneralTab()
@@ -552,7 +436,6 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			MinWidth = 90.0,
 			Margin = new Thickness(8.0, 22.0, 0.0, 0.0),
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
-			Style = CreateButtonStyle()
 		};
 		button.Click += BrowseAssociationRulesJsonPath_Click;
 		Grid.SetRow(button, 1);
@@ -592,7 +475,6 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			MinHeight = 28,
 			Margin = new Thickness(8, 0, 0, 0),
 			ToolTip = "Choose color",
-			Style = CreateButtonStyle()
 		};
 		Button chooseButton = new Button
 		{
@@ -600,7 +482,6 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			MinWidth = 82,
 			Margin = new Thickness(8, 0, 0, 0),
 			Padding = new Thickness(10, 4, 10, 4),
-			Style = CreateButtonStyle()
 		};
 		Button resetButton = new Button
 		{
@@ -608,7 +489,6 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			MinWidth = 62,
 			Margin = new Thickness(8, 0, 0, 0),
 			Padding = new Thickness(10, 4, 10, 4),
-			Style = CreateButtonStyle()
 		};
 
 		void UpdateSwatch()
@@ -718,7 +598,6 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			HorizontalAlignment = HorizontalAlignment.Left,
 			Margin = new Thickness(0, 8, 0, 0),
 			Padding = new Thickness(12, 5, 12, 5),
-			Style = CreateButtonStyle()
 		};
 		addFieldButton.Click += delegate { AddAttributeDefinitionRow(null); };
 		definitionsPanel.Children.Add(addFieldButton);
@@ -807,20 +686,19 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			ItemsSource = _availableAttributeFields,
 			DisplayMemberPath = nameof(PlacementAttributeFieldOption.DisplayName),
 			MinWidth = 220,
-			Style = CreateComboBoxStyle(),
-			ItemContainerStyle = CreateComboBoxItemStyle()
+			MaxDropDownHeight = 260,
+			IsTextSearchEnabled = true,
 		};
 		ComboBox domainComboBox = new ComboBox
 		{
 			MinWidth = 180,
-			Style = CreateComboBoxStyle(),
-			ItemContainerStyle = CreateComboBoxItemStyle()
+			MaxDropDownHeight = 260,
+			IsTextSearchEnabled = true,
 		};
 		Button removeButton = new Button
 		{
 			Content = "Remove",
 			Padding = new Thickness(10, 4, 10, 4),
-			Style = CreateButtonStyle()
 		};
 		Grid grid = new Grid();
 		grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
@@ -847,6 +725,7 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			FieldComboBox = fieldComboBox,
 			DomainComboBox = domainComboBox
 		};
+		TextSearch.SetTextPath(fieldComboBox, nameof(PlacementAttributeFieldOption.DisplayName));
 		fieldComboBox.SelectionChanged += delegate
 		{
 			row.SelectedField = fieldComboBox.SelectedItem as PlacementAttributeFieldOption;
@@ -1023,7 +902,6 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			MinWidth = 90.0,
 			Margin = new Thickness(8.0, 22.0, 0.0, 0.0),
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
-			Style = CreateButtonStyle()
 		};
 		button.Click += delegate
 		{
@@ -1084,6 +962,7 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			Grid.SetRow(textBlock, i);
 			grid.Children.Add(textBlock);
 			Control item = rows[i].Control;
+			System.Windows.Automation.AutomationProperties.SetLabeledBy(item, textBlock);
 			item.Margin = new Thickness(0.0, 0.0, 0.0, 8.0);
 			ApplyControlSizing(rows[i].Label, item);
 			Grid.SetRow(item, i);
@@ -1095,6 +974,9 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 
 	private static void ApplyControlSizing(string label, Control control)
 	{
+		if (control is TextBox or ComboBox)
+			control.MinHeight = 26;
+
 		string text = label?.ToUpperInvariant() ?? string.Empty;
 		if (control is TextBox textBox && (text.Contains("GROUP") || text.Contains("LAYER") || text.Contains("SUBTYPE")))
 		{
@@ -1110,7 +992,7 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 		}
 		else if (control is ComboBox)
 		{
-			control.Width = 280.0;
+			control.Width = 320;
 			control.HorizontalAlignment = HorizontalAlignment.Left;
 		}
 	}
@@ -1173,11 +1055,11 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 		Button button = new Button
 		{
 			Content = "Cancel",
-			MinWidth = 88.0,
+			Width = 112,
+			Height = 32,
 			Margin = new Thickness(0.0, 0.0, 8.0, 0.0),
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
 			IsCancel = true,
-			Style = CreateButtonStyle()
 		};
 		button.Click += delegate
 		{
@@ -1187,10 +1069,10 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 		Button button2 = new Button
 		{
 			Content = "OK",
-			MinWidth = 88.0,
+			Width = 112,
+			Height = 32,
 			Padding = new Thickness(12.0, 4.0, 12.0, 4.0),
 			IsDefault = true,
-			Style = CreatePrimaryButtonStyle()
 		};
 		button2.Click += SaveButton_Click;
 		stackPanel.Children.Add(button);
@@ -1410,8 +1292,8 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 				SelectedItem = (state.AvailableValues.FirstOrDefault((string value) => string.Equals(value, state.Value, StringComparison.OrdinalIgnoreCase)) ?? state.AvailableValues.FirstOrDefault()),
 				MinWidth = 220.0,
 				Margin = new Thickness(0.0, 6.0, 0.0, 0.0),
-				Style = CreateComboBoxStyle(),
-				ItemContainerStyle = CreateComboBoxItemStyle()
+				MaxDropDownHeight = 260,
+				IsTextSearchEnabled = true,
 			});
 		}
 		else
@@ -1469,13 +1351,6 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			Text = (text ?? string.Empty),
 			MinWidth = 180.0,
 			Padding = new Thickness(6.0, 4.0, 6.0, 4.0),
-			Background = SurfaceBackgroundBrush,
-			Foreground = PrimaryTextBrush,
-			BorderBrush = SectionBorderBrush,
-			CaretBrush = PrimaryTextBrush,
-			SelectionBrush = new SolidColorBrush(Color.FromRgb(204, 228, 247)),
-			SelectionTextBrush = PrimaryTextBrush,
-			Style = CreateTextBoxStyle()
 		};
 	}
 
@@ -1484,11 +1359,8 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 		ComboBox comboBox = new ComboBox
 		{
 			MinWidth = 180.0,
-			Background = SurfaceBackgroundBrush,
-			Foreground = PrimaryTextBrush,
-			BorderBrush = ControlBorderBrush,
-			Style = CreateComboBoxStyle(),
-			ItemContainerStyle = CreateComboBoxItemStyle()
+			MaxDropDownHeight = 260,
+			IsTextSearchEnabled = true,
 		};
 		for (int i = 0; i < items.Length; i++)
 		{
@@ -1608,7 +1480,6 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 			IsChecked = value,
 			Margin = new Thickness(0.0, 0.0, 0.0, 8.0),
 			Foreground = PrimaryTextBrush,
-			Style = CreateCheckBoxStyle()
 		};
 	}
 
@@ -1622,353 +1493,4 @@ internal sealed class TemplateSettingsWindow : ArcGIS.Desktop.Framework.Controls
 		};
 	}
 
-	private static Style CreateSettingsTabButtonStyle()
-	{
-		Style style = new Style(typeof(Button));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		ControlTemplate controlTemplate = new ControlTemplate(typeof(Button));
-		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Border));
-		frameworkElementFactory.SetBinding(Border.BackgroundProperty, new Binding("Background")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(0.0));
-		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(ContentPresenter));
-		frameworkElementFactory2.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-		frameworkElementFactory2.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory2.SetBinding(FrameworkElement.MarginProperty, new Binding("Padding")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory.AppendChild(frameworkElementFactory2);
-		controlTemplate.VisualTree = frameworkElementFactory;
-		style.Setters.Add(new Setter(Control.TemplateProperty, controlTemplate));
-		Trigger trigger = new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
-		style.Triggers.Add(trigger);
-		return style;
-	}
-
-	private static Style CreateTextBoxStyle()
-	{
-		Style style = new Style(typeof(TextBox));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		style.Triggers.Add(new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true,
-			Setters =
-			{
-				(SetterBase)new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush),
-				(SetterBase)new Setter(Control.ForegroundProperty, PrimaryTextBrush),
-				(SetterBase)new Setter(Control.BorderBrushProperty, AccentBorderBrush)
-			}
-		});
-		style.Triggers.Add(new Trigger
-		{
-			Property = UIElement.IsKeyboardFocusedProperty,
-			Value = true,
-			Setters =
-			{
-				(SetterBase)new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush),
-				(SetterBase)new Setter(Control.ForegroundProperty, PrimaryTextBrush),
-				(SetterBase)new Setter(Control.BorderBrushProperty, AccentBorderBrush)
-			}
-		});
-		return style;
-	}
-
-	private static Style CreateComboBoxStyle()
-	{
-		Style style = new Style(typeof(ComboBox));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8.0, 4.0, 8.0, 4.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		style.Setters.Add(new Setter(Control.TemplateProperty, CreateComboBoxTemplate()));
-		return style;
-	}
-
-	private static ControlTemplate CreateComboBoxTemplate()
-	{
-		ControlTemplate controlTemplate = new ControlTemplate(typeof(ComboBox));
-		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Grid));
-		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(ToggleButton));
-		frameworkElementFactory2.SetValue(FrameworkElement.FocusVisualStyleProperty, null);
-		frameworkElementFactory2.SetValue(ButtonBase.ClickModeProperty, ClickMode.Press);
-		frameworkElementFactory2.SetBinding(Control.BackgroundProperty, new Binding("Background")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetBinding(Control.BorderBrushProperty, new Binding("BorderBrush")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetBinding(Control.BorderThicknessProperty, new Binding("BorderThickness")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetBinding(ToggleButton.IsCheckedProperty, new Binding("IsDropDownOpen")
-		{
-			RelativeSource = RelativeSource.TemplatedParent,
-			Mode = BindingMode.TwoWay
-		});
-		frameworkElementFactory2.SetBinding(ContentControl.ContentProperty, new Binding("SelectionBoxItem")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetBinding(Control.PaddingProperty, new Binding("Padding")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetValue(Control.TemplateProperty, CreateComboBoxToggleTemplate());
-		frameworkElementFactory.AppendChild(frameworkElementFactory2);
-		FrameworkElementFactory frameworkElementFactory3 = new FrameworkElementFactory(typeof(Popup));
-		frameworkElementFactory3.Name = "PART_Popup";
-		frameworkElementFactory3.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
-		frameworkElementFactory3.SetValue(Popup.AllowsTransparencyProperty, true);
-		frameworkElementFactory3.SetValue(UIElement.FocusableProperty, false);
-		frameworkElementFactory3.SetBinding(Popup.IsOpenProperty, new Binding("IsDropDownOpen")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		FrameworkElementFactory frameworkElementFactory4 = new FrameworkElementFactory(typeof(Border));
-		frameworkElementFactory4.SetValue(Border.BackgroundProperty, SurfaceBackgroundBrush);
-		frameworkElementFactory4.SetValue(Border.BorderBrushProperty, ControlBorderBrush);
-		frameworkElementFactory4.SetValue(Border.BorderThicknessProperty, new Thickness(1.0));
-		frameworkElementFactory4.SetBinding(FrameworkElement.MinWidthProperty, new Binding("ActualWidth")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		FrameworkElementFactory frameworkElementFactory5 = new FrameworkElementFactory(typeof(ScrollViewer));
-		frameworkElementFactory5.SetValue(ScrollViewer.CanContentScrollProperty, true);
-		frameworkElementFactory5.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
-		FrameworkElementFactory child = new FrameworkElementFactory(typeof(ItemsPresenter));
-		frameworkElementFactory5.AppendChild(child);
-		frameworkElementFactory4.AppendChild(frameworkElementFactory5);
-		frameworkElementFactory3.AppendChild(frameworkElementFactory4);
-		frameworkElementFactory.AppendChild(frameworkElementFactory3);
-		controlTemplate.VisualTree = frameworkElementFactory;
-		return controlTemplate;
-	}
-
-	private static ControlTemplate CreateComboBoxToggleTemplate()
-	{
-		ControlTemplate controlTemplate = new ControlTemplate(typeof(ToggleButton));
-		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Border));
-		frameworkElementFactory.SetBinding(Border.BackgroundProperty, new Binding("Background")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(Grid));
-		frameworkElementFactory2.SetValue(FrameworkElement.MinHeightProperty, 28.0);
-		frameworkElementFactory2.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0));
-		frameworkElementFactory2.SetValue(Grid.ColumnProperty, 0);
-		FrameworkElementFactory frameworkElementFactory3 = new FrameworkElementFactory(typeof(ContentPresenter));
-		frameworkElementFactory3.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory3.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
-		frameworkElementFactory3.SetBinding(ContentPresenter.ContentProperty, new Binding("Content")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory3.SetBinding(FrameworkElement.MarginProperty, new Binding("Padding")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.AppendChild(frameworkElementFactory3);
-		FrameworkElementFactory frameworkElementFactory4 = new FrameworkElementFactory(typeof(TextBlock));
-		frameworkElementFactory4.SetValue(TextBlock.TextProperty, "v");
-		frameworkElementFactory4.SetValue(TextBlock.ForegroundProperty, SecondaryTextBrush);
-		frameworkElementFactory4.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 8.0, 0.0));
-		frameworkElementFactory4.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Right);
-		frameworkElementFactory4.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory2.AppendChild(frameworkElementFactory4);
-		frameworkElementFactory.AppendChild(frameworkElementFactory2);
-		controlTemplate.VisualTree = frameworkElementFactory;
-		return controlTemplate;
-	}
-
-	private static Style CreateComboBoxItemStyle()
-	{
-		Style style = new Style(typeof(ComboBoxItem));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(8.0, 4.0, 8.0, 4.0)));
-		Trigger trigger = new Trigger
-		{
-			Property = ListBoxItem.IsSelectedProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
-		trigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Triggers.Add(trigger);
-		Trigger trigger2 = new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true
-		};
-		trigger2.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
-		trigger2.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Triggers.Add(trigger2);
-		return style;
-	}
-
-	private static Style CreateCheckBoxStyle()
-	{
-		Style style = new Style(typeof(CheckBox));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		ControlTemplate controlTemplate = new ControlTemplate(typeof(CheckBox));
-		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(StackPanel));
-		frameworkElementFactory.SetValue(StackPanel.OrientationProperty, Orientation.Horizontal);
-		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(Border));
-		frameworkElementFactory2.Name = "CheckBoxGlyph";
-		frameworkElementFactory2.SetValue(FrameworkElement.WidthProperty, 16.0);
-		frameworkElementFactory2.SetValue(FrameworkElement.HeightProperty, 16.0);
-		frameworkElementFactory2.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 8.0, 0.0));
-		frameworkElementFactory2.SetBinding(Border.BackgroundProperty, new Binding("Background")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		FrameworkElementFactory frameworkElementFactory3 = new FrameworkElementFactory(typeof(TextBlock));
-		frameworkElementFactory3.Name = "CheckMark";
-		frameworkElementFactory3.SetValue(TextBlock.TextProperty, "✓");
-		frameworkElementFactory3.SetValue(TextBlock.ForegroundProperty, PrimaryTextBrush);
-		frameworkElementFactory3.SetValue(TextBlock.FontWeightProperty, FontWeights.Bold);
-		frameworkElementFactory3.SetValue(TextBlock.FontSizeProperty, 15.0);
-		frameworkElementFactory3.SetValue(TextBlock.LineHeightProperty, 16.0);
-		frameworkElementFactory3.SetValue(TextBlock.TextAlignmentProperty, TextAlignment.Center);
-		frameworkElementFactory3.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
-		frameworkElementFactory3.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory3.SetValue(UIElement.VisibilityProperty, Visibility.Collapsed);
-		frameworkElementFactory2.AppendChild(frameworkElementFactory3);
-		frameworkElementFactory.AppendChild(frameworkElementFactory2);
-		FrameworkElementFactory frameworkElementFactory4 = new FrameworkElementFactory(typeof(ContentPresenter));
-		frameworkElementFactory4.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory4.SetBinding(ContentPresenter.ContentProperty, new Binding("Content")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory.AppendChild(frameworkElementFactory4);
-		controlTemplate.VisualTree = frameworkElementFactory;
-		Trigger trigger = new Trigger
-		{
-			Property = ToggleButton.IsCheckedProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(UIElement.VisibilityProperty, Visibility.Visible, "CheckMark"));
-		trigger.Setters.Add(new Setter(Border.BorderBrushProperty, AccentBorderBrush, "CheckBoxGlyph"));
-		controlTemplate.Triggers.Add(trigger);
-		style.Setters.Add(new Setter(Control.TemplateProperty, controlTemplate));
-		style.Triggers.Add(new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true,
-			Setters =
-			{
-				(SetterBase)new Setter(Control.ForegroundProperty, PrimaryTextBrush),
-				(SetterBase)new Setter(Control.BorderBrushProperty, AccentBorderBrush)
-			}
-		});
-		return style;
-	}
-
-	private static Style CreateButtonStyle()
-	{
-		Style style = new Style(typeof(Button));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, TabBackgroundBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		DialogAppearance.ApplySquareButtonTemplate(style);
-		Trigger trigger = new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, TabHoverBackgroundBrush));
-		trigger.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
-		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBorderBrush));
-		style.Triggers.Add(trigger);
-		Trigger trigger2 = new Trigger
-		{
-			Property = UIElement.IsEnabledProperty,
-			Value = false
-		};
-		trigger2.Setters.Add(new Setter(Control.ForegroundProperty, SystemColors.GrayTextBrush));
-		style.Triggers.Add(trigger2);
-		return style;
-	}
-
-	private static Style CreatePrimaryButtonStyle()
-	{
-		Style style = CreateButtonStyle();
-		style.Setters.Add(new Setter(Control.BackgroundProperty, AccentBorderBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBorderBrush));
-		Trigger trigger = new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, AccentButtonHoverBrush));
-		trigger.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
-		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentButtonHoverBrush));
-		style.Triggers.Add(trigger);
-		return style;
-	}
-
-	static TemplateSettingsWindow()
-	{
-		WindowBackgroundBrush = DialogAppearance.Background;
-		SurfaceBackgroundBrush = DialogAppearance.InputBackground;
-		SectionBorderBrush = DialogAppearance.SectionBorder;
-		ControlBorderBrush = DialogAppearance.ControlBorder;
-		TabBackgroundBrush = DialogAppearance.ButtonBackground;
-		TabHoverBackgroundBrush = DialogAppearance.ButtonHoverBackground;
-		TabSelectedBackgroundBrush = SurfaceBackgroundBrush;
-		PrimaryTextBrush = DialogAppearance.Foreground;
-		SecondaryTextBrush = DialogAppearance.SecondaryForeground;
-		AccentBorderBrush = DialogAppearance.Accent;
-		AccentButtonHoverBrush = DialogAppearance.AccentHover;
-	}
 }

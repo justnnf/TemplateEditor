@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
-using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -14,27 +12,15 @@ namespace TemplateEditor;
 
 internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framework.Controls.ProWindow
 {
-	private static readonly bool IsDarkTheme;
+	private static Brush WindowBackgroundBrush => Application.Current?.TryFindResource("Esri_ControlBackgroundBrush") as Brush ?? DialogAppearance.Background;
 
-	private static readonly Brush WindowBackgroundBrush;
+	private static Brush SurfaceBackgroundBrush => Application.Current?.TryFindResource("Esri_ControlBackgroundBrush") as Brush ?? DialogAppearance.InputBackground;
 
-	private static readonly Brush SurfaceBackgroundBrush;
+	private static Brush PanelBorderBrush => Application.Current?.TryFindResource("Esri_BorderBrush") as Brush ?? DialogAppearance.SectionBorder;
 
-	private static readonly Brush PanelBorderBrush;
+	private static Brush TextBrush => Application.Current?.TryFindResource("Esri_TextControlBrush") as Brush ?? DialogAppearance.Foreground;
 
-	private static readonly Brush TextBrush;
-
-	private static readonly Brush SecondaryTextBrush;
-
-	private static readonly Brush AccentBrush;
-
-	private static readonly Brush HoverBrush;
-
-	private static readonly Brush EditorBackgroundBrush;
-
-	private static readonly Brush SelectedBrush;
-
-	private static readonly Brush ComboGlyphBrush;
+	private static Brush SecondaryTextBrush => Application.Current?.TryFindResource("Esri_TextStyleSubduedBrush") as Brush ?? DialogAppearance.SecondaryForeground;
 
 	private readonly ComboBox _favouriteComboBox;
 
@@ -51,22 +37,18 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 	public PlacementAttributeOverrideWindow(PlacementAttributeEditorModel editorModel)
 	{
 		EditorModel = editorModel ?? new PlacementAttributeEditorModel();
+		if (TryFindResource("Esri_Button") is Style buttonStyle)
+		{
+			Resources[typeof(Button)] = new Style(typeof(Button), buttonStyle);
+		}
 		base.Title = "Placement Attribute Overrides";
 		base.Width = 900.0;
 		base.Height = 640.0;
 		base.MinWidth = 720.0;
 		base.MinHeight = 500.0;
 		base.WindowStartupLocation = WindowStartupLocation.CenterOwner;
-		base.Background = WindowBackgroundBrush;
-		base.Foreground = TextBrush;
 		base.FontFamily = new FontFamily("Segoe UI");
 		base.FontSize = 11.0;
-		base.Resources[SystemColors.HighlightBrushKey] = HoverBrush;
-		base.Resources[SystemColors.HighlightTextBrushKey] = TextBrush;
-		base.Resources[SystemColors.ControlBrushKey] = EditorBackgroundBrush;
-		base.Resources[SystemColors.WindowBrushKey] = EditorBackgroundBrush;
-		base.Resources[SystemColors.ControlTextBrushKey] = TextBrush;
-		base.Resources[SystemColors.GrayTextBrushKey] = SecondaryTextBrush;
 		_partEditorHost = new Border
 		{
 			Background = SurfaceBackgroundBrush,
@@ -124,26 +106,36 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 			Foreground = SecondaryTextBrush,
 			TextWrapping = TextWrapping.Wrap,
 			Margin = new Thickness(0.0, 0.0, 0.0, 6.0),
-			FontSize = 10.0
+			FontSize = 11
 		};
 		grid.Children.Add(element3);
 		Grid.SetRow(element3, 1);
 		Grid grid2 = new Grid();
 		grid2.VerticalAlignment = VerticalAlignment.Stretch;
+		const double dividerWidth = 10;
+		const double minimumPartsWidth = 180;
+		const double minimumEditorWidth = 450;
+		bool hasPartsList = EditorModel.Parts.Count > 1;
+		var partsColumn = new ColumnDefinition
+		{
+			Width = new GridLength(hasPartsList ? MeasurePartsWidth() : 0),
+			MinWidth = hasPartsList ? minimumPartsWidth : 0
+		};
+		grid2.ColumnDefinitions.Add(partsColumn);
 		grid2.ColumnDefinitions.Add(new ColumnDefinition
 		{
-			Width = ((EditorModel.Parts.Count > 1) ? new GridLength(136.0) : new GridLength(0.0))
+			Width = new GridLength(hasPartsList ? dividerWidth : 0)
 		});
 		grid2.ColumnDefinitions.Add(new ColumnDefinition
 		{
-			Width = new GridLength(10.0)
+			Width = new GridLength(1, GridUnitType.Star),
+			MinWidth = hasPartsList ? minimumEditorWidth : 0
 		});
-		grid2.ColumnDefinitions.Add(new ColumnDefinition
+		if (hasPartsList)
 		{
-			Width = new GridLength(1.0, GridUnitType.Star)
-		});
-		if (EditorModel.Parts.Count > 1)
-		{
+			grid2.SizeChanged += (_, args) =>
+				partsColumn.MaxWidth = Math.Max(minimumPartsWidth, args.NewSize.Width - dividerWidth - minimumEditorWidth);
+
 			Grid grid3 = new Grid();
 			grid3.RowDefinitions.Add(new RowDefinition
 			{
@@ -158,7 +150,7 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 				Text = "Placement Parts",
 				Foreground = SecondaryTextBrush,
 				Margin = new Thickness(2.0, 0.0, 0.0, 2.0),
-				FontSize = 9.0,
+				FontSize = 11,
 				FontWeight = FontWeights.SemiBold
 			});
 			Border element4 = new Border
@@ -167,17 +159,26 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 				BorderBrush = PanelBorderBrush,
 				BorderThickness = new Thickness(1.0),
 				Padding = new Thickness(2.0),
-				Child = new ScrollViewer
-				{
-					HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-					VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-					Content = _partListBox
-				}
+				Child = _partListBox
 			};
 			grid3.Children.Add(element4);
 			Grid.SetRow(element4, 1);
 			grid2.Children.Add(grid3);
 			Grid.SetColumn(grid3, 0);
+
+			var splitter = new GridSplitter
+			{
+				Width = 6,
+				HorizontalAlignment = HorizontalAlignment.Center,
+				VerticalAlignment = VerticalAlignment.Stretch,
+				ResizeDirection = GridResizeDirection.Columns,
+				ResizeBehavior = GridResizeBehavior.PreviousAndNext,
+				ToolTip = "Drag to resize Placement Parts"
+			};
+			splitter.SetResourceReference(Control.BackgroundProperty, "Esri_BorderBrush");
+			System.Windows.Automation.AutomationProperties.SetName(splitter, "Resize Placement Parts");
+			Grid.SetColumn(splitter, 1);
+			grid2.Children.Add(splitter);
 		}
 		grid2.Children.Add(_partEditorHost);
 		Grid.SetColumn(_partEditorHost, 2);
@@ -187,14 +188,25 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 		return dockPanel;
 	}
 
+	private double MeasurePartsWidth()
+	{
+		var available = new Size(double.PositiveInfinity, double.PositiveInfinity);
+		double longest = 0;
+		foreach (ListBoxItem item in _partListBox.Items)
+		{
+			item.Measure(available);
+			longest = Math.Max(longest, item.DesiredSize.Width);
+		}
+
+		const double frameAndItemInsets = 14;
+		return Math.Ceiling(longest + frameAndItemInsets + SystemParameters.VerticalScrollBarWidth);
+	}
+
 	private ListBox BuildPartListBox()
 	{
 		ListBox listBox = new ListBox
 		{
-			Background = SurfaceBackgroundBrush,
-			BorderThickness = new Thickness(0.0),
-			Foreground = TextBrush,
-			ItemContainerStyle = CreatePartListItemStyle()
+			BorderThickness = new Thickness(0),
 		};
 		if (EditorModel.Parts.Count > 1)
 		{
@@ -203,41 +215,50 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 				listBox.Items.Add(new ListBoxItem
 				{
 					Content = BuildPartListItem(part),
+					HorizontalContentAlignment = HorizontalAlignment.Stretch,
 					Tag = part
 				});
 			}
 		}
+		ScrollViewer.SetHorizontalScrollBarVisibility(listBox, ScrollBarVisibility.Disabled);
+		ScrollViewer.SetVerticalScrollBarVisibility(listBox, ScrollBarVisibility.Auto);
 		listBox.SelectionChanged += PartListBox_SelectionChanged;
-		listBox.PreviewMouseWheel += ForwardPartListMouseWheel;
 		return listBox;
 	}
 
 	private ComboBox BuildFavouriteComboBox()
 	{
-		return new ComboBox
+		var favourites = new ComboBox
 		{
 			Width = 220.0,
-			Height = 24.0,
+			MinHeight = 26,
 			Margin = new Thickness(6.0, 0.0, 6.0, 0.0),
-			Style = CreateComboBoxStyle(),
-			ItemContainerStyle = CreateComboBoxItemStyle(),
+			MaxDropDownHeight = 260,
+			IsTextSearchEnabled = true,
 			DisplayMemberPath = "Name",
 			SelectedValuePath = "Id"
 		};
+		TextSearch.SetTextPath(favourites, "Name");
+		System.Windows.Automation.AutomationProperties.SetName(favourites, "Favourites");
+		return favourites;
 	}
 
-	private static object BuildPartListItem(PlacementAttributeEditorPartState part)
+	private static Border BuildPartListItem(PlacementAttributeEditorPartState part)
 	{
-		StackPanel stackPanel = new StackPanel();
-		stackPanel.Children.Add(new TextBlock
+		var row = new Border
 		{
-			Text = part.DisplayName,
-			FontWeight = FontWeights.SemiBold,
-			TextWrapping = TextWrapping.Wrap,
-			MaxWidth = 106.0,
-			FontSize = 9.5
-		});
-		return stackPanel;
+			BorderThickness = new Thickness(0, 0, 0, 1),
+			Padding = new Thickness(6, 5, 6, 5),
+			Child = new TextBlock
+			{
+				Text = part.DisplayName,
+				FontWeight = FontWeights.SemiBold,
+				TextWrapping = TextWrapping.Wrap,
+				FontSize = 11
+			}
+		};
+		row.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
+		return row;
 	}
 
 	private void SelectInitialPart()
@@ -301,23 +322,19 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 				Foreground = SecondaryTextBrush,
 				TextWrapping = TextWrapping.Wrap,
 				Margin = new Thickness(0.0, 1.0, 0.0, 2.0),
-				FontSize = 9.0
+				FontSize = 11
 			};
 			grid.Children.Add(element2);
 			Grid.SetRow(element2, 1);
 		}
 		ListBox listBox = new ListBox
 		{
-			Background = SurfaceBackgroundBrush,
-			BorderThickness = new Thickness(0.0),
-			Foreground = TextBrush,
+			BorderThickness = new Thickness(0),
 			HorizontalContentAlignment = HorizontalAlignment.Stretch,
-			ItemContainerStyle = CreateFieldListItemStyle()
 		};
 		((DependencyObject)listBox).SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, (object)ScrollBarVisibility.Auto);
 		((DependencyObject)listBox).SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, (object)ScrollBarVisibility.Disabled);
 		((DependencyObject)listBox).SetValue(ScrollViewer.CanContentScrollProperty, (object)true);
-		listBox.PreviewMouseWheel += ForwardFieldListMouseWheel;
 		_fieldListBox = listBox;
 		foreach (PlacementAttributeEditorFieldState attributeField in _selectedPart.AttributeFields)
 		{
@@ -360,14 +377,14 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 			Foreground = TextBrush,
 			FontWeight = FontWeights.SemiBold,
 			TextWrapping = TextWrapping.Wrap,
-			FontSize = 10.5
+			FontSize = 11
 		});
 		stackPanel.Children.Add(new TextBlock
 		{
 			Text = field.FieldName + "  |  " + field.ConfiguredValueSummary.Replace("Configured default: ", "Default: "),
 			Foreground = SecondaryTextBrush,
 			Margin = new Thickness(0.0, 1.0, 0.0, 0.0),
-			FontSize = 8.5,
+			FontSize = 11,
 			TextWrapping = TextWrapping.Wrap
 		});
 		grid.Children.Add(stackPanel);
@@ -375,12 +392,11 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 		{
 			Content = "Reset",
 			MinWidth = 44.0,
-			Height = 22.0,
+			MinHeight = 26,
 			Margin = new Thickness(8.0, 0.0, 0.0, 0.0),
 			VerticalAlignment = VerticalAlignment.Center,
 			HorizontalAlignment = HorizontalAlignment.Right,
 			Padding = new Thickness(6.0, 0.0, 6.0, 0.0),
-			Style = CreateSubtleButtonStyle()
 		};
 		Control editor;
 		if (field.HasDomainValues)
@@ -396,11 +412,11 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 				SelectedItem = (list.FirstOrDefault((string value) => string.Equals(value, field.CurrentValue, StringComparison.OrdinalIgnoreCase)) ?? field.CurrentValue),
 				MinWidth = 130.0,
 				HorizontalAlignment = HorizontalAlignment.Stretch,
-				Height = 22.0,
+				MinHeight = 26,
 				VerticalAlignment = VerticalAlignment.Center,
 				Padding = new Thickness(6.0, 1.0, 6.0, 1.0),
-				Style = CreateComboBoxStyle(),
-				ItemContainerStyle = CreateComboBoxItemStyle()
+				MaxDropDownHeight = 260,
+				IsTextSearchEnabled = true,
 			};
 			comboBox.SelectionChanged += delegate
 			{
@@ -416,16 +432,14 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 				Text = (field.CurrentValue ?? string.Empty),
 				MinWidth = 130.0,
 				HorizontalAlignment = HorizontalAlignment.Stretch,
-				Height = 22.0,
+				MinHeight = 26,
 				VerticalAlignment = VerticalAlignment.Center,
 				Padding = new Thickness(6.0, 1.0, 6.0, 1.0),
-				Style = CreateTextBoxStyle()
 			};
 			textBox.TextChanged += delegate
 			{
 				field.CurrentValue = textBox.Text;
 			};
-			AttachFieldEditorScrollProxy(textBox);
 			editor = textBox;
 		}
 		button.Click += delegate
@@ -440,6 +454,7 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 				textBox2.Text = field.CurrentValue ?? string.Empty;
 			}
 		};
+		System.Windows.Automation.AutomationProperties.SetLabeledBy(editor, (TextBlock)stackPanel.Children[0]);
 		grid.Children.Add(editor);
 		Grid.SetColumn(editor, 2);
 		grid.Children.Add(button);
@@ -457,7 +472,12 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 
 	private UIElement BuildFooter()
 	{
+		const double buttonHeight = 32;
+		const double presetButtonWidth = 60;
+		const double confirmationButtonWidth = 112;
 		Grid grid = new Grid();
+		grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+		grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 		grid.ColumnDefinitions.Add(new ColumnDefinition
 		{
 			Width = new GridLength(1.0, GridUnitType.Star)
@@ -476,35 +496,32 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 			Text = "Preset",
 			Foreground = SecondaryTextBrush,
 			VerticalAlignment = VerticalAlignment.Center,
-			FontSize = 10.0
+			FontSize = 11
 		});
 		stackPanel.Children.Add(_favouriteComboBox);
 		Button button = new Button
 		{
 			Content = "Apply",
-			MinWidth = 52.0,
-			Height = 24.0,
+			Width = presetButtonWidth,
+			Height = buttonHeight,
 			Margin = new Thickness(0.0, 0.0, 6.0, 0.0),
-			Style = CreateButtonStyle()
 		};
 		button.Click += ApplyFavouriteButton_Click;
 		stackPanel.Children.Add(button);
 		Button button2 = new Button
 		{
 			Content = "Save",
-			MinWidth = 52.0,
-			Height = 24.0,
+			Width = presetButtonWidth,
+			Height = buttonHeight,
 			Margin = new Thickness(0.0, 0.0, 6.0, 0.0),
-			Style = CreateButtonStyle()
 		};
 		button2.Click += SaveFavouriteButton_Click;
 		stackPanel.Children.Add(button2);
 		Button button3 = new Button
 		{
 			Content = "Delete",
-			MinWidth = 56.0,
-			Height = 24.0,
-			Style = CreateSubtleButtonStyle()
+			Width = presetButtonWidth,
+			Height = buttonHeight,
 		};
 		button3.Click += DeleteFavouriteButton_Click;
 		stackPanel.Children.Add(button3);
@@ -512,30 +529,40 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 		StackPanel stackPanel2 = new StackPanel
 		{
 			Orientation = Orientation.Horizontal,
-			HorizontalAlignment = HorizontalAlignment.Right
+			HorizontalAlignment = HorizontalAlignment.Right,
+			VerticalAlignment = VerticalAlignment.Center
 		};
 		Button element = new Button
 		{
 			Content = "Cancel",
-			Width = 82.0,
+			Width = confirmationButtonWidth,
 			Margin = new Thickness(0.0, 0.0, 8.0, 0.0),
 			IsCancel = true,
-			Height = 28.0,
-			Style = CreateButtonStyle()
+			Height = buttonHeight,
 		};
 		Button button4 = new Button
 		{
 			Content = "Use These Values",
-			Width = 122.0,
+			Width = confirmationButtonWidth,
 			IsDefault = true,
-			Height = 28.0,
-			Style = CreatePrimaryButtonStyle()
+			Height = buttonHeight,
 		};
 		button4.Click += SaveButton_Click;
 		stackPanel2.Children.Add(element);
 		stackPanel2.Children.Add(button4);
 		grid.Children.Add(stackPanel2);
 		Grid.SetColumn(stackPanel2, 1);
+		grid.SizeChanged += (_, args) =>
+		{
+			var unconstrained = new Size(double.PositiveInfinity, double.PositiveInfinity);
+			stackPanel.Measure(unconstrained);
+			stackPanel2.Measure(unconstrained);
+			bool wrap = args.NewSize.Width < stackPanel.DesiredSize.Width + stackPanel2.DesiredSize.Width + 12;
+			Grid.SetRow(stackPanel2, wrap ? 1 : 0);
+			Grid.SetColumn(stackPanel2, wrap ? 0 : 1);
+			Grid.SetColumnSpan(stackPanel2, wrap ? 2 : 1);
+			stackPanel2.Margin = wrap ? new Thickness(0, 8, 0, 0) : new Thickness(0);
+		};
 		return grid;
 	}
 
@@ -611,37 +638,19 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 		}
 	}
 
-	private void ForwardPartListMouseWheel(object sender, MouseWheelEventArgs e)
-	{
-		ScrollViewer scrollViewer = FindDescendantScrollViewer((DependencyObject)(object)_partListBox);
-		if (scrollViewer != null)
-		{
-			scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset - (double)e.Delta);
-			e.Handled = true;
-		}
-	}
-
-	private void ForwardFieldListMouseWheel(object sender, MouseWheelEventArgs e)
-	{
-		ScrollViewer scrollViewer = FindDescendantScrollViewer((DependencyObject)(object)_fieldListBox);
-		if (scrollViewer != null)
-		{
-			scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset - (double)e.Delta);
-			e.Handled = true;
-		}
-	}
-
 	private void ForwardFieldEditorMouseWheel(object sender, MouseWheelEventArgs e)
 	{
-		if (!(sender is ComboBox { IsDropDownOpen: not false }))
+		if (sender is not ComboBox { IsDropDownOpen: false } ||
+			FindDescendantScrollViewer(_fieldListBox) is not ScrollViewer listScroll)
 		{
-			ScrollViewer scrollViewer = FindDescendantScrollViewer((DependencyObject)(object)_fieldListBox);
-			if (scrollViewer != null)
-			{
-				scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset - (double)e.Delta);
-				e.Handled = true;
-			}
+			return;
 		}
+
+		e.Handled = true;
+		if (e.Delta > 0)
+			listScroll.LineUp();
+		else if (e.Delta < 0)
+			listScroll.LineDown();
 	}
 
 	private static ScrollViewer FindDescendantScrollViewer(DependencyObject parent)
@@ -666,294 +675,4 @@ internal sealed class PlacementAttributeOverrideWindow : ArcGIS.Desktop.Framewor
 		return null;
 	}
 
-	private static Style CreateTextBoxStyle()
-	{
-		Style style = new Style(typeof(TextBox));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, EditorBackgroundBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, PanelBorderBrush));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		Trigger trigger = new Trigger
-		{
-			Property = UIElement.IsKeyboardFocusedProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBrush));
-		style.Triggers.Add(trigger);
-		return style;
-	}
-
-	private static Style CreateComboBoxStyle()
-	{
-		Style style = new Style(typeof(ComboBox));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, EditorBackgroundBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, PanelBorderBrush));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6.0, 1.0, 6.0, 1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		style.Setters.Add(new Setter(Control.TemplateProperty, CreateComboBoxTemplate()));
-		Trigger trigger = new Trigger
-		{
-			Property = UIElement.IsKeyboardFocusedProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBrush));
-		style.Triggers.Add(trigger);
-		return style;
-	}
-
-	private static ControlTemplate CreateComboBoxTemplate()
-	{
-		ControlTemplate controlTemplate = new ControlTemplate(typeof(ComboBox));
-		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Grid));
-		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(ToggleButton));
-		frameworkElementFactory2.SetValue(FrameworkElement.FocusVisualStyleProperty, null);
-		frameworkElementFactory2.SetValue(ButtonBase.ClickModeProperty, ClickMode.Press);
-		frameworkElementFactory2.SetBinding(Control.BackgroundProperty, new Binding("Background")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetBinding(Control.BorderBrushProperty, new Binding("BorderBrush")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetBinding(Control.BorderThicknessProperty, new Binding("BorderThickness")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetBinding(ToggleButton.IsCheckedProperty, new Binding("IsDropDownOpen")
-		{
-			RelativeSource = RelativeSource.TemplatedParent,
-			Mode = BindingMode.TwoWay
-		});
-		frameworkElementFactory2.SetBinding(ContentControl.ContentProperty, new Binding("SelectionBoxItem")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetBinding(Control.PaddingProperty, new Binding("Padding")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory2.SetValue(Control.TemplateProperty, CreateComboBoxToggleTemplate());
-		frameworkElementFactory.AppendChild(frameworkElementFactory2);
-		FrameworkElementFactory frameworkElementFactory3 = new FrameworkElementFactory(typeof(Popup));
-		frameworkElementFactory3.Name = "PART_Popup";
-		frameworkElementFactory3.SetValue(Popup.PlacementProperty, PlacementMode.Bottom);
-		frameworkElementFactory3.SetValue(Popup.AllowsTransparencyProperty, true);
-		frameworkElementFactory3.SetValue(UIElement.FocusableProperty, false);
-		frameworkElementFactory3.SetBinding(Popup.IsOpenProperty, new Binding("IsDropDownOpen")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		FrameworkElementFactory frameworkElementFactory4 = new FrameworkElementFactory(typeof(Border));
-		frameworkElementFactory4.SetValue(Border.BackgroundProperty, EditorBackgroundBrush);
-		frameworkElementFactory4.SetValue(Border.BorderBrushProperty, PanelBorderBrush);
-		frameworkElementFactory4.SetValue(Border.BorderThicknessProperty, new Thickness(1.0));
-		frameworkElementFactory4.SetBinding(FrameworkElement.MinWidthProperty, new Binding("ActualWidth")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		FrameworkElementFactory frameworkElementFactory5 = new FrameworkElementFactory(typeof(ScrollViewer));
-		frameworkElementFactory5.SetValue(ScrollViewer.CanContentScrollProperty, true);
-		frameworkElementFactory5.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
-		FrameworkElementFactory child = new FrameworkElementFactory(typeof(ItemsPresenter));
-		frameworkElementFactory5.AppendChild(child);
-		frameworkElementFactory4.AppendChild(frameworkElementFactory5);
-		frameworkElementFactory3.AppendChild(frameworkElementFactory4);
-		frameworkElementFactory.AppendChild(frameworkElementFactory3);
-		controlTemplate.VisualTree = frameworkElementFactory;
-		return controlTemplate;
-	}
-
-	private static ControlTemplate CreateComboBoxToggleTemplate()
-	{
-		ControlTemplate controlTemplate = new ControlTemplate(typeof(ToggleButton));
-		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Border));
-		frameworkElementFactory.SetBinding(Border.BackgroundProperty, new Binding("Background")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory.SetBinding(Border.BorderBrushProperty, new Binding("BorderBrush")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory.SetBinding(Border.BorderThicknessProperty, new Binding("BorderThickness")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		FrameworkElementFactory frameworkElementFactory2 = new FrameworkElementFactory(typeof(Grid));
-		frameworkElementFactory2.SetValue(FrameworkElement.MinHeightProperty, 22.0);
-		FrameworkElementFactory frameworkElementFactory3 = new FrameworkElementFactory(typeof(ContentPresenter));
-		frameworkElementFactory3.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory3.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
-		frameworkElementFactory3.SetBinding(ContentPresenter.ContentProperty, new Binding("Content")
-		{
-			RelativeSource = RelativeSource.TemplatedParent
-		});
-		frameworkElementFactory3.SetValue(FrameworkElement.MarginProperty, new Thickness(6.0, 0.0, 24.0, 0.0));
-		frameworkElementFactory3.SetValue(TextElement.ForegroundProperty, TextBrush);
-		frameworkElementFactory2.AppendChild(frameworkElementFactory3);
-		FrameworkElementFactory frameworkElementFactory4 = new FrameworkElementFactory(typeof(Border));
-		frameworkElementFactory4.SetValue(Border.BackgroundProperty, PanelBorderBrush);
-		frameworkElementFactory4.SetValue(FrameworkElement.WidthProperty, 1.0);
-		frameworkElementFactory4.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Right);
-		frameworkElementFactory4.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 4.0, 20.0, 4.0));
-		frameworkElementFactory2.AppendChild(frameworkElementFactory4);
-		FrameworkElementFactory frameworkElementFactory5 = new FrameworkElementFactory(typeof(TextBlock));
-		frameworkElementFactory5.SetValue(TextBlock.TextProperty, "▾");
-		frameworkElementFactory5.SetValue(TextBlock.ForegroundProperty, ComboGlyphBrush);
-		frameworkElementFactory5.SetValue(TextBlock.FontSizeProperty, 10.0);
-		frameworkElementFactory5.SetValue(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 7.0, 0.0));
-		frameworkElementFactory5.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Right);
-		frameworkElementFactory5.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
-		frameworkElementFactory2.AppendChild(frameworkElementFactory5);
-		frameworkElementFactory.AppendChild(frameworkElementFactory2);
-		controlTemplate.VisualTree = frameworkElementFactory;
-		return controlTemplate;
-	}
-
-	private static Style CreateComboBoxItemStyle()
-	{
-		Style style = new Style(typeof(ComboBoxItem));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, EditorBackgroundBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6.0, 2.0, 6.0, 2.0)));
-		Trigger trigger = new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, HoverBrush));
-		trigger.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		style.Triggers.Add(trigger);
-		Trigger trigger2 = new Trigger
-		{
-			Property = ListBoxItem.IsSelectedProperty,
-			Value = true
-		};
-		trigger2.Setters.Add(new Setter(Control.BackgroundProperty, SelectedBrush));
-		trigger2.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		style.Triggers.Add(trigger2);
-		Trigger highlightedTrigger = new Trigger
-		{
-			Property = ComboBoxItem.IsHighlightedProperty,
-			Value = true
-		};
-		highlightedTrigger.Setters.Add(new Setter(Control.BackgroundProperty, HoverBrush));
-		highlightedTrigger.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		style.Triggers.Add(highlightedTrigger);
-		return style;
-	}
-
-	private static Style CreateButtonStyle()
-	{
-		Style style = new Style(typeof(Button));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, SurfaceBackgroundBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, PanelBorderBrush));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		DialogAppearance.ApplySquareButtonTemplate(style);
-		Trigger trigger = new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, HoverBrush));
-		trigger.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBrush));
-		style.Triggers.Add(trigger);
-		return style;
-	}
-
-	private static Style CreateSubtleButtonStyle()
-	{
-		Style style = CreateButtonStyle();
-		style.Setters.Add(new Setter(Control.ForegroundProperty, SecondaryTextBrush));
-		return style;
-	}
-
-	private static Style CreatePrimaryButtonStyle()
-	{
-		Style style = CreateButtonStyle();
-		style.Setters.Add(new Setter(Control.BackgroundProperty, AccentBrush));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, AccentBrush));
-		Trigger trigger = new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, DialogAppearance.AccentHover));
-		trigger.Setters.Add(new Setter(Control.ForegroundProperty, Brushes.White));
-		trigger.Setters.Add(new Setter(Control.BorderBrushProperty, DialogAppearance.AccentHover));
-		style.Triggers.Add(trigger);
-		return style;
-	}
-
-	private static Style CreatePartListItemStyle()
-	{
-		Style style = new Style(typeof(ListBoxItem));
-		style.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
-		style.Setters.Add(new Setter(Control.BorderBrushProperty, Brushes.Transparent));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0.0)));
-		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(4.0)));
-		style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
-		style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0.0, 0.0, 0.0, 1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		Trigger trigger = new Trigger
-		{
-			Property = ListBoxItem.IsSelectedProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, SelectedBrush));
-		trigger.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		style.Triggers.Add(trigger);
-		Trigger trigger2 = new Trigger
-		{
-			Property = UIElement.IsMouseOverProperty,
-			Value = true
-		};
-		trigger2.Setters.Add(new Setter(Control.BackgroundProperty, HoverBrush));
-		style.Triggers.Add(trigger2);
-		return style;
-	}
-
-	private static Style CreateFieldListItemStyle()
-	{
-		Style style = new Style(typeof(ListBoxItem));
-		style.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
-		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(0.0)));
-		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(0.0)));
-		style.Setters.Add(new Setter(FrameworkElement.MarginProperty, new Thickness(0.0)));
-		style.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
-		Trigger trigger = new Trigger
-		{
-			Property = ListBoxItem.IsSelectedProperty,
-			Value = true
-		};
-		trigger.Setters.Add(new Setter(Control.BackgroundProperty, Brushes.Transparent));
-		trigger.Setters.Add(new Setter(Control.ForegroundProperty, TextBrush));
-		style.Triggers.Add(trigger);
-		return style;
-	}
-
-	static PlacementAttributeOverrideWindow()
-	{
-		IsDarkTheme = (int)FrameworkApplication.ApplicationTheme == 1;
-		WindowBackgroundBrush = DialogAppearance.Background;
-		SurfaceBackgroundBrush = DialogAppearance.InputBackground;
-		PanelBorderBrush = DialogAppearance.SectionBorder;
-		TextBrush = DialogAppearance.Foreground;
-		SecondaryTextBrush = DialogAppearance.SecondaryForeground;
-		AccentBrush = DialogAppearance.Accent;
-		HoverBrush = DialogAppearance.ButtonHoverBackground;
-		EditorBackgroundBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(36, 36, 38)) : Brushes.White);
-		SelectedBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(35, 82, 130)) : new SolidColorBrush(Color.FromRgb(214, 234, 252)));
-		ComboGlyphBrush = (IsDarkTheme ? new SolidColorBrush(Color.FromRgb(192, 192, 192)) : new SolidColorBrush(Color.FromRgb(90, 90, 90)));
-	}
 }

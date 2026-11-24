@@ -180,7 +180,8 @@ internal sealed class AssetSearchInputView : UserControl
 			{
 				message += $" {result.FailedTables} layer(s) or table(s) failed; see the Template Editor log.";
 			}
-			DialogService.ShowToast(message, "Find Asset", result.FailedTables > 0 ? FeedbackSeverity.Warning : FeedbackSeverity.Success);
+			DialogService.ShowToast(message, "Find Asset", result.FailedTables > 0 ? FeedbackSeverity.Warning
+				: result.MatchCount == 0 ? FeedbackSeverity.Info : FeedbackSeverity.Success);
 		}
 		catch (Exception ex)
 		{
@@ -190,7 +191,7 @@ internal sealed class AssetSearchInputView : UserControl
 			}
 			LogService.LogException("Asset search failed.", ex);
 			AssetSearchResultsControl.ShowMessage("Search failed", "See the Template Editor log.");
-			DialogService.ShowToast("Search failed; see the Template Editor log.", "Find Asset", FeedbackSeverity.Warning);
+			DialogService.ShowToast("Search failed; see the Template Editor log.", "Find Asset", FeedbackSeverity.Error);
 		}
 		finally
 		{
@@ -388,7 +389,7 @@ public sealed class AssetSearchResultCard
 		catch (Exception ex)
 		{
 			LogService.LogException("Asset search result action failed.", ex);
-			DialogService.ShowToast(ex.Message, "Find Asset", FeedbackSeverity.Warning);
+			DialogService.ShowToast(ex.Message, "Find Asset", FeedbackSeverity.Error);
 		}
 	}
 }

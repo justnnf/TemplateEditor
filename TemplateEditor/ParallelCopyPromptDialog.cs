@@ -202,7 +202,6 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
 		style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(6.0, 3.0, 6.0, 3.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		return style;
 	}
 
@@ -213,7 +212,6 @@ internal sealed class ParallelCopyPromptDialog : ArcGIS.Desktop.Framework.Contro
 		style.Setters.Add(new Setter(Control.ForegroundProperty, PrimaryTextBrush));
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, ControlBorderBrush));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		ControlTemplate controlTemplate = new ControlTemplate(typeof(RadioButton));
 		FrameworkElementFactory border = new FrameworkElementFactory(typeof(Border));
 		border.SetBinding(Border.BackgroundProperty, new Binding("Background")

@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Data;
 using ArcGIS.Desktop.Framework.Events;
 using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Mapping.Events;
@@ -25,8 +26,8 @@ internal static class PlacementMapPrompt
         ListBox choices = null;
         bool accepted = await ShowAsync(map, title, finish =>
         {
-            choices = new ListBox { ItemsSource = labels, SelectedIndex = 0, MaxHeight = 150 };
-            choices.SetResourceReference(FrameworkElement.StyleProperty, "Esri_ListBox");
+            choices = new ListBox { ItemsSource = labels, SelectedIndex = 0, MaxHeight = 240 };
+            ConfigureChoiceList(choices);
             System.Windows.Automation.AutomationProperties.SetName(choices, title);
             choices.SelectionChanged += (_, _) =>
             {
@@ -35,8 +36,23 @@ internal static class PlacementMapPrompt
             };
             return Form(message, choices, "Use Selected", "Cancel", finish,
                 () => choices.SelectedIndex >= 0);
-        });
+        }, width: selectionChanged == null ? 280 : 400);
         return accepted ? choices.SelectedIndex : null;
+    }
+
+    internal static void ConfigureChoiceList(ListBox choices)
+    {
+        choices.SetResourceReference(Control.BackgroundProperty, "Esri_ControlBackgroundBrush");
+        choices.SetResourceReference(Control.ForegroundProperty, "Esri_TextControlBrush");
+        choices.SetResourceReference(Control.BorderBrushProperty, "Esri_BorderBrush");
+        choices.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        ScrollViewer.SetHorizontalScrollBarVisibility(choices, ScrollBarVisibility.Disabled);
+        ScrollViewer.SetVerticalScrollBarVisibility(choices, ScrollBarVisibility.Auto);
+
+        var label = new FrameworkElementFactory(typeof(TextBlock));
+        label.SetBinding(TextBlock.TextProperty, new Binding());
+        label.SetValue(TextBlock.TextWrappingProperty, TextWrapping.Wrap);
+        choices.ItemTemplate = new DataTemplate { VisualTree = label };
     }
 
     public static async Task<(bool Start, bool End)> ChooseSplitAsync(MapView map, bool hasStart, bool hasEnd)
@@ -62,7 +78,7 @@ internal static class PlacementMapPrompt
         return accepted ? (start?.IsChecked == true, end?.IsChecked == true) : default;
     }
 
-    public static async Task<bool> ShowAsync(MapView map, string title, Func<Action<bool>, FrameworkElement> buildContent)
+    public static async Task<bool> ShowAsync(MapView map, string title, Func<Action<bool>, FrameworkElement> buildContent, double width = 280)
     {
         return await (await Application.Current.Dispatcher.InvokeAsync(ShowOnUiAsync));
 
@@ -84,7 +100,10 @@ internal static class PlacementMapPrompt
                 or OverlayControlRelativePosition.TopRight ? 0 : 1;
 
             var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var panel = new StackPanel { Width = 280, Margin = new Thickness(8) };
+            double mapWidth = map.GetViewSize().Width;
+            double contentWidth = mapWidth > 64 ? Math.Min(width, mapWidth - 48) : width;
+            var previousFocus = Keyboard.FocusedElement;
+            var panel = new StackPanel { Width = contentWidth, Margin = new Thickness(8) };
             panel.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold });
             panel.Children.Add(buildContent(result => answer.TrySetResult(result)));
 
@@ -136,7 +155,10 @@ internal static class PlacementMapPrompt
                         }
                         finally
                         {
+                            bool restoreFocus = border.IsKeyboardFocusWithin && ReferenceEquals(MapView.Active, map);
                             map.RemoveOverlayControl(overlay);
+                            if (restoreFocus && previousFocus != null)
+                                Keyboard.Focus(previousFocus);
                         }
                     }
                     finally
@@ -160,15 +182,18 @@ internal static class PlacementMapPrompt
         Action<bool> finish, Func<bool> canConfirm = null)
     {
         var panel = new StackPanel();
-        panel.Children.Add(new ScrollViewer
+        var messageScroll = new ScrollViewer
         {
-            MaxHeight = 104,
+            MaxHeight = 200,
             Margin = new Thickness(0, 4, 0, 2),
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Focusable = false,
             Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }
-        });
+        };
+        System.Windows.Automation.AutomationProperties.SetName(messageScroll, "Prompt details");
+        messageScroll.ScrollChanged += (_, _) => messageScroll.Focusable = messageScroll.ScrollableHeight > 0;
+        panel.Children.Add(messageScroll);
         if (input != null)
             panel.Children.Add(input);
 
@@ -198,13 +223,14 @@ internal static class PlacementMapPrompt
     {
         var button = new Button
         {
-            Content = label,
+            Content = new TextBlock { Text = label, TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center },
             MinHeight = 28,
             Margin = margin,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch,
             Padding = new Thickness(4, 0, 4, 0)
         };
+        System.Windows.Automation.AutomationProperties.SetName(button, label);
         button.SetResourceReference(FrameworkElement.StyleProperty, "Esri_Button");
         button.Click += click;
         return button;

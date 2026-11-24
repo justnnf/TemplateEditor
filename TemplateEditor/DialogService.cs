@@ -92,9 +92,14 @@ internal static class DialogService
 			return null;
 		}
 
-		Brush brush = severity == FeedbackSeverity.Success ? Brushes.ForestGreen
-			: severity == FeedbackSeverity.Warning ? Brushes.DarkGoldenrod : Brushes.IndianRed;
-		if (SystemParameters.HighContrast)
+		bool dark = FrameworkApplication.ApplicationTheme == ApplicationTheme.Dark;
+		Brush brush = severity switch
+		{
+			FeedbackSeverity.Success => dark ? Brushes.LightGreen : Brushes.ForestGreen,
+			FeedbackSeverity.Warning => dark ? Brushes.Gold : Brushes.DarkGoldenrod,
+			_ => dark ? Brushes.LightCoral : Brushes.IndianRed
+		};
+		if (SystemParameters.HighContrast || FrameworkApplication.ApplicationTheme == ApplicationTheme.HighContrast)
 		{
 			brush = SystemColors.WindowTextBrush;
 		}

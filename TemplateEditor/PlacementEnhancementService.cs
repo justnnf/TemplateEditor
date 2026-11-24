@@ -1531,13 +1531,13 @@ internal static class PlacementEnhancementService
 		CIMColor val2 = CreateHintColor(settings?.HintSplitCandidateColorHex, "#FF0000", 100.0);
 		if (geometry is Polyline)
 		{
-			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(val2, 5.0, (SimpleLineStyle)0));
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(val2, 5.0, SimpleLineStyle.Dash));
 		}
 		if (geometry is Polygon)
 		{
-			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 3.0, (SimpleLineStyle)0)));
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 3.0, SimpleLineStyle.Dash)));
 		}
-		return CreatePointHintSymbol(val, val2, 12.0, 1.75);
+		return CreatePointHintSymbol(val, val2, 12.0, 1.75, SimpleMarkerStyle.Square);
 	}
 
 	private static CIMSymbolReference CreateAssociationTargetSymbol(Geometry geometry, TemplateEditorSettings settings)
@@ -1546,19 +1546,19 @@ internal static class PlacementEnhancementService
 		CIMColor val2 = CreateHintColor(settings?.HintAssociationTargetColorHex, "#FF0000", 100.0);
 		if (geometry is Polyline)
 		{
-			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(val2, 5.0, (SimpleLineStyle)0));
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructLineSymbol(val2, 5.0, SimpleLineStyle.Dot));
 		}
 		if (geometry is Polygon)
 		{
-			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 3.0, (SimpleLineStyle)0)));
+			return SymbolExtensionMethods.MakeSymbolReference((CIMSymbol)(object)SymbolFactory.Instance.ConstructPolygonSymbol(val, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(val2, 3.0, SimpleLineStyle.Dot)));
 		}
-		return CreatePointHintSymbol(val, val2, 19.0, 2.25);
+		return CreatePointHintSymbol(val, val2, 19.0, 2.25, SimpleMarkerStyle.Diamond);
 	}
 
-	private static CIMSymbolReference CreatePointHintSymbol(CIMColor fillColor, CIMColor outlineColor, double size, double outlineWidth)
+	private static CIMSymbolReference CreatePointHintSymbol(CIMColor fillColor, CIMColor outlineColor, double size, double outlineWidth, SimpleMarkerStyle markerStyle = SimpleMarkerStyle.Circle)
 	{
 		CIMPolygonSymbol symbol = SymbolFactory.Instance.ConstructPolygonSymbol(fillColor, (SimpleFillStyle)0, SymbolFactory.Instance.ConstructStroke(outlineColor, outlineWidth, (SimpleLineStyle)0));
-		CIMPointSymbol val = SymbolFactory.Instance.ConstructPointSymbol(fillColor, size, (SimpleMarkerStyle)0);
+		CIMPointSymbol val = SymbolFactory.Instance.ConstructPointSymbol(fillColor, size, markerStyle);
 		CIMSymbolLayer[] array = ((CIMMultiLayerSymbol)val).SymbolLayers ?? Array.Empty<CIMSymbolLayer>();
 		foreach (CIMSymbolLayer val2 in array)
 		{

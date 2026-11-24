@@ -124,7 +124,6 @@ internal sealed class FeedbackPromptWindow : ArcGIS.Desktop.Framework.Controls.P
 		style.Setters.Add(new Setter(Control.ForegroundProperty, value3));
 		style.Setters.Add(new Setter(Control.BorderBrushProperty, value4));
 		style.Setters.Add(new Setter(Control.BorderThicknessProperty, new Thickness(1.0)));
-		style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty, null));
 		ControlTemplate controlTemplate = new ControlTemplate(typeof(Button));
 		FrameworkElementFactory frameworkElementFactory = new FrameworkElementFactory(typeof(Border));
 		frameworkElementFactory.SetBinding(Border.BackgroundProperty, new Binding("Background")
