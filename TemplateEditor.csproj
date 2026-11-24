@@ -25,7 +25,7 @@
     <AddInImageHeight>128</AddInImageHeight>
     <AddInAuthor>J. Foltinek</AddInAuthor>
     <AddInCompany>FortisAlberta</AddInCompany>
-    <AddInVersion>3.2.1</AddInVersion>
+    <AddInVersion>3.2.2</AddInVersion>
     <ArcGISProReleaseVersion>3.5</ArcGISProReleaseVersion>
     <ReleaseDirectory>$(MSBuildProjectDirectory)\Release\</ReleaseDirectory>
   </PropertyGroup>

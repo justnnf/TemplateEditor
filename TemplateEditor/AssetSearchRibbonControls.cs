@@ -7,6 +7,8 @@ using System.Windows.Controls;
 using System.Windows.Automation;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
+using ArcGIS.Desktop.Framework;
 using ArcGIS.Desktop.Framework.Contracts;
 
 namespace TemplateEditor;
@@ -260,6 +262,7 @@ internal sealed class AssetSearchResultsView : UserControl
 		{
 			Content = _cards,
 			Height = 66,
+			HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
 			VerticalScrollBarVisibility = ScrollBarVisibility.Auto
 		};
 		Border frame = new Border
@@ -296,11 +299,11 @@ internal sealed class AssetSearchResultsView : UserControl
 			if (card.Match != null)
 			{
 				StackPanel actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 0, 2, 0) };
-				actions.Children.Add(ActionButton(card, "SelectionMethodAdd16", "Add to selection", AssetSearchService.ResultAction.AddToSelection));
+				actions.Children.Add(ActionButton(card, "Add to selection", AssetSearchService.ResultAction.AddToSelection));
 				if (card.Match.IsSpatial)
 				{
-					actions.Children.Add(ActionButton(card, "SelectionZoomToSelected16", "Zoom to", AssetSearchService.ResultAction.ZoomTo));
-					actions.Children.Add(ActionButton(card, "SelectionPanToSelected16", "Pan to", AssetSearchService.ResultAction.PanTo));
+					actions.Children.Add(ActionButton(card, "Zoom to", AssetSearchService.ResultAction.ZoomTo));
+					actions.Children.Add(ActionButton(card, "Pan to", AssetSearchService.ResultAction.PanTo));
 				}
 				Grid.SetColumn(actions, 1);
 				row.Children.Add(actions);
@@ -312,25 +315,41 @@ internal sealed class AssetSearchResultsView : UserControl
 				ToolTip = string.IsNullOrEmpty(card.Detail) ? card.Title : card.Title + " · " + card.Detail,
 				Child = row
 			};
-			tile.SetResourceReference(Border.BackgroundProperty, "Esri_ControlBackgroundBrush");
 			tile.SetResourceReference(Border.BorderBrushProperty, "Esri_BorderBrush");
 			_cards.Children.Add(tile);
 		}
 	}
 
 	private static System.Windows.Controls.Button ActionButton(
-		AssetSearchResultCard card, string icon, string tooltip, AssetSearchService.ResultAction action)
+		AssetSearchResultCard card, string tooltip, AssetSearchService.ResultAction action)
 	{
-		Image image = new Image
+		string icon = action switch
 		{
-			Width = 16,
-			Height = 16
+			AssetSearchService.ResultAction.AddToSelection => "SelectionMethodAdd16",
+			AssetSearchService.ResultAction.ZoomTo => "SelectionZoomToSelected16",
+			AssetSearchService.ResultAction.PanTo => "SelectionPanToSelected16",
+			_ => throw new ArgumentOutOfRangeException(nameof(action))
 		};
+		var image = new Image { Width = 16, Height = 16 };
 		image.SetResourceReference(Image.SourceProperty, icon);
+		if (FrameworkApplication.ApplicationTheme == ApplicationTheme.Dark && !SystemParameters.HighContrast)
+		{
+			image.Effect = new DropShadowEffect
+			{
+				Color = Colors.White,
+				ShadowDepth = 0,
+				BlurRadius = 3,
+				Opacity = 0.6
+			};
+		}
 		System.Windows.Controls.Button button = new System.Windows.Controls.Button
 		{
-			Width = 20,
+			Width = 24,
 			Height = 20,
+			MinWidth = 0,
+			MinHeight = 0,
+			HorizontalContentAlignment = HorizontalAlignment.Center,
+			VerticalContentAlignment = VerticalAlignment.Center,
 			Padding = new Thickness(0),
 			Background = Brushes.Transparent,
 			BorderThickness = new Thickness(0),
@@ -338,7 +357,19 @@ internal sealed class AssetSearchResultsView : UserControl
 			ToolTip = tooltip,
 			Cursor = Cursors.Hand
 		};
-		button.SetResourceReference(StyleProperty, "Esri_ButtonBorderless");
+		var surface = new FrameworkElementFactory(typeof(Border));
+		surface.SetValue(Border.BackgroundProperty, Brushes.Transparent);
+		var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+		presenter.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
+		presenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
+		surface.AppendChild(presenter);
+		var template = new ControlTemplate(typeof(System.Windows.Controls.Button)) { VisualTree = surface };
+		surface.Name = "IconSurface";
+		var hover = new Trigger { Property = IsMouseOverProperty, Value = true };
+		hover.Setters.Add(new Setter(Border.BackgroundProperty,
+			new DynamicResourceExtension("Esri_BackgroundHoverSelectedBrush"), "IconSurface"));
+		template.Triggers.Add(hover);
+		button.Template = template;
 		AutomationProperties.SetName(button, $"{tooltip} {card.Title}");
 		button.Click += (_, e) =>
 		{
